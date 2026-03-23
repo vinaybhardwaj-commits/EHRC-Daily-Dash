@@ -1,0 +1,130 @@
+"Timestamp","Date (DD-MM-YYYY)","Critical stock availability (status)","# of GRN prepared","# of PO issued","# of items procured in emergency / after 5pm","Shortages / backorders","Procurement escalations","High-value purchase alerts","Pending consumption reporting issues by dept"
+"2026/03/17 9:05:48 am GMT+5:30","16-03-2026","NIL","12","12 ","0","nil","nil","nil"," sl no	Departments 		Status		 VALUE  	Status		 VALUE  	Status		 VALUE  	Status		 VALUE  	Status		 VALUE  	Status
+1	 ADMIN STORE 	  460.20 	Pending		  460.20 	Pending		460.2	Pending		460.2	Pending		460.2	Pending		460.2	Pending
+2	 BILLING STORE 	  5,293.48 	Pending		  5,293.48 	Pending		5,293.48	Pending		5293.48	Pending		5293.48	Pending		5293.48	Pending
+3	 Central Store 														Done			Done
+4	 CLINICAL LABORATORY 	  890.28 	Pending		  890.28 	Pending		890.28	Pending		1171.121	Pending		1171.121	Pending		1171.121	Pending
+5	 CSSD STORE 	  96.15 	Pending		  96.15 	Pending		96.15	Pending		96.1464	Pending		96.1464	Pending		96.1464	Pending
+6	 EMERGENCY ROOM STORE 	  4,406.12 	Pending		  4,406.12 	Pending		4,406.12	Pending		4406.12	Pending			Done			Done
+7	 ENDOSCOPY STORE 	  2,335.91 	Pending		  2,335.91 	Pending		2,335.91	Pending		2335.912	Pending		2335.912	Pending		2335.912	Pending
+8	 Even Clinic Hebbal 	  3,649.74 	Pending		  3,649.74 	Pending		3,649.74	Pending		3649.74	Pending		3649.74	Pending		3649.74	Pending
+9	 FINANCE STORE 	  760.91 	Pending		  760.91 	Pending									Done			Done
+10	 FIRST FLOOR NURSING STATION 	  3,352.38 	Pending		  3,352.38 	Pending		3,352.38	Pending		3352.38	Pending		3352.38	Pending		3352.38	Pending
+11	 FRONT OFFICE 	  12,389.27 	Pending		  20,766.15 	Pending		900.52	Pending		5900.178	Pending		5900.178	Pending		5900.178	Pending
+12	 HOUSEKEEPING STORE 	  4,463.94 	Pending		  4,576.04 	Pending		4,576.04	Pending		4576.04	Pending		4576.04	Pending		28367.4	Pending
+13	 ICU STORE 	  1,845.85 	Pending		  1,845.85 	Pending		1,845.85	Pending		1845.848	Pending		1845.848	Pending		1845.848	Pending
+14	 IP PHARMACY 	  428.34 	Pending		  428.34 	Pending		1,467.84	Pending		1467.84	Pending		1467.84	Pending		1467.84	Pending
+15	 IT STORE 	  286.74 	Pending		  286.74 	Pending		286.74	Pending		286.74	Pending		286.74	Pending		286.74	Pending
+16	 LDR STORE 	  1,749.30 	Pending		  1,749.30 	Pending		1,749.30	Pending		1749.304	Pending		1749.304	Pending		1749.304	Pending
+17	 MRD STORE 	  1,478.26 	Pending		  1,478.26 	Pending		1,478.26	Pending		1478.255	Pending		1478.255	Pending		1478.255	Pending
+18	 NICU STORE 	  2,584.20 	Pending		  2,584.20 	Pending		2,584.20	Pending		2584.2	Pending		2584.2	Pending		2584.2	Pending
+19	 OP PHARMACY 	  280.84 	Pending		  280.84 	Pending		280.84	Pending		280.84	Pending		280.84	Pending		280.84	Pending
+20	 OPD STORE 	  1,047.84 	Pending		  1,047.84 	Pending		1,047.84	Pending		1047.84	Pending			Done			Done
+21	 OT COMPLEX STORE 	  531.00 	Pending		  537.84 	Pending		537.84	Pending		1493.644	Pending		1493.644	Pending		1493.644	Pending
+22	 PHYSIOTHERAPY OPD STORE 	  320.98 	Pending		  320.98 	Pending		320.98	Pending		320.98	Pending		320.98	Pending		320.98	Pending
+23	 PRE AND POST NURSING STATION 	  1,751.47 	Pending		  1,751.47 	Pending		1,751.47	Pending		1751.474	Pending		1751.474	Pending		1751.474	Pending
+24	RADIOLOGY STORE	  1,180.00 	Pending		1180	Pending		1,180.00	Pending		1180	Pending		1180	Pending		1180	Pending
+25	SECURITY STORE	2664.44	Pending		2664.44	Pending		2,664.44	Pending		2664.44	Pending		2664.44	Pending		3770.73	Pending"
+"2026/03/17 5:55:27 pm GMT+5:30","18-03-2026","NIL","11","11","0","","NIL","NIL","Sl no..	Store	 VALUE  	Status		 VALUE  	Status
+1	ADMIN STORE	460.2	Pending		460.2	Pending
+2	BILLING STORE	5293.48	Pending		5,293.48	Pending
+3	CLINICAL LABORATORY	1171.121	Pending		1,171.12	Pending
+4	CSSD STORE	96.1464	Pending		96.15	Pending
+5	ENDOSCOPY STORE	2335.912	Pending		2,335.91	Pending
+6	Even Clinic Hebbal	3649.74	Pending		3,649.74	Pending
+7	FINANCE STORE	-	-		336.3	Pending
+8	FIRST FLOOR NURSING STATION	3914.06	Pending		5,094.06	Pending
+9	FRONT OFFICE	5900.178	Pending		6,186.92	Pending
+10	HOUSEKEEPING STORE	28367.4	Pending		28,367.40	Pending
+11	ICU STORE	1845.848	Pending		1,845.85	Pending
+12	IP PHARMACY	1467.84	Pending		1,467.84	Pending
+13	IT STORE	286.74	Pending		286.74	Pending
+14	LDR STORE	1749.304	Pending		1,749.30	Pending
+15	MRD STORE	1478.255	Pending		1,478.26	Pending
+16	NICU STORE	2584.2	Pending		2,584.20	Pending
+17	OP PHARMACY	280.84	Pending		280.84	Pending
+18	OT COMPLEX STORE	1493.644	Pending		1,493.64	Pending
+19	PHYSIOTHERAPY OPD STORE	320.98	Pending		320.98	Pending
+20	PRE AND POST NURSING STATION	1751.474	Pending		1,751.47	Pending
+21	RADIOLOGY STORE	1180	Pending		1,180.00	Pending
+22	SECOND FLOOR NURSING STATION	1283.84	Pending		1,708.64	Pending
+23	SECURITY STORE	3770.73	Pending		3,770.73	Pending
+	Total	70682			72,909.77	"
+"2026/03/20 5:41:25 pm GMT+5:30","21-03-2026","arrange for tomr case Duct probe","16","16","0","Nil","required for ot department harmonic machine ","","Sl no..	Store	 VALUE  	Status		 VALUE  	Status		 VALUE  	Status		 VALUE  	Status
+1	ADMIN STORE	460.2	Pending		460.2	Pending		460.2	Pending		460.2	Pending
+2	BILLING STORE	5293.48	Pending		5,293.48	Pending		5,293.48	Pending		5293.48	Pending
+3	CLINICAL LABORATORY	1171.121	Pending		1,171.12	Pending		1,171.12	Pending		1171.121	Pending
+4	CSSD STORE	96.1464	Pending		96.15	Pending		96.15	Pending		1765.846	Pending
+5	ENDOSCOPY STORE	2335.912	Pending		2,335.91	Pending		2,335.91	Pending		2335.912	Pending
+6	Even Clinic Hebbal	3649.74	Pending		3,649.74	Pending		3,649.74	Pending		3649.74	Pending
+7	FINANCE STORE	-	-		336.3	Pending		336.3	Pending		336.3	Pending
+8	FIRST FLOOR NURSING STATION	3914.06	Pending		5,094.06	Pending		5,094.06	Pending			Done
+9	FRONT OFFICE	5900.178	Pending		6,186.92	Pending		6,186.92	Pending		6186.918	Pending
+10	HOUSEKEEPING STORE	28367.4	Pending		28,367.40	Pending		28,367.40	Pending		54539.8	Pending
+11	ICU STORE	1845.848	Pending		1,845.85	Pending		1,845.85	Pending		1845.848	Pending
+12	IP PHARMACY	1467.84	Pending		1,467.84	Pending		1,467.84	Pending		1467.84	Pending
+13	IT STORE	286.74	Pending		286.74	Pending		286.74	Pending		541.62	Pending
+14	LDR STORE	1749.304	Pending		1,749.30	Pending		1,749.30	Pending		1749.304	Pending
+15	MRD STORE	1478.255	Pending		1,478.26	Pending		1,478.26	Pending		1478.255	Pending
+16	NICU STORE	2584.2	Pending		2,584.20	Pending		2,584.20	Pending		2584.2	Pending
+17	OP PHARMACY	280.84	Pending		280.84	Pending		280.84	Pending		280.84	Pending
+											63.048	Pending
+18	OT COMPLEX STORE	1493.644	Pending		1,493.64	Pending		1,493.64	Pending		1493.644	Pending
+19	PHYSIOTHERAPY OPD STORE	320.98	Pending		320.98	Pending		320.98	Pending		320.98	Pending
+20	PRE AND POST NURSING STATION	1751.474	Pending		1,751.47	Pending		1,751.47	Pending		1751.474	Pending
+21	RADIOLOGY STORE	1180	Pending		1,180.00	Pending		1,180.00	Pending		1180	Pending
+22	SECOND FLOOR NURSING STATION	1283.84	Pending		1,708.64	Pending		1,708.64	Pending			Done
+23	SECURITY STORE	3770.73	Pending		3,770.73	Pending					499.14	Pending
+	Total	70682			72,909.77			69,139.04			90995.51	"
+"2026/03/23 12:01:19 pm GMT+5:30","23-03-2026","0","15","15","0","Nil","NIl","Nil","Sl no..	Store	 VALUE  	Status		 VALUE  	Status		 VALUE  	Status		 VALUE  	Status
+1	ADMIN STORE	460.2	Pending		460.2	Pending		460.2	Pending		460.2	Pending
+2	BILLING STORE	5293.48	Pending		5,293.48	Pending		5,293.48	Pending		5293.48	Pending
+3	CLINICAL LABORATORY	1171.121	Pending		1,171.12	Pending		1,171.12	Pending		1171.121	Pending
+4	CSSD STORE	96.1464	Pending		96.15	Pending		96.15	Pending		1765.846	Pending
+5	ENDOSCOPY STORE	2335.912	Pending		2,335.91	Pending		2,335.91	Pending		2335.912	Pending
+6	Even Clinic Hebbal	3649.74	Pending		3,649.74	Pending		3,649.74	Pending		3649.74	Pending
+7	FINANCE STORE	-	-		336.3	Pending		336.3	Pending		336.3	Pending
+8	FIRST FLOOR NURSING STATION	3914.06	Pending		5,094.06	Pending		5,094.06	Pending			Done
+9	FRONT OFFICE	5900.178	Pending		6,186.92	Pending		6,186.92	Pending		6186.918	Pending
+10	HOUSEKEEPING STORE	28367.4	Pending		28,367.40	Pending		28,367.40	Pending		54539.8	Pending
+11	ICU STORE	1845.848	Pending		1,845.85	Pending		1,845.85	Pending		1845.848	Pending
+12	IP PHARMACY	1467.84	Pending		1,467.84	Pending		1,467.84	Pending		1467.84	Pending
+13	IT STORE	286.74	Pending		286.74	Pending		286.74	Pending		541.62	Pending
+14	LDR STORE	1749.304	Pending		1,749.30	Pending		1,749.30	Pending		1749.304	Pending
+15	MRD STORE	1478.255	Pending		1,478.26	Pending		1,478.26	Pending		1478.255	Pending
+16	NICU STORE	2584.2	Pending		2,584.20	Pending		2,584.20	Pending		2584.2	Pending
+17	OP PHARMACY	280.84	Pending		280.84	Pending		280.84	Pending		280.84	Pending
+18	OPD STORE										63.048	Pending
+19	OT COMPLEX STORE	1493.644	Pending		1,493.64	Pending		1,493.64	Pending		1493.644	Pending
+20	PHYSIOTHERAPY OPD STORE	320.98	Pending		320.98	Pending		320.98	Pending		320.98	Pending
+21	PRE AND POST NURSING STATION	1751.474	Pending		1,751.47	Pending		1,751.47	Pending		1751.474	Pending
+22	RADIOLOGY STORE	1180	Pending		1,180.00	Pending		1,180.00	Pending		1180	Pending
+23	SECOND FLOOR NURSING STATION	1283.84	Pending		1,708.64	Pending		1,708.64	Pending			Done
+24	SECURITY STORE	3770.73	Pending		3,770.73	Pending					499.14	Pending
+	Total	70682			72,909.77			69,139.04			90995.51	"
+"2026/03/23 5:36:34 pm GMT+5:30","24-03-2026","0","16","16","0","Nil","Nil","Nil","Sl no..	Store	 VALUE  	Status		 VALUE  	Status		 VALUE  	Status		 VALUE  	Status
+1	ADMIN STORE	460.2	Pending		460.2	Pending		460.2	Pending		460.2	Pending
+2	BILLING STORE	5293.48	Pending		5,293.48	Pending		5,293.48	Pending		5293.48	Pending
+3	CLINICAL LABORATORY	1171.121	Pending		1,171.12	Pending		1,171.12	Pending		1171.121	Pending
+4	CSSD STORE	96.1464	Pending		96.15	Pending		96.15	Pending		1765.846	Pending
+5	ENDOSCOPY STORE	2335.912	Pending		2,335.91	Pending		2,335.91	Pending		2335.912	Pending
+6	Even Clinic Hebbal	3649.74	Pending		3,649.74	Pending		3,649.74	Pending		3649.74	Pending
+7	FINANCE STORE	-	-		336.3	Pending		336.3	Pending		336.3	Pending
+8	FIRST FLOOR NURSING STATION	3914.06	Pending		5,094.06	Pending		5,094.06	Pending			Done
+9	FRONT OFFICE	5900.178	Pending		6,186.92	Pending		6,186.92	Pending		6186.918	Pending
+10	HOUSEKEEPING STORE	28367.4	Pending		28,367.40	Pending		28,367.40	Pending		54539.8	Pending
+11	ICU STORE	1845.848	Pending		1,845.85	Pending		1,845.85	Pending		1845.848	Pending
+12	IP PHARMACY	1467.84	Pending		1,467.84	Pending		1,467.84	Pending		1467.84	Pending
+13	IT STORE	286.74	Pending		286.74	Pending		286.74	Pending		541.62	Pending
+14	LDR STORE	1749.304	Pending		1,749.30	Pending		1,749.30	Pending		1749.304	Pending
+15	MRD STORE	1478.255	Pending		1,478.26	Pending		1,478.26	Pending		1478.255	Pending
+16	NICU STORE	2584.2	Pending		2,584.20	Pending		2,584.20	Pending		2584.2	Pending
+17	OP PHARMACY	280.84	Pending		280.84	Pending		280.84	Pending		280.84	Pending
+18	OPD STORE										63.048	Pending
+19	OT COMPLEX STORE	1493.644	Pending		1,493.64	Pending		1,493.64	Pending		1493.644	Pending
+20	PHYSIOTHERAPY OPD STORE	320.98	Pending		320.98	Pending		320.98	Pending		320.98	Pending
+21	PRE AND POST NURSING STATION	1751.474	Pending		1,751.47	Pending		1,751.47	Pending		1751.474	Pending
+22	RADIOLOGY STORE	1180	Pending		1,180.00	Pending		1,180.00	Pending		1180	Pending
+23	SECOND FLOOR NURSING STATION	1283.84	Pending		1,708.64	Pending		1,708.64	Pending			Done
+24	SECURITY STORE	3770.73	Pending		3,770.73	Pending					499.14	Pending
+	Total	70682			72,909.77			69,139.04			90995.51	"

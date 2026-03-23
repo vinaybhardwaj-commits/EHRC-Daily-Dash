@@ -1,0 +1,5 @@
+"Timestamp","Date (DD-MM-YYYY)","# of X-Ray cases (yesterday)","# of USG cases (yesterday)","# of CT cases (yesterday)","Equipment status — CT / MRI / USG uptime","# of Reports done in-house","Pending reports — critical / non-critical","Critical results escalated within TAT","Film / contrast stock status","Radiation safety log"
+"2026/03/17 8:47:36 am GMT+5:30","16.03.2026","15","09","0","CT machine no update","14","0","0","4 boxs","nil"
+"2026/03/18 8:36:31 am GMT+5:30","17.03.2026","06","01","0","CT machine under maintenance","06","nil","nil","4boxs","nil"
+"2026/03/20 8:41:40 am GMT+5:30","19.03.2026","15","03","0","CT Machine under maintenance","06","nil","nil","4boxs","nil"
+"2026/03/23 8:33:03 am GMT+5:30","23.03.2026","14","03","0","CT under maintenance","0","nil","nil","4boxs","nil"
