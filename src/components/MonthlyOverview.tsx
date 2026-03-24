@@ -282,7 +282,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
       {/* ===== SECTION 2: GLOBAL ISSUES ===== */}
       {data.globalIssues && data.globalIssues.length > 0 && (
         <div className="mb-6">
-          <GlobalIssuesPanel issues={data.globalIssues} />
+          <GlobalIssuesPanel issues={data.globalIssues} currentMonth={data.currentMonth} previousMonth={data.previousMonth} />
         </div>
       )}
 

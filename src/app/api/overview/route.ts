@@ -362,57 +362,81 @@ function extractIssueValue(issue: GlobalIssue, deptFields: Record<string, string
 }
 
 /**
- * Build global issues summary with weekly trend.
+ * Collect all occurrences of a global issue from raw data across all dates.
  */
-function buildGlobalIssues(rawData: Map<string, Map<string, Record<string, string | number>>>) {
+function collectIssueDetails(
+  issue: GlobalIssue,
+  rawData: Map<string, Map<string, Record<string, string | number>>>
+): { details: { date: string; text: string; count: number }[]; totalCount: number; activeDays: number } {
+  const details: { date: string; text: string; count: number }[] = [];
+  let totalCount = 0;
+  let activeDays = 0;
+
   const sortedDates = Array.from(rawData.keys()).sort();
+  for (const date of sortedDates) {
+    const fields = rawData.get(date)?.get(issue.deptSlug) || {};
+    const val = extractIssueValue(issue, fields);
+    totalCount += val.count;
+    if (val.active) {
+      activeDays++;
+      const rawText = findField(fields, ...issue.fieldPatterns);
+      const displayText = rawText ? String(rawText).trim() : '';
+      details.push({
+        date,
+        text: displayText.length > 100 ? displayText.substring(0, 100) + '...' : displayText,
+        count: val.count,
+      });
+    }
+  }
+  return { details: details.sort((a, b) => b.date.localeCompare(a.date)), totalCount, activeDays };
+}
+
+/**
+ * Build global issues summary with month-over-month comparison.
+ */
+function buildGlobalIssues(
+  currentRawData: Map<string, Map<string, Record<string, string | number>>>,
+  prevRawData: Map<string, Map<string, Record<string, string | number>>>
+) {
+  const sortedDates = Array.from(currentRawData.keys()).sort();
   if (sortedDates.length === 0) return [];
 
   const latestDate = sortedDates[sortedDates.length - 1];
-  // Last 7 reporting days for trend
+  // Last 7 reporting days for the "7d" column
   const recentDates = sortedDates.slice(-7);
-  const olderDates = sortedDates.slice(0, -7).slice(-7); // previous 7 for comparison
 
   return GLOBAL_ISSUES.map(issue => {
     // Today's value
-    const todayDeptFields = rawData.get(latestDate)?.get(issue.deptSlug) || {};
+    const todayDeptFields = currentRawData.get(latestDate)?.get(issue.deptSlug) || {};
     const todayVal = extractIssueValue(issue, todayDeptFields);
 
-    // Recent week totals + collect detail text for active days
-    let recentTotal = 0;
-    let recentActiveDays = 0;
-    const recentDetails: { date: string; text: string; count: number }[] = [];
+    // Recent 7-day total (for the "7d" column display)
+    let weekTotal = 0;
     for (const date of recentDates) {
-      const fields = rawData.get(date)?.get(issue.deptSlug) || {};
+      const fields = currentRawData.get(date)?.get(issue.deptSlug) || {};
       const val = extractIssueValue(issue, fields);
-      recentTotal += val.count;
-      if (val.active) {
-        recentActiveDays++;
-        // Get the raw text that triggered the issue
-        const rawText = findField(fields, ...issue.fieldPatterns);
-        const displayText = rawText ? String(rawText).trim() : '';
-        recentDetails.push({
-          date,
-          text: displayText.length > 80 ? displayText.substring(0, 80) + '...' : displayText,
-          count: val.count,
-        });
-      }
+      weekTotal += val.count;
     }
 
-    // Older week totals for comparison
-    let olderTotal = 0;
-    let olderActiveDays = 0;
-    for (const date of olderDates) {
-      const fields = rawData.get(date)?.get(issue.deptSlug) || {};
-      const val = extractIssueValue(issue, fields);
-      olderTotal += val.count;
-      if (val.active) olderActiveDays++;
-    }
+    // Full current month details
+    const current = collectIssueDetails(issue, currentRawData);
+    // Full previous month details
+    const prev = collectIssueDetails(issue, prevRawData);
 
-    // Trend: comparing recent week to older week
+    // Trend: comparing current month total to previous month total
     let trend: 'up' | 'down' | 'flat' = 'flat';
-    if (recentTotal > olderTotal) trend = 'up';
-    else if (recentTotal < olderTotal) trend = 'down';
+    if (current.totalCount > prev.totalCount) trend = 'up';
+    else if (current.totalCount < prev.totalCount) trend = 'down';
+
+    // Build change summary
+    let changeSummary = '';
+    const currentDaysReported = sortedDates.length;
+    const prevDaysReported = Array.from(prevRawData.keys()).length;
+    if (issue.type === 'count') {
+      changeSummary = `${current.totalCount} total this month (${current.activeDays} days) vs ${prev.totalCount} last month (${prev.activeDays} days)`;
+    } else {
+      changeSummary = `${current.activeDays} days flagged this month (of ${currentDaysReported}) vs ${prev.activeDays} days last month (of ${prevDaysReported})`;
+    }
 
     return {
       id: issue.id,
@@ -421,11 +445,21 @@ function buildGlobalIssues(rawData: Map<string, Map<string, Record<string, strin
       deptSlug: issue.deptSlug,
       todayCount: todayVal.count,
       todayActive: todayVal.active,
-      weekTotal: recentTotal,
-      weekActiveDays: recentActiveDays,
-      prevWeekTotal: olderTotal,
+      weekTotal,
+      weekActiveDays: current.activeDays,
+      prevWeekTotal: prev.totalCount,
       trend,
-      recentDetails: recentDetails.sort((a, b) => b.date.localeCompare(a.date)),
+      // Current month details (replaces old recentDetails)
+      recentDetails: current.details,
+      currentMonthTotal: current.totalCount,
+      currentMonthActiveDays: current.activeDays,
+      currentMonthDaysReported: currentDaysReported,
+      // Previous month details (new)
+      prevDetails: prev.details,
+      prevMonthTotal: prev.totalCount,
+      prevMonthActiveDays: prev.activeDays,
+      prevMonthDaysReported: prevDaysReported,
+      changeSummary,
     };
   });
 }
@@ -600,17 +634,18 @@ export async function GET(req: NextRequest) {
   const prevDate = new Date(year, month - 2, 1); // month-2 because month is 1-based and we want previous
   const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
 
-  const [currentData, prevData, currentRawData] = await Promise.all([
+  const [currentData, prevData, currentRawData, prevRawData] = await Promise.all([
     getMonthData(currentMonth),
     getMonthData(prevMonth),
     getRawDeptData(currentMonth),
+    getRawDeptData(prevMonth),
   ]);
 
   const current = aggregateMonth(currentData);
   const previous = aggregateMonth(prevData);
 
   // New: global issues, department KPIs, heatmap data, and per-dept alerts
-  const globalIssues = buildGlobalIssues(currentRawData);
+  const globalIssues = buildGlobalIssues(currentRawData, prevRawData);
   const departmentKPIs = buildDeptKPIs(currentRawData);
   const heatmapData = buildHeatmapData(currentRawData);
   const deptAlerts = buildDeptAlerts(currentRawData);

@@ -14,6 +14,14 @@ export interface GlobalIssueData {
   prevWeekTotal: number;
   trend: 'up' | 'down' | 'flat';
   recentDetails?: { date: string; text: string; count: number }[];
+  currentMonthTotal?: number;
+  currentMonthActiveDays?: number;
+  currentMonthDaysReported?: number;
+  prevDetails?: { date: string; text: string; count: number }[];
+  prevMonthTotal?: number;
+  prevMonthActiveDays?: number;
+  prevMonthDaysReported?: number;
+  changeSummary?: string;
 }
 
 const DEPT_NAMES: Record<string, string> = {
@@ -38,6 +46,8 @@ const DEPT_NAMES: Record<string, string> = {
 
 interface Props {
   issues: GlobalIssueData[];
+  currentMonth?: string; // e.g. '2026-03'
+  previousMonth?: string; // e.g. '2026-02'
 }
 
 function formatDate(dateStr: string): string {
@@ -45,7 +55,23 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-export default function GlobalIssuesPanel({ issues }: Props) {
+function formatMonthLabel(ym: string | undefined): string {
+  if (!ym) return 'This month';
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+function pctChange(current: number, prev: number): string {
+  if (prev === 0 && current === 0) return 'No change';
+  if (prev === 0) return `New (${current})`;
+  const pct = Math.round(((current - prev) / prev) * 100);
+  if (pct > 0) return `+${pct}% increase`;
+  if (pct < 0) return `${pct}% decrease`;
+  return 'No change';
+}
+
+export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const redFlags = issues.filter(i => i.severity === 'red');
@@ -60,16 +86,65 @@ export default function GlobalIssuesPanel({ issues }: Props) {
     return <span className="text-emerald-500 text-xs font-bold">{'\u2193'} better</span>;
   };
 
+  const DetailList = ({ details, color, emptyMsg }: {
+    details: { date: string; text: string; count: number }[];
+    color: 'red' | 'amber' | 'emerald';
+    emptyMsg: string;
+  }) => {
+    if (details.length === 0) {
+      return <div className="text-xs text-slate-400 italic py-1">{emptyMsg}</div>;
+    }
+    // Show max 5 entries, with a "and X more" note
+    const shown = details.slice(0, 5);
+    const remaining = details.length - shown.length;
+    return (
+      <div className="space-y-1">
+        {shown.map((d, idx) => (
+          <div key={idx} className="flex items-start gap-2 text-xs">
+            <span className="text-slate-500 font-medium whitespace-nowrap min-w-[80px]">
+              {formatDate(d.date)}
+            </span>
+            <span className={`font-medium ${
+              color === 'red' ? 'text-red-700' :
+              color === 'amber' ? 'text-amber-700' :
+              'text-emerald-700'
+            }`}>
+              {d.count > 0 && d.text !== String(d.count) ? (
+                <>{d.count} &mdash; {d.text}</>
+              ) : d.text ? (
+                d.text
+              ) : (
+                `Count: ${d.count}`
+              )}
+            </span>
+          </div>
+        ))}
+        {remaining > 0 && (
+          <div className="text-[10px] text-slate-400">...and {remaining} more day{remaining !== 1 ? 's' : ''}</div>
+        )}
+      </div>
+    );
+  };
+
   const IssueRow = ({ issue }: { issue: GlobalIssueData }) => {
     const isActive = issue.todayActive || issue.weekTotal > 0;
     const isRed = issue.severity === 'red';
     const isExpanded = expandedId === issue.id;
-    const hasDetails = isActive && issue.recentDetails && issue.recentDetails.length > 0;
-    const isClickable = isActive;
+
+    // ALL rows are clickable now — the comparison data is always available
+    const hasTrendData = issue.trend !== 'flat' || isActive ||
+      (issue.prevMonthTotal !== undefined && issue.prevMonthTotal > 0) ||
+      (issue.currentMonthTotal !== undefined && issue.currentMonthTotal > 0);
+    const isClickable = hasTrendData;
+
+    const currentDetails = issue.recentDetails || [];
+    const prevDetails = issue.prevDetails || [];
+    const curTotal = issue.currentMonthTotal ?? 0;
+    const prevTotal = issue.prevMonthTotal ?? 0;
 
     return (
       <div className={`rounded-lg overflow-hidden transition-all ${
-        isExpanded && hasDetails ? 'ring-1 ring-blue-200 shadow-sm' : ''
+        isExpanded ? 'ring-1 ring-blue-200 shadow-sm' : ''
       }`}>
         {/* Main row */}
         <button
@@ -82,7 +157,7 @@ export default function GlobalIssuesPanel({ issues }: Props) {
           } ${
             isActive
               ? isRed ? 'bg-red-50 hover:bg-red-100/70' : 'bg-amber-50 hover:bg-amber-100/70'
-              : 'bg-slate-50'
+              : isClickable ? 'bg-slate-50 hover:bg-slate-100' : 'bg-slate-50'
           } ${isExpanded ? 'rounded-b-none' : ''}`}
         >
           <div className="flex items-center gap-2 min-w-0">
@@ -126,7 +201,7 @@ export default function GlobalIssuesPanel({ issues }: Props) {
             <div className="min-w-[50px] text-right">
               <TrendArrow trend={issue.trend} />
             </div>
-            {/* Chevron for active rows */}
+            {/* Chevron for clickable rows */}
             {isClickable ? (
               <svg
                 className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -140,31 +215,61 @@ export default function GlobalIssuesPanel({ issues }: Props) {
           </div>
         </button>
 
-        {/* Expanded detail */}
-        {isExpanded && hasDetails && (
+        {/* Expanded comparison view */}
+        {isExpanded && isClickable && (
           <div className={`px-4 py-3 border-t ${
-            isRed ? 'bg-red-50/50 border-red-200' : 'bg-amber-50/50 border-amber-200'
+            isActive
+              ? isRed ? 'bg-red-50/50 border-red-200' : 'bg-amber-50/50 border-amber-200'
+              : 'bg-slate-50/80 border-slate-200'
           }`}>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-2">
-              Recent occurrences ({issue.recentDetails!.length} day{issue.recentDetails!.length !== 1 ? 's' : ''} in last 7)
-            </div>
-            <div className="space-y-1.5">
-              {issue.recentDetails!.map((detail, idx) => (
-                <div key={idx} className="flex items-start gap-2 text-xs">
-                  <span className="text-slate-500 font-medium whitespace-nowrap min-w-[80px]">
-                    {formatDate(detail.date)}
-                  </span>
-                  <span className={`font-medium ${isRed ? 'text-red-700' : 'text-amber-700'}`}>
-                    {detail.count > 0 && detail.text !== String(detail.count) ? (
-                      <>{detail.count} &mdash; {detail.text}</>
-                    ) : detail.text ? (
-                      detail.text
-                    ) : (
-                      `Count: ${detail.count}`
-                    )}
+            {/* Change summary bar */}
+            {issue.changeSummary && (
+              <div className={`text-xs font-semibold px-3 py-2 rounded-md mb-3 ${
+                issue.trend === 'up' ? 'bg-red-100 text-red-800' :
+                issue.trend === 'down' ? 'bg-emerald-100 text-emerald-800' :
+                'bg-slate-100 text-slate-600'
+              }`}>
+                <span className="mr-1">
+                  {issue.trend === 'up' ? '\u2191' : issue.trend === 'down' ? '\u2193' : '\u2014'}
+                </span>
+                {pctChange(curTotal, prevTotal)}
+                <span className="font-normal ml-1">&mdash; {issue.changeSummary}</span>
+              </div>
+            )}
+
+            {/* Side-by-side comparison */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Current month */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${curTotal > 0 ? (isRed ? 'bg-red-500' : 'bg-amber-500') : 'bg-emerald-500'}`} />
+                  {formatMonthLabel(currentMonth)}
+                  <span className="text-slate-400 font-normal ml-auto">
+                    {curTotal > 0 ? `${curTotal} total` : 'Clear'}
                   </span>
                 </div>
-              ))}
+                <DetailList
+                  details={currentDetails}
+                  color={curTotal > 0 ? (isRed ? 'red' : 'amber') : 'emerald'}
+                  emptyMsg="No occurrences this month"
+                />
+              </div>
+
+              {/* Previous month */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${prevTotal > 0 ? 'bg-slate-400' : 'bg-emerald-500'}`} />
+                  {formatMonthLabel(previousMonth)}
+                  <span className="text-slate-400 font-normal ml-auto">
+                    {prevTotal > 0 ? `${prevTotal} total` : 'Clear'}
+                  </span>
+                </div>
+                <DetailList
+                  details={prevDetails}
+                  color={prevTotal > 0 ? (isRed ? 'red' : 'amber') : 'emerald'}
+                  emptyMsg="No occurrences last month"
+                />
+              </div>
             </div>
           </div>
         )}
