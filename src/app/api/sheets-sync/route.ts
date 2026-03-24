@@ -1,68 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { SHEET_TAB_MAP, getSheetCsvUrl } from '@/lib/sheets-config';
 import { csvToDepartmentDataByDate } from '@/lib/parse-csv';
 import { upsertDepartmentData } from '@/lib/storage';
+import { FORM_DEFINITIONS } from '@/lib/form-definitions';
 
-// Google Sheets public CSV export URL format:
-// https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={TAB_NAME}
-// Configure these in environment variables
-
-interface SheetConfig {
-  department: string;
-  sheetId: string;
-  tabName: string;
-}
-
-function getSheetConfigs(): SheetConfig[] {
-  const configStr = process.env.GOOGLE_SHEETS_CONFIG;
-  if (!configStr) return [];
-  try {
-    return JSON.parse(configStr);
-  } catch {
-    return [];
-  }
-}
-
-export async function POST(req: NextRequest) {
-  // Webhook endpoint — can be called by Google Apps Script on form submit
-  // Or by a cron job
-  try {
-    const configs = getSheetConfigs();
-    if (configs.length === 0) {
-      return NextResponse.json({ error: 'No Google Sheets configured. Set GOOGLE_SHEETS_CONFIG env var.' }, { status: 400 });
-    }
-
-    const results = [];
-    for (const config of configs) {
-      const url = `https://docs.google.com/spreadsheets/d/${config.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(config.tabName)}`;
-      try {
-        const resp = await fetch(url);
-        if (!resp.ok) {
-          results.push({ department: config.department, error: `HTTP ${resp.status}` });
-          continue;
-        }
-        const csvText = await resp.text();
-        const { byDate } = csvToDepartmentDataByDate(csvText, `${config.department}.csv`);
-        const dates: string[] = [];
-        for (const [date, deptData] of byDate) {
-          upsertDepartmentData(date, deptData);
-          dates.push(date);
-        }
-        results.push({ department: config.department, datesUpdated: dates });
-      } catch (e: unknown) {
-        results.push({ department: config.department, error: e instanceof Error ? e.message : 'fetch failed' });
-      }
-    }
-
-    return NextResponse.json({ success: true, results });
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
-  }
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // Manual sync trigger or health check
+  return syncAllSheets();
+}
+
+export async function POST() {
+  return syncAllSheets();
+}
+
+async function syncAllSheets() {
+  const results: { department: string; status: string; datesUpdated?: string[]; error?: string }[] = [];
+
+  // Process all departments in parallel (batched to avoid rate limiting)
+  const slugs = Object.keys(SHEET_TAB_MAP);
+  const batchSize = 5;
+
+  for (let i = 0; i < slugs.length; i += batchSize) {
+    const batch = slugs.slice(i, i + batchSize);
+    const promises = batch.map(async (slug) => {
+      const tabName = SHEET_TAB_MAP[slug];
+      const formDef = FORM_DEFINITIONS.find(f => f.slug === slug);
+      const deptName = formDef?.name || tabName;
+
+      try {
+        const url = getSheetCsvUrl(tabName);
+        const resp = await fetch(url, {
+          next: { revalidate: 0 },
+          cache: 'no-store'
+        });
+
+        if (!resp.ok) {
+          return { department: deptName, status: 'error', error: `HTTP ${resp.status}` };
+        }
+
+        const csvText = await resp.text();
+        if (!csvText.trim()) {
+          return { department: deptName, status: 'empty', error: 'No data in sheet' };
+        }
+
+        // Parse CSV and group by date
+        const { byDate } = csvToDepartmentDataByDate(csvText, `${slug}.csv`);
+        const datesUpdated: string[] = [];
+
+        for (const [date, deptData] of byDate) {
+          // Fix the department name/slug/tab to match our form definitions
+          deptData.name = deptName;
+          deptData.slug = slug;
+          deptData.tab = formDef?.tab || tabName;
+
+          // Fix obvious date errors (e.g., 2036 -> 2026)
+          let fixedDate = date;
+          if (fixedDate.startsWith('2036')) fixedDate = '2026' + fixedDate.slice(4);
+
+          if (fixedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            await upsertDepartmentData(fixedDate, deptData);
+            datesUpdated.push(fixedDate);
+          }
+        }
+
+        return { department: deptName, status: 'ok', datesUpdated };
+      } catch (e: unknown) {
+        return { department: deptName, status: 'error', error: e instanceof Error ? e.message : 'fetch failed' };
+      }
+    });
+
+    const batchResults = await Promise.all(promises);
+    results.push(...batchResults);
+  }
+
+  const totalDates = new Set(results.flatMap(r => r.datesUpdated || []));
+
   return NextResponse.json({
-    message: 'POST to this endpoint to sync Google Sheets data. Configure GOOGLE_SHEETS_CONFIG env var.',
-    format: '[{"department":"Emergency","sheetId":"YOUR_SHEET_ID","tabName":"ED"}]',
+    success: true,
+    syncedAt: new Date().toISOString(),
+    departments: results.length,
+    datesUpdated: totalDates.size,
+    results,
   });
 }
