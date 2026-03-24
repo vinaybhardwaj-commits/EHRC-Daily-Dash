@@ -146,6 +146,37 @@ function ChangeBadge({ current, previous, invert = false }: {
   );
 }
 
+// ── Smooth SVG path helper (Catmull-Rom → cubic bezier) ─────────────
+
+function smoothPath(points: { x: number; y: number }[], tension = 0.3): string {
+  if (points.length < 2) return '';
+  if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    const cp1x = p1.x + (p2.x - p0.x) * tension;
+    const cp1y = p1.y + (p2.y - p0.y) * tension;
+    const cp2x = p2.x - (p3.x - p1.x) * tension;
+    const cp2y = p2.y - (p3.y - p1.y) * tension;
+
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+
+  return d;
+}
+
+function smoothAreaPath(points: { x: number; y: number }[], baseline: number, tension = 0.3): string {
+  if (points.length < 2) return '';
+  const linePath = smoothPath(points, tension);
+  return `${linePath} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z`;
+}
+
 // ── Multi-Series Area Chart (Last 30 Days) ─────────────────────────
 
 function DailyActivityChart({ allDays }: { allDays: BillingDayData[] }) {
@@ -154,125 +185,131 @@ function DailyActivityChart({ allDays }: { allDays: BillingDayData[] }) {
   // Get last 30 days
   const last30 = allDays.slice(Math.max(0, allDays.length - 30));
 
-  // Normalize each series independently
+  // Build per-series data (only dates where the metric has a value)
   const counselling = last30.filter(d => d.financialCounselling !== null).map(d => ({ date: d.date, value: d.financialCounselling! }));
   const pipeline = last30.filter(d => d.pipelineCases !== null).map(d => ({ date: d.date, value: d.pipelineCases! }));
   const otClearance = last30.filter(d => d.otClearancePending !== null).map(d => ({ date: d.date, value: d.otClearancePending! }));
   const damaLama = last30.filter(d => d.damaLama !== null).map(d => ({ date: d.date, value: d.damaLama! }));
 
+  // Collect ALL unique dates
   const allDates = new Set<string>();
   counselling.forEach(d => allDates.add(d.date));
   pipeline.forEach(d => allDates.add(d.date));
   otClearance.forEach(d => allDates.add(d.date));
   damaLama.forEach(d => allDates.add(d.date));
-
   const sortedDates = [...allDates].sort();
-  const counsellingMap = new Map(counselling.map(d => [d.date, d.value]));
-  const pipelineMap = new Map(pipeline.map(d => [d.date, d.value]));
-  const otClearanceMap = new Map(otClearance.map(d => [d.date, d.value]));
-  const damaLamaMap = new Map(damaLama.map(d => [d.date, d.value]));
 
-  const counsellingValues = [...counsellingMap.values()];
-  const pipelineValues = [...pipelineMap.values()];
-  const otClearanceValues = [...otClearanceMap.values()];
-  const damaLamaValues = [...damaLamaMap.values()];
+  // Use a SHARED Y-axis max so the lines are on the same scale
+  const allValues = [
+    ...counselling.map(d => d.value),
+    ...pipeline.map(d => d.value),
+    ...otClearance.map(d => d.value),
+    ...damaLama.map(d => d.value),
+  ];
+  const globalMax = allValues.length > 0 ? Math.max(...allValues, 1) : 1;
 
-  const cMax = counsellingValues.length > 0 ? Math.max(...counsellingValues) : 1;
-  const pMax = pipelineValues.length > 0 ? Math.max(...pipelineValues) : 1;
-  const otMax = otClearanceValues.length > 0 ? Math.max(...otClearanceValues) : 1;
-  const dMax = damaLamaValues.length > 0 ? Math.max(...damaLamaValues) : 1;
+  // Chart dimensions with margins for labels
+  const marginLeft = 28;
+  const marginBottom = 24;
+  const marginTop = 8;
+  const marginRight = 8;
+  const chartWidth = 540;
+  const chartHeight = 180;
+  const plotW = chartWidth - marginLeft - marginRight;
+  const plotH = chartHeight - marginTop - marginBottom;
 
-  const height = 160;
-  const width = Math.max(400, sortedDates.length * 8);
+  // Map dates → x position
+  const dateToX = (date: string) => {
+    const idx = sortedDates.indexOf(date);
+    return marginLeft + (idx / Math.max(sortedDates.length - 1, 1)) * plotW;
+  };
+  const valToY = (val: number) => marginTop + plotH - (val / globalMax) * plotH;
+
+  // Build point arrays for each series
+  const toPoints = (data: { date: string; value: number }[]) =>
+    data.map(d => ({ x: dateToX(d.date), y: valToY(d.value) }));
+
+  const cPoints = toPoints(counselling);
+  const pPoints = toPoints(pipeline);
+  const otPoints = toPoints(otClearance);
+  const dPoints = toPoints(damaLama);
+
+  const baseline = marginTop + plotH;
+
+  // Y-axis tick values (nice round numbers)
+  const yTicks: number[] = [];
+  const step = globalMax <= 5 ? 1 : globalMax <= 12 ? 2 : globalMax <= 25 ? 5 : 10;
+  for (let v = 0; v <= globalMax; v += step) yTicks.push(v);
+  if (yTicks[yTicks.length - 1] < globalMax) yTicks.push(Math.ceil(globalMax));
+
+  // X-axis: show every 5th date label
+  const xLabels = sortedDates.filter((_, i) => i % 5 === 0 || i === sortedDates.length - 1);
+
+  const series: { points: { x: number; y: number }[]; color: string; label: string; id: string }[] = [
+    { points: cPoints, color: '#3b82f6', label: 'Counselling', id: 'counsel' },
+    { points: pPoints, color: '#f59e0b', label: 'Pipeline Cases', id: 'pipeline' },
+    { points: otPoints, color: '#a855f7', label: 'OT Clearance', id: 'ot' },
+    { points: dPoints, color: '#ef4444', label: 'DAMA/LAMA', id: 'dama' },
+  ];
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <h3 className="text-sm font-bold text-slate-800 mb-4">Daily Activity — Last 30 Days</h3>
       <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ minHeight: '180px' }}>
-          {/* Grid lines */}
-          {[0.25, 0.5, 0.75].map(pct => (
-            <line key={`grid-${pct}`} x1="0" y1={height * (1 - pct)} x2={width} y2={height * (1 - pct)} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="2,2" />
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full" style={{ minHeight: '220px' }} preserveAspectRatio="xMidYMid meet">
+          <defs>
+            {series.map(s => (
+              <linearGradient key={`grad-${s.id}`} id={`grad-${s.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={s.color} stopOpacity="0.15" />
+                <stop offset="100%" stopColor={s.color} stopOpacity="0.01" />
+              </linearGradient>
+            ))}
+          </defs>
+
+          {/* Horizontal grid lines + Y labels */}
+          {yTicks.map(v => {
+            const y = valToY(v);
+            return (
+              <g key={`ytick-${v}`}>
+                <line x1={marginLeft} y1={y} x2={chartWidth - marginRight} y2={y} stroke="#e2e8f0" strokeWidth="0.7" />
+                <text x={marginLeft - 5} y={y + 3} textAnchor="end" className="fill-slate-400" style={{ fontSize: '9px' }}>{v}</text>
+              </g>
+            );
+          })}
+
+          {/* Area fills (smooth) */}
+          {series.map(s => s.points.length >= 2 && (
+            <path key={`area-${s.id}`} d={smoothAreaPath(s.points, baseline)} fill={`url(#grad-${s.id})`} />
           ))}
 
-          {/* Counselling area */}
-          {counsellingValues.length > 0 && (
-            <path
-              d={sortedDates.map((date, i) => {
-                const val = counsellingMap.get(date) ?? 0;
-                const x = (i / (sortedDates.length - 1 || 1)) * width;
-                const y = height - ((val / cMax) * (height - 20)) - 10;
-                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-              }).join(' ')}
-              stroke="#3b82f6"
-              strokeWidth="2"
-              fill="none"
-            />
-          )}
+          {/* Smooth lines */}
+          {series.map(s => s.points.length >= 2 && (
+            <path key={`line-${s.id}`} d={smoothPath(s.points)} stroke={s.color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          ))}
 
-          {/* Pipeline area */}
-          {pipelineValues.length > 0 && (
-            <path
-              d={sortedDates.map((date, i) => {
-                const val = pipelineMap.get(date) ?? 0;
-                const x = (i / (sortedDates.length - 1 || 1)) * width;
-                const y = height - ((val / pMax) * (height - 20)) - 10;
-                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-              }).join(' ')}
-              stroke="#f59e0b"
-              strokeWidth="2"
-              fill="none"
-            />
-          )}
+          {/* Data dots */}
+          {series.map(s => s.points.map((p, i) => (
+            <circle key={`dot-${s.id}-${i}`} cx={p.x} cy={p.y} r="2.5" fill="white" stroke={s.color} strokeWidth="1.5" />
+          )))}
 
-          {/* OT Clearance area */}
-          {otClearanceValues.length > 0 && (
-            <path
-              d={sortedDates.map((date, i) => {
-                const val = otClearanceMap.get(date) ?? 0;
-                const x = (i / (sortedDates.length - 1 || 1)) * width;
-                const y = height - ((val / otMax) * (height - 20)) - 10;
-                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-              }).join(' ')}
-              stroke="#a855f7"
-              strokeWidth="2"
-              fill="none"
-            />
-          )}
-
-          {/* DAMA/LAMA area */}
-          {damaLamaValues.length > 0 && (
-            <path
-              d={sortedDates.map((date, i) => {
-                const val = damaLamaMap.get(date) ?? 0;
-                const x = (i / (sortedDates.length - 1 || 1)) * width;
-                const y = height - ((val / dMax) * (height - 20)) - 10;
-                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-              }).join(' ')}
-              stroke="#ef4444"
-              strokeWidth="2"
-              fill="none"
-            />
-          )}
+          {/* X-axis date labels */}
+          {xLabels.map(date => {
+            const x = dateToX(date);
+            const d = new Date(date + 'T00:00:00');
+            const label = `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`;
+            return (
+              <text key={`xlabel-${date}`} x={x} y={chartHeight - 4} textAnchor="middle" className="fill-slate-400" style={{ fontSize: '8px' }}>{label}</text>
+            );
+          })}
         </svg>
       </div>
       <div className="flex flex-wrap gap-4 mt-4 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#3b82f6' }} />
-          <span className="text-slate-600">Counselling</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
-          <span className="text-slate-600">Pipeline Cases</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#a855f7' }} />
-          <span className="text-slate-600">OT Clearance</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#ef4444' }} />
-          <span className="text-slate-600">DAMA/LAMA</span>
-        </div>
+        {series.map(s => (
+          <div key={s.id} className="flex items-center gap-1.5">
+            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: s.color }} />
+            <span className="text-slate-600">{s.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
