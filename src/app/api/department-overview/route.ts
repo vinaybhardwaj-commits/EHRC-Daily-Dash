@@ -24,17 +24,52 @@ function extractNumber(value: string | number | undefined | null): number | null
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'number') return raw;
   const s = String(raw).trim();
-  if (!s || s.toLowerCase() === 'nil' || s.toLowerCase() === 'none' || s.toLowerCase() === 'na' || s.toLowerCase() === 'nill') return null;
+  if (!s || /^(nil|none|na|nill|no|0)$/i.test(s)) return null;
+
+  // Handle "X Lakhs" / "X Lakh" / "X L" patterns (multiply by 100,000)
+  const lakhMatch = s.match(/([\d,]+\.?\d*)\s*(?:lakhs?|lacs?)\b/i);
+  if (lakhMatch) {
+    const num = parseFloat(lakhMatch[1].replace(/,/g, ''));
+    if (!isNaN(num)) return num * 100000;
+  }
+
+  // Handle "X Cr" / "X Crore" patterns (multiply by 10,000,000)
+  const crMatch = s.match(/([\d,]+\.?\d*)\s*(?:cr(?:ore)?s?)\b/i);
+  if (crMatch) {
+    const num = parseFloat(crMatch[1].replace(/,/g, ''));
+    if (!isNaN(num)) return num * 10000000;
+  }
+
+  // Handle "X K" patterns (multiply by 1,000)
+  const kMatch = s.match(/([\d,]+\.?\d*)\s*K\b/i);
+  if (kMatch) {
+    const num = parseFloat(kMatch[1].replace(/,/g, ''));
+    if (!isNaN(num)) return num * 1000;
+  }
+
+  // Standard number extraction (handles Indian comma formatting)
+  // Find ALL number-like tokens, then pick the best one (largest formatted number)
   const matches = s.match(/[\d,]+\.?\d*/g);
   if (!matches) return null;
   let bestFormatted: number | null = null;
+  let bestFormattedVal = 0;
   let firstPlain: number | null = null;
   for (const m of matches) {
     const cleaned = m.replace(/,/g, '');
     const num = parseFloat(cleaned);
     if (isNaN(num)) continue;
-    if (m.includes(',') || (m.includes('.') && cleaned.length > 3)) {
-      if (bestFormatted === null) bestFormatted = num;
+    if (m.includes(',')) {
+      // For Indian formatting, pick the LARGEST comma-formatted number
+      if (bestFormatted === null || num > bestFormattedVal) {
+        bestFormatted = num;
+        bestFormattedVal = num;
+      }
+    } else if (m.includes('.') && cleaned.length > 5) {
+      // Long decimal numbers like 751294.22
+      if (bestFormatted === null || num > bestFormattedVal) {
+        bestFormatted = num;
+        bestFormattedVal = num;
+      }
     } else {
       if (firstPlain === null) firstPlain = num;
     }
@@ -73,13 +108,22 @@ interface FinanceDayData {
 }
 
 function extractFinanceDay(date: string, fields: Record<string, string | number>): FinanceDayData {
-  const revenueRaw = findField(fields, 'revenue for the day', 'revnue for the day', 'Revenue for the day');
-  const revenueMTDRaw = findField(fields, 'total revenue', 'Total revenue MTD');
-  const arpobRaw = findField(fields, 'arpob', 'ARPOB');
-  const censusRaw = findField(fields, 'midnight census', 'mid night census', 'census — total IP');
-  const surgeriesRaw = findField(fields, 'surgeries', 'Surgeries MTD');
-  const opdRaw = findField(fields, 'opd revenue', 'OPD revenue');
+  // All 3 eras of field names:
+  // Era 1 (Sep-Oct 2025): Daily revenue, Total Revenue till date, ARPOB, Surgeries done MTD, OPD Revenue
+  // Era 2 (Nov 2025-Feb 2026): Revnue For The Day, Total Revenue till date, ARPOB, Mid Night Census, Surgeries done MTD
+  // Era 3 (Mar 2026+): Revenue for the day (Rs.), Total revenue MTD (Rs.), ARPOB — Avg Revenue..., Midnight census..., Surgeries MTD
+  const revenueRaw = findField(fields, 'revenue for the day', 'revnue for the day', 'daily revenue');
+  const revenueMTDRaw = findField(fields, 'total revenue', 'revenue till date');
+  const arpobRaw = findField(fields, 'arpob');
+  const censusRaw = findField(fields, 'midnight census', 'mid night census', 'census');
+  const surgeriesRaw = findField(fields, 'surgeries');
+  const opdRaw = findField(fields, 'opd revenue');
   const leakageRaw = findField(fields, 'revenue leakage', 'leakage alert');
+
+  // For surgeries, extract count from text like "24 Sugeries Has Been Completed" or "87 Surgeries In November"
+  let surgeriesMTD = extractNumber(surgeriesRaw);
+  // Validate surgeries range
+  if (surgeriesMTD !== null && (surgeriesMTD < 0 || surgeriesMTD > 500)) surgeriesMTD = null;
 
   return {
     date,
@@ -87,7 +131,7 @@ function extractFinanceDay(date: string, fields: Record<string, string | number>
     revenueMTD: extractNumber(revenueMTDRaw),
     arpob: extractNumberInRange(arpobRaw, 10000, 1000000),
     ipCensus: extractNumberInRange(censusRaw, 0, 200),
-    surgeriesMTD: extractNumberInRange(surgeriesRaw, 0, 500),
+    surgeriesMTD,
     opdRevenueMTD: extractNumber(opdRaw),
     revenueLeakage: leakageRaw ? String(leakageRaw).trim() : null,
   };
