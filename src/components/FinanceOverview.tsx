@@ -147,9 +147,10 @@ function formatFullMonth(ym: string): string {
   return `${names[parseInt(m) - 1]} ${y}`;
 }
 
-function pctChange(current: number | null, previous: number | null): { value: number; label: string; positive: boolean } | null {
-  if (current === null || previous === null || previous === 0) return null;
+function pctChange(current: number | null | undefined, previous: number | null | undefined): { value: number; label: string; positive: boolean } | null {
+  if (current == null || previous == null || previous === 0) return null;
   const pct = ((current - previous) / Math.abs(previous)) * 100;
+  if (!isFinite(pct)) return null;
   return {
     value: Math.abs(pct),
     label: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,
