@@ -11,6 +11,7 @@ interface DailyMetric {
   revenueMTD?: number;
   arpob?: number;
   ipCensus?: number;
+  admissions?: number;
   surgeriesMTD?: number;
   erCases?: number;
   deaths?: number;
@@ -34,6 +35,8 @@ interface MonthlyData {
   avgCensus: number | null;
   dailyRevenues: { date: string; value: number }[];
   dailyCensus: { date: string; value: number }[];
+  dailyAdmissions?: { date: string; value: number }[];
+  totalAdmissions?: number;
   totalErCases: number;
   totalDeaths: number;
   totalLama: number;
@@ -79,11 +82,13 @@ interface ApiResponse {
   weekStartDate: string;
   weekDays: WeekDay[];
   allDepartments: DeptInfo[];
-  // New fields
   globalIssues?: GlobalIssueData[];
   departmentKPIs?: DeptKPIData[];
   heatmapData?: HeatmapDay[];
   deptAlerts?: DeptAlertData[];
+  historicalAvgRevenues?: { day: number; value: number }[];
+  historicalAvgCensus?: { day: number; value: number }[];
+  historicalMonthCount?: number;
 }
 
 interface Props {
@@ -96,6 +101,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedPulse, setExpandedPulse] = useState<string | null>(null);
+  const [expandedSparkline, setExpandedSparkline] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -133,6 +139,12 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
     return `${monthNames[parseInt(month) - 1]} ${year}`;
   };
 
+  const formatShortMonth = (yearMonth: string): string => {
+    const [, month] = yearMonth.split('-');
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return names[parseInt(month) - 1];
+  };
+
   const pctChange = (current: number | null, previous: number | null): number | null => {
     if (current === null || previous === null || previous === 0) return null;
     return ((current - previous) / Math.abs(previous)) * 100;
@@ -163,36 +175,175 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
   const current = data.current;
   const previous = data.previous;
 
-  // ---- Sparkline components ----
-  const Sparkline = ({ dataPoints, color, gradientId }: { dataPoints: { date: string; value: number }[]; color: string; gradientId: string }) => {
-    if (!dataPoints || dataPoints.length === 0) return <div className="h-12 bg-gray-50 rounded" />;
-    const values = dataPoints.map(d => d.value);
-    const max = Math.max(...values);
-    const min = Math.min(...values);
+  // ---- Dual Sparkline: current month (bold) + comparison (faded) ----
+  const DualSparkline = ({
+    currentData,
+    comparisonData,
+    color,
+    fadedColor,
+    gradientId,
+    height = 72,
+  }: {
+    currentData: { date: string; value: number }[];
+    comparisonData: { value: number }[];
+    color: string;
+    fadedColor: string;
+    gradientId: string;
+    height?: number;
+  }) => {
+    if (!currentData || currentData.length === 0) return <div className="h-16 bg-gray-50 rounded" />;
+
+    // Combine both datasets to find global min/max
+    const currentValues = currentData.map(d => d.value);
+    const compValues = comparisonData.map(d => d.value);
+    const allValues = [...currentValues, ...compValues].filter(v => v !== undefined);
+    const max = Math.max(...allValues);
+    const min = Math.min(...allValues);
     const range = max - min || 1;
-    const width = 300;
-    const height = 56;
+    const width = 400;
     const padding = 4;
-    const pointSpacing = (width - padding * 2) / (values.length - 1 || 1);
-    const points = values.map((v, i) => ({
-      x: padding + i * pointSpacing,
-      y: height - padding - ((v - min) / range) * (height - padding * 2),
-    }));
-    const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-    const areaPath = `${pathD} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
+
+    const toPoints = (values: number[]) => {
+      const spacing = (width - padding * 2) / (values.length - 1 || 1);
+      return values.map((v, i) => ({
+        x: padding + i * spacing,
+        y: height - padding - ((v - min) / range) * (height - padding * 2),
+      }));
+    };
+
+    const toPath = (points: { x: number; y: number }[]) =>
+      points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+    const currentPoints = toPoints(currentValues);
+    const currentPathD = toPath(currentPoints);
+    const currentAreaPath = `${currentPathD} L ${currentPoints[currentPoints.length - 1].x} ${height} L ${currentPoints[0].x} ${height} Z`;
+
+    // Comparison line (previous month, same x-spacing as current)
+    let compPathD = '';
+    if (compValues.length > 0) {
+      const compPoints = toPoints(compValues);
+      compPathD = toPath(compPoints);
+    }
+
     return (
-      <svg width={width} height={height} className="w-full">
+      <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        <path d={areaPath} fill={`url(#${gradientId})`} />
-        <path d={pathD} stroke={color} strokeWidth="2" fill="none" />
+        {/* Comparison line (faded, behind) */}
+        {compPathD && (
+          <path d={compPathD} stroke={fadedColor} strokeWidth="1.5" fill="none" strokeDasharray="4,3" opacity="0.5" />
+        )}
+        {/* Current month area + line */}
+        <path d={currentAreaPath} fill={`url(#${gradientId})`} />
+        <path d={currentPathD} stroke={color} strokeWidth="2.5" fill="none" />
+        {/* Labels */}
         <text x={5} y={13} fontSize="9" fill="#9ca3af">{formatIndian(max)}</text>
         <text x={5} y={height - 2} fontSize="9" fill="#9ca3af">{formatIndian(min)}</text>
       </svg>
+    );
+  };
+
+  // ---- Full expanded sparkline with historical average ----
+  const ExpandedSparkline = ({
+    currentData,
+    histAvgData,
+    color,
+    label,
+    currentMonthLabel,
+    histMonthCount,
+  }: {
+    currentData: { date: string; value: number }[];
+    histAvgData: { day: number; value: number }[];
+    color: string;
+    label: string;
+    currentMonthLabel: string;
+    histMonthCount: number;
+  }) => {
+    if (!currentData || currentData.length === 0) return null;
+
+    const currentValues = currentData.map(d => d.value);
+    const histValues = histAvgData.map(d => d.value);
+    const allValues = [...currentValues, ...histValues];
+    const max = Math.max(...allValues);
+    const min = Math.min(...allValues);
+    const range = max - min || 1;
+    const width = 600;
+    const height = 160;
+    const padding = 8;
+    const leftPad = 50;
+
+    const toPoints = (values: number[], count?: number) => {
+      const n = count || values.length;
+      const spacing = (width - leftPad - padding) / (n - 1 || 1);
+      return values.map((v, i) => ({
+        x: leftPad + i * spacing,
+        y: height - padding - 20 - ((v - min) / range) * (height - padding * 2 - 20),
+      }));
+    };
+
+    const toPath = (points: { x: number; y: number }[]) =>
+      points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+    const maxDays = Math.max(currentValues.length, histValues.length);
+    const curPoints = toPoints(currentValues, maxDays);
+    const histPoints = toPoints(histValues, maxDays);
+
+    const curAvg = currentValues.reduce((s, v) => s + v, 0) / currentValues.length;
+    const histAvg = histValues.length > 0 ? histValues.reduce((s, v) => s + v, 0) / histValues.length : 0;
+
+    return (
+      <div className="mt-3 p-3 bg-white rounded-lg border border-slate-200">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-slate-700">{label}: Current vs Historical Average</div>
+          <div className="flex items-center gap-3 text-[10px]">
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ backgroundColor: color }} /> {currentMonthLabel}</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded bg-slate-300" style={{ borderTop: '1px dashed #94a3b8' }} /> Avg of {histMonthCount} months</span>
+          </div>
+        </div>
+        <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((frac, i) => {
+            const y = height - padding - 20 - frac * (height - padding * 2 - 20);
+            const val = min + frac * range;
+            return (
+              <g key={i}>
+                <line x1={leftPad} x2={width - padding} y1={y} y2={y} stroke="#e2e8f0" strokeWidth="0.5" />
+                <text x={leftPad - 4} y={y + 3} fontSize="8" fill="#94a3b8" textAnchor="end">{formatIndian(val)}</text>
+              </g>
+            );
+          })}
+          {/* Historical avg line */}
+          {histPoints.length > 0 && (
+            <path d={toPath(histPoints)} stroke="#94a3b8" strokeWidth="1.5" fill="none" strokeDasharray="5,4" />
+          )}
+          {/* Current month line */}
+          <path d={toPath(curPoints)} stroke={color} strokeWidth="2.5" fill="none" />
+          {/* Day numbers at bottom */}
+          {curPoints.filter((_, i) => i % 5 === 0 || i === curPoints.length - 1).map((p, i, arr) => {
+            const dayIdx = currentValues.length > 1 ? Math.round((p.x - leftPad) / ((width - leftPad - padding) / (maxDays - 1))) : 0;
+            return (
+              <text key={i} x={p.x} y={height - 4} fontSize="8" fill="#94a3b8" textAnchor="middle">
+                {dayIdx + 1}
+              </text>
+            );
+          })}
+        </svg>
+        <div className="flex items-center gap-4 mt-1 text-xs">
+          <span className="font-medium" style={{ color }}>This month avg: {formatIndian(curAvg)}</span>
+          <span className="text-slate-400">Historical avg: {formatIndian(histAvg)}</span>
+          {histAvg > 0 && (
+            <span className={`font-semibold px-1.5 py-0.5 rounded ${
+              curAvg > histAvg ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {curAvg > histAvg ? '\u2191' : '\u2193'} {Math.abs(((curAvg - histAvg) / histAvg) * 100).toFixed(1)}%
+            </span>
+          )}
+        </div>
+      </div>
     );
   };
 
@@ -215,20 +366,16 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
       id: 'revenue', label: 'Revenue MTD', value: formatIndian(current.revenueMTD),
       comparison: renderTrendBadge(current.revenueMTD, previous?.revenueMTD || null), color: 'emerald',
       currentVal: current.revenueMTD, prevVal: previous?.revenueMTD ?? null,
-      currentAvg: current.avgDailyRevenue, prevAvg: previous?.avgDailyRevenue ?? null,
       detail: `Daily avg: ${formatIndian(current.avgDailyRevenue)}`,
       prevDetail: previous ? `Last month: ${formatIndian(previous.revenueMTD)}` : null,
       prevAvgDetail: previous?.avgDailyRevenue ? `Daily avg last month: ${formatIndian(previous.avgDailyRevenue)}` : null,
     },
     {
-      id: 'census', label: 'IP Census', value: current.latestCensus ? Math.round(current.latestCensus) : '\u2014',
-      subtitle: `Avg: ${current.avgCensus ? Math.round(current.avgCensus) : '\u2014'}`,
-      comparison: renderTrendBadge(current.latestCensus, previous?.latestCensus || null), color: 'blue',
-      currentVal: current.latestCensus, prevVal: previous?.latestCensus ?? null,
-      currentAvg: current.avgCensus, prevAvg: previous?.avgCensus ?? null,
-      detail: `Avg this month: ${current.avgCensus ? Math.round(current.avgCensus) : '\u2014'}`,
-      prevDetail: previous?.latestCensus ? `Last month latest: ${Math.round(previous.latestCensus)}` : null,
-      prevAvgDetail: previous?.avgCensus ? `Avg last month: ${Math.round(previous.avgCensus)}` : null,
+      id: 'admissions', label: 'Admissions MTD', value: current.totalAdmissions ?? '\u2014',
+      comparison: renderTrendBadge(current.totalAdmissions ?? null, previous?.totalAdmissions ?? null), color: 'blue',
+      currentVal: current.totalAdmissions ?? null, prevVal: previous?.totalAdmissions ?? null,
+      detail: `Over ${current.daysReported} days of data`,
+      prevDetail: previous?.totalAdmissions !== undefined ? `Last month: ${previous.totalAdmissions} over ${previous.daysReported} days` : null,
     },
     {
       id: 'surgeries', label: 'Surgeries MTD', value: current.surgeriesMTD || '\u2014',
@@ -261,6 +408,10 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
     amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900', expandBg: 'bg-amber-50/60' },
     red: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', expandBg: 'bg-red-50/60' },
   };
+
+  // Previous month daily data for sparkline overlay
+  const prevDailyRevenues = previous?.dailyRevenues?.map(d => ({ value: d.value })) || [];
+  const prevDailyCensus = previous?.dailyCensus?.map(d => ({ value: d.value })) || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6 lg:p-8">
@@ -313,7 +464,6 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
                   </svg>
                 </div>
                 <div className={`text-xl md:text-2xl font-bold ${c.text} leading-tight`}>{card.value}</div>
-                {'subtitle' in card && card.subtitle && <div className="text-[10px] text-slate-500 mt-0.5">{card.subtitle}</div>}
                 <div className="mt-1">{card.comparison}</div>
               </button>
               {isExpanded && (
@@ -343,15 +493,98 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
         })}
       </div>
 
-      {/* Trend sparklines */}
+      {/* ===== TREND SPARKLINES (clickable, with previous month overlay) ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <div className="text-sm font-semibold text-slate-700 mb-2">Daily Revenue Trend</div>
-          <Sparkline dataPoints={current.dailyRevenues} color="#059669" gradientId="revGrad" />
+        {/* Revenue Sparkline */}
+        <div
+          className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all cursor-pointer ${
+            expandedSparkline === 'revenue' ? 'border-emerald-300 ring-1 ring-emerald-200' : 'border-slate-200 hover:border-slate-300'
+          }`}
+          onClick={() => setExpandedSparkline(expandedSparkline === 'revenue' ? null : 'revenue')}
+        >
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-slate-700">Daily Revenue Trend</div>
+              <div className="flex items-center gap-2">
+                {previous && (
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <span className="w-3 border-t border-dashed border-slate-400" /> {formatShortMonth(data.previousMonth)}
+                  </span>
+                )}
+                <svg
+                  className={`w-4 h-4 text-slate-400 transition-transform ${expandedSparkline === 'revenue' ? 'rotate-180' : ''}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            <DualSparkline
+              currentData={current.dailyRevenues}
+              comparisonData={prevDailyRevenues}
+              color="#059669"
+              fadedColor="#94a3b8"
+              gradientId="revGrad"
+            />
+          </div>
+          {expandedSparkline === 'revenue' && data.historicalAvgRevenues && (
+            <div className="px-4 pb-4 border-t border-slate-100">
+              <ExpandedSparkline
+                currentData={current.dailyRevenues}
+                histAvgData={data.historicalAvgRevenues}
+                color="#059669"
+                label="Daily Revenue"
+                currentMonthLabel={formatShortMonth(data.currentMonth)}
+                histMonthCount={data.historicalMonthCount || 0}
+              />
+            </div>
+          )}
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <div className="text-sm font-semibold text-slate-700 mb-2">IP Census Trend</div>
-          <Sparkline dataPoints={current.dailyCensus} color="#1d4ed8" gradientId="censusGrad" />
+
+        {/* IP Census Sparkline */}
+        <div
+          className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all cursor-pointer ${
+            expandedSparkline === 'census' ? 'border-blue-300 ring-1 ring-blue-200' : 'border-slate-200 hover:border-slate-300'
+          }`}
+          onClick={() => setExpandedSparkline(expandedSparkline === 'census' ? null : 'census')}
+        >
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-slate-700">IP Census Trend</div>
+              <div className="flex items-center gap-2">
+                {previous && (
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <span className="w-3 border-t border-dashed border-slate-400" /> {formatShortMonth(data.previousMonth)}
+                  </span>
+                )}
+                <svg
+                  className={`w-4 h-4 text-slate-400 transition-transform ${expandedSparkline === 'census' ? 'rotate-180' : ''}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            <DualSparkline
+              currentData={current.dailyCensus}
+              comparisonData={prevDailyCensus}
+              color="#1d4ed8"
+              fadedColor="#94a3b8"
+              gradientId="censusGrad"
+            />
+          </div>
+          {expandedSparkline === 'census' && data.historicalAvgCensus && (
+            <div className="px-4 pb-4 border-t border-slate-100">
+              <ExpandedSparkline
+                currentData={current.dailyCensus}
+                histAvgData={data.historicalAvgCensus}
+                color="#1d4ed8"
+                label="IP Census"
+                currentMonthLabel={formatShortMonth(data.currentMonth)}
+                histMonthCount={data.historicalMonthCount || 0}
+              />
+            </div>
+          )}
         </div>
       </div>
 

@@ -109,12 +109,40 @@ function formatNumberShort(num: number | null): string {
   return num.toFixed(0);
 }
 
+/**
+ * Extract admission count from the messy "# of Admissions/Transfers" field.
+ * Examples: "2 admissions", "1 icu admission, 1 ward admission, 5 discharges",
+ *           "1 admission, 2 discharges, 1 LAMA", "Nil", "0"
+ * We count ONLY admissions (icu/ward/generic), ignoring discharges/LAMA/transfers.
+ */
+function extractAdmissions(value: string | number | undefined | null): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return value;
+  const s = String(value).trim().toLowerCase();
+  if (!s || s === 'nil' || s === 'none' || s === 'na' || s === 'nill' || s === '0') return 0;
+
+  // Split by commas to handle each segment separately
+  const segments = s.split(',').map(seg => seg.trim());
+  let total = 0;
+  for (const seg of segments) {
+    // Skip segments about discharges, LAMA, DAMA, transfers (not admissions)
+    if (/discharge|lama|dama|transfer out/i.test(seg) && !/admission/i.test(seg)) continue;
+    // Match patterns like "2 admissions", "1 icu admission", "1 ward admission", "1admission"
+    const match = seg.match(/(\d+)\s*(?:icu\s*|ward\s*|icu\/ward\s*)?admission/i);
+    if (match) {
+      total += parseInt(match[1], 10);
+    }
+  }
+  return total;
+}
+
 interface DayMetrics {
   date: string;
   revenue: number | null;
   revenueMTD: number | null;
   arpob: number | null;
   ipCensus: number | null;
+  admissions: number;
   surgeriesMTD: number | null;
   erCases: number;
   deaths: number;
@@ -171,6 +199,7 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
     const lamaRaw = findField(emergency, 'lama', '# of LAMA', 'DAMA');
     const alertsRaw = findField(emergency, 'critical alert', 'Code Blue');
     const mlcRaw = findField(emergency, 'mlc', 'MLC cases');
+    const admissionsRaw = findField(emergency, 'admission', '# of Admissions');
 
     // Patient Safety
     const incidentRaw = findField(patientSafety, 'incident', '# of Incident');
@@ -198,6 +227,7 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
       arpob: arpobVal,
       ipCensus: censusVal,
       surgeriesMTD: extractNumberInRange(surgeriesRaw, 0, 500),
+      admissions: extractAdmissions(admissionsRaw),
       erCases: extractCount(erCasesRaw),
       deaths: extractCount(deathsRaw),
       lama: extractCount(lamaRaw),
@@ -225,9 +255,11 @@ function aggregateMonth(metrics: DayMetrics[]) {
 
   const dailyRevenues = metrics.filter(m => m.revenue !== null).map(m => ({ date: m.date, value: m.revenue! }));
   const dailyCensus = metrics.filter(m => m.ipCensus !== null).map(m => ({ date: m.date, value: m.ipCensus! }));
+  const dailyAdmissions = metrics.map(m => ({ date: m.date, value: m.admissions }));
   const dailyErCases = metrics.map(m => ({ date: m.date, value: m.erCases }));
   const dailySubmissions = metrics.map(m => ({ date: m.date, submitted: m.submittedDepts, total: m.totalDepts }));
 
+  const totalAdmissions = metrics.reduce((s, m) => s + m.admissions, 0);
   const totalErCases = metrics.reduce((s, m) => s + m.erCases, 0);
   const totalDeaths = metrics.reduce((s, m) => s + m.deaths, 0);
   const totalLama = metrics.reduce((s, m) => s + m.lama, 0);
@@ -256,6 +288,8 @@ function aggregateMonth(metrics: DayMetrics[]) {
     avgCensus,
     dailyRevenues,
     dailyCensus,
+    dailyAdmissions,
+    totalAdmissions,
     // Clinical
     totalErCases,
     totalDeaths,
@@ -692,6 +726,16 @@ export async function GET(req: NextRequest) {
   const prevDate = new Date(year, month - 2, 1); // month-2 because month is 1-based and we want previous
   const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
 
+  // Fetch all historical months for average curves
+  const allMonthsResult = await sql`
+    SELECT DISTINCT LEFT(date, 7) as month FROM department_data ORDER BY month;
+  `;
+  const allMonthKeys = allMonthsResult.rows.map(r => r.month).filter((m: string) => m !== currentMonth);
+  // Fetch historical months in parallel (excluding current month)
+  const historicalMonthsData = await Promise.all(
+    allMonthKeys.map((m: string) => getMonthData(m))
+  );
+
   const [currentData, prevData, currentRawData, prevRawData] = await Promise.all([
     getMonthData(currentMonth),
     getMonthData(prevMonth),
@@ -701,6 +745,34 @@ export async function GET(req: NextRequest) {
 
   const current = aggregateMonth(currentData);
   const previous = aggregateMonth(prevData);
+
+  // Compute historical average daily curves (by day-of-month: day1, day2, ...)
+  // Revenue: average revenue per day-of-month across all historical months
+  // Census: average census per day-of-month across all historical months
+  const revenueByDay = new Map<number, number[]>();
+  const censusByDay = new Map<number, number[]>();
+  for (const monthMetrics of historicalMonthsData) {
+    for (const m of monthMetrics) {
+      const dayNum = parseInt(m.date.split('-')[2], 10);
+      if (m.revenue !== null) {
+        if (!revenueByDay.has(dayNum)) revenueByDay.set(dayNum, []);
+        revenueByDay.get(dayNum)!.push(m.revenue);
+      }
+      if (m.ipCensus !== null) {
+        if (!censusByDay.has(dayNum)) censusByDay.set(dayNum, []);
+        censusByDay.get(dayNum)!.push(m.ipCensus);
+      }
+    }
+  }
+
+  const historicalAvgRevenues: { day: number; value: number }[] = [];
+  for (const [day, values] of Array.from(revenueByDay.entries()).sort((a, b) => a[0] - b[0])) {
+    historicalAvgRevenues.push({ day, value: values.reduce((s, v) => s + v, 0) / values.length });
+  }
+  const historicalAvgCensus: { day: number; value: number }[] = [];
+  for (const [day, values] of Array.from(censusByDay.entries()).sort((a, b) => a[0] - b[0])) {
+    historicalAvgCensus.push({ day, value: values.reduce((s, v) => s + v, 0) / values.length });
+  }
 
   // New: global issues, department KPIs, heatmap data, and per-dept alerts
   const globalIssues = buildGlobalIssues(currentRawData, prevRawData);
@@ -798,5 +870,9 @@ export async function GET(req: NextRequest) {
     departmentKPIs,
     heatmapData,
     deptAlerts,
+    // Sparkline overlay data
+    historicalAvgRevenues,
+    historicalAvgCensus,
+    historicalMonthCount: allMonthKeys.length,
   });
 }
