@@ -15,8 +15,78 @@ function getRadioBadgeColor(value: string): { bg: string; text: string } {
   return { bg: 'bg-slate-100', text: 'text-slate-700' };
 }
 
+/** Check if any entry for this department has WhatsApp-sourced data */
+function hasWhatsAppData(entries: DepartmentData['entries']): boolean {
+  return entries.some(e => e.fields['_source'] === 'whatsapp');
+}
+
+/** Check if a specific field value came from WhatsApp source */
+function isWhatsAppField(entries: DepartmentData['entries'], fieldName: string): boolean {
+  for (const entry of entries) {
+    if (entry.fields['_source'] !== 'whatsapp') continue;
+    if (entry.fields[fieldName] !== undefined) return true;
+    // Check field metadata for more specific attribution
+    try {
+      const meta = JSON.parse((entry.fields['_field_metadata'] as string) || '{}');
+      if (meta[fieldName]) return true;
+    } catch { /* ignore */ }
+  }
+  return false;
+}
+
+/** Get field metadata (sender, confidence, context) for a WhatsApp-sourced field */
+function getFieldMeta(entries: DepartmentData['entries'], fieldName: string): { sender?: string; confidence?: string; context?: string } | null {
+  for (const entry of entries) {
+    if (entry.fields['_source'] !== 'whatsapp') continue;
+    try {
+      const meta = JSON.parse((entry.fields['_field_metadata'] as string) || '{}');
+      if (meta[fieldName]) return meta[fieldName];
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+/** Source badge component */
+function SourceBadge({ fieldName, entries }: { fieldName: string; entries: DepartmentData['entries'] }) {
+  if (!isWhatsAppField(entries, fieldName)) return null;
+  const meta = getFieldMeta(entries, fieldName);
+
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 border border-green-200 ml-2 cursor-help"
+      title={meta ? `From WhatsApp: ${meta.sender || 'unknown'}${meta.confidence ? ` (${meta.confidence} confidence)` : ''}${meta.context ? `\n"${meta.context}"` : ''}` : 'Source: WhatsApp chat analysis'}
+    >
+      WA
+    </span>
+  );
+}
+
 export default function DepartmentPanel({ dept }: Props) {
-  const latestEntry = dept.entries[dept.entries.length - 1];
+  // Merge all entries (form + whatsapp) into a combined fields object
+  // Form entries take precedence; WhatsApp fills gaps
+  const mergedFields: Record<string, string | number> = {};
+  const hasWA = hasWhatsAppData(dept.entries);
+
+  // First pass: form entries (no _source or _source !== 'whatsapp')
+  for (const entry of dept.entries) {
+    if (entry.fields['_source'] === 'whatsapp') continue;
+    for (const [key, val] of Object.entries(entry.fields)) {
+      if (!key.startsWith('_') && val !== undefined && val !== '') {
+        mergedFields[key] = val;
+      }
+    }
+  }
+
+  // Second pass: WhatsApp entries (only fill gaps)
+  for (const entry of dept.entries) {
+    if (entry.fields['_source'] !== 'whatsapp') continue;
+    for (const [key, val] of Object.entries(entry.fields)) {
+      if (!key.startsWith('_') && val !== undefined && val !== '' && mergedFields[key] === undefined) {
+        mergedFields[key] = val;
+      }
+    }
+  }
+
   const formDef = FORM_DEFINITIONS.find(f => f.slug === dept.slug);
 
   if (!formDef) {
@@ -27,7 +97,9 @@ export default function DepartmentPanel({ dept }: Props) {
     );
   }
 
-  if (!latestEntry) {
+  const hasAnyData = Object.keys(mergedFields).length > 0;
+
+  if (!hasAnyData) {
     const mandatoryFields = formDef.sections
       .filter(s => s.title.toLowerCase().includes('mandatory') || !s.title.toLowerCase().includes('optional'))
       .flatMap(s => s.fields)
@@ -58,13 +130,21 @@ export default function DepartmentPanel({ dept }: Props) {
     );
   }
 
-  // Data exists â show KPI cards and sections
+  // Data exists — show KPI cards and sections
   const kpiCards = (formDef.kpiFields || [])
-    .map(fieldName => ({ fieldName, value: latestEntry.fields[fieldName] }))
+    .map(fieldName => ({ fieldName, value: mergedFields[fieldName] }))
     .filter(item => item.value !== undefined && item.value !== '');
 
   return (
     <div className="space-y-5">
+      {/* Source indicator banner */}
+      {hasWA && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200">WA</span>
+          <span className="text-xs text-green-700">Some data on this page was extracted from WhatsApp chat analysis. Look for <span className="font-semibold">WA</span> badges next to individual fields.</span>
+        </div>
+      )}
+
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
         <div>
@@ -86,6 +166,7 @@ export default function DepartmentPanel({ dept }: Props) {
                 >
                   <p className="text-xs font-medium text-slate-500 uppercase tracking-wider leading-tight mb-2 line-clamp-2" title={item.fieldName}>
                     {item.fieldName}
+                    <SourceBadge fieldName={item.fieldName} entries={dept.entries} />
                   </p>
                   {isRadio ? (
                     <p className={`text-sm font-semibold ${badgeColor?.text}`}>{item.value}</p>
@@ -104,7 +185,7 @@ export default function DepartmentPanel({ dept }: Props) {
       {/* Sections */}
       {formDef.sections.map((section, sectionIdx) => {
         const sectionValues = section.fields
-          .map(field => ({ field, value: latestEntry.fields[field.name || field.label] }))
+          .map(field => ({ field, value: mergedFields[field.name || field.label] }))
           .filter(item => item.value !== undefined && item.value !== '');
 
         if (sectionValues.length === 0) return null;
@@ -122,12 +203,16 @@ export default function DepartmentPanel({ dept }: Props) {
                 const isRadio = field.type === 'radio';
                 const badgeColor = isRadio ? getRadioBadgeColor(String(value)) : null;
                 const isLongText = typeof value === 'string' && value.length > 80;
+                const fieldName = field.name || field.label;
 
                 return (
                   <div key={idx} className="px-4 sm:px-5 py-3 hover:bg-slate-50/50 transition-colors">
                     <div className={`flex ${isLongText ? 'flex-col gap-2' : 'items-start justify-between gap-4'}`}>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800">{field.name}</p>
+                        <p className="text-sm font-medium text-slate-800">
+                          {field.name}
+                          <SourceBadge fieldName={fieldName} entries={dept.entries} />
+                        </p>
                         {field.helper && (
                           <p className="text-xs text-slate-400 mt-0.5">{field.helper}</p>
                         )}
