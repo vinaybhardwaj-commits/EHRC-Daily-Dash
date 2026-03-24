@@ -12,6 +12,7 @@ import SubmissionHeatmap from '@/components/SubmissionHeatmap';
 import TrendCharts from '@/components/TrendCharts';
 import DepartmentForms from '@/components/DepartmentForms';
 import MonthlyOverview from '@/components/MonthlyOverview';
+import WhatsAppInsights from '@/components/WhatsAppInsights';
 
 function todayStr() {
   const d = new Date();
@@ -19,7 +20,7 @@ function todayStr() {
 }
 
 export default function Home() {
-  const [view, setView] = useState<'overview' | 'dashboard'>('overview');
+  const [view, setView] = useState<'overview' | 'dashboard' | 'whatsapp'>('overview');
   const [availableDays, setAvailableDays] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [snapshot, setSnapshot] = useState<DaySnapshot | null>(null);
@@ -184,6 +185,17 @@ export default function Home() {
             >
               Daily Dashboard
             </button>
+            <button
+              onClick={() => setView('whatsapp')}
+              className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 ${
+                view === 'whatsapp'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-blue-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 hidden sm:inline-block" />
+              WA Insights
+            </button>
           </div>
           <div className="w-16 sm:w-20" /> {/* Spacer for balance */}
         </div>
@@ -273,7 +285,7 @@ export default function Home() {
       {/* Upload Panel */}
       {showUpload && (
         <div className="max-w-7xl mx-auto px-4 pt-4">
-          <FileUpload selectedDate={selectedDate} onUploadComplete={() => { fetchDay(selectedDate); fetchDays(); fetchAllSnapshots(); }} />
+          <FileUpload selectedDate={selectedDate} onUploadComplete={() => { fetchDay(selectedDate); fetchDays(); fetchAllSnapshots(); }} onNavigateToInsights={() => setView('whatsapp')} />
         </div>
       )}
 
@@ -431,6 +443,16 @@ export default function Home() {
         </div>
       </div>
       </>)}
+
+      {/* WhatsApp Insights View */}
+      {view === 'whatsapp' && (
+        <WhatsAppInsights onNavigateToDashboard={(date: string, slug: string) => {
+          setSelectedDate(date);
+          setActiveDept(slug);
+          setActiveTab('department');
+          setView('dashboard');
+        }} />
+      )}
     </div>
   );
 }
