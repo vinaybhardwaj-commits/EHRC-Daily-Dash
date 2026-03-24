@@ -44,6 +44,21 @@ interface MonthlyData {
   dailySubmissions: { date: string; submitted: number; total: number }[];
 }
 
+interface DeptInfo {
+  slug: string;
+  name: string;
+}
+
+interface TodaySubmission {
+  slug: string;
+  highlight: string;
+}
+
+interface WeekDay {
+  date: string;
+  slugs: string[];
+}
+
 interface ApiResponse {
   currentMonth: string;
   previousMonth: string;
@@ -51,6 +66,11 @@ interface ApiResponse {
   previous: MonthlyData | null;
   availableMonths: string[];
   dailyMetrics: DailyMetric[];
+  todayDate: string;
+  todaySubmissions: TodaySubmission[];
+  weekStartDate: string;
+  weekDays: WeekDay[];
+  allDepartments: DeptInfo[];
 }
 
 interface Props {
@@ -404,6 +424,151 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
           );
         })}
       </div>
+
+      {/* Today's Submissions & This Week */}
+      {data.allDepartments && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Today's Submissions */}
+          <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <span className="text-orange-500">&#9679;</span> Today&apos;s Submissions
+              </h3>
+              <span className="text-sm text-gray-500">
+                {data.todayDate ? new Date(data.todayDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="text-3xl font-bold text-gray-900">
+                {data.todaySubmissions?.length || 0}
+                <span className="text-base font-normal text-gray-500">/17</span>
+              </div>
+              <div className="flex-1 bg-gray-200 rounded-full h-3">
+                <div
+                  className="h-3 rounded-full transition-all"
+                  style={{
+                    width: `${((data.todaySubmissions?.length || 0) / 17) * 100}%`,
+                    backgroundColor: (data.todaySubmissions?.length || 0) > 14 ? '#10b981' : (data.todaySubmissions?.length || 0) >= 10 ? '#f59e0b' : '#ef4444',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1 max-h-80 overflow-y-auto">
+              {data.allDepartments.map(dept => {
+                const submitted = data.todaySubmissions?.find(s => s.slug === dept.slug);
+                return (
+                  <div
+                    key={dept.slug}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
+                      submitted
+                        ? 'bg-emerald-50 text-emerald-800'
+                        : 'bg-gray-50 text-gray-400'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${submitted ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                    <span className={`font-medium truncate ${submitted ? '' : 'line-through'}`}>
+                      {dept.name}
+                    </span>
+                    {submitted && submitted.highlight && (
+                      <span className="ml-auto text-emerald-600 truncate text-[10px]">{submitted.highlight}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {data.todaySubmissions && data.todaySubmissions.length < 17 && (
+              <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+                Pending: {data.allDepartments
+                  .filter(d => !data.todaySubmissions?.find(s => s.slug === d.slug))
+                  .map(d => d.name)
+                  .join(', ')}
+              </div>
+            )}
+          </div>
+
+          {/* This Week's Submissions */}
+          <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <span className="text-indigo-500">&#9632;</span> This Week
+              </h3>
+              <span className="text-sm text-gray-500">
+                {data.weekStartDate ? new Date(data.weekStartDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
+                {' – '}
+                {data.todayDate ? new Date(data.todayDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
+              </span>
+            </div>
+            {/* Week grid: departments as rows, days as columns */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr>
+                    <th className="text-left pb-2 pr-2 font-medium text-gray-500 sticky left-0 bg-white min-w-[100px]">
+                      Department
+                    </th>
+                    {(data.weekDays || []).map(wd => (
+                      <th key={wd.date} className="pb-2 px-1 font-medium text-gray-500 text-center min-w-[36px]">
+                        {new Date(wd.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'narrow' })}
+                        <br />
+                        <span className="text-[10px] text-gray-400">
+                          {new Date(wd.date + 'T00:00:00').getDate()}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="pb-2 pl-2 font-medium text-gray-500 text-center">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.allDepartments.map(dept => {
+                    const weekCount = (data.weekDays || []).filter(wd => wd.slugs.includes(dept.slug)).length;
+                    const totalDays = (data.weekDays || []).length;
+                    return (
+                      <tr key={dept.slug} className="border-t border-gray-50">
+                        <td className="py-1 pr-2 font-medium text-gray-700 sticky left-0 bg-white truncate max-w-[120px]">
+                          {dept.name}
+                        </td>
+                        {(data.weekDays || []).map(wd => {
+                          const submitted = wd.slugs.includes(dept.slug);
+                          return (
+                            <td key={wd.date} className="py-1 px-1 text-center">
+                              <span
+                                className={`inline-block w-5 h-5 rounded ${
+                                  submitted ? 'bg-emerald-500' : 'bg-gray-100'
+                                }`}
+                                title={`${dept.name} - ${wd.date}: ${submitted ? 'Submitted' : 'Missing'}`}
+                              />
+                            </td>
+                          );
+                        })}
+                        <td className="py-1 pl-2 text-center">
+                          <span className={`font-bold ${
+                            weekCount === totalDays ? 'text-emerald-600' : weekCount === 0 ? 'text-red-400' : 'text-amber-600'
+                          }`}>
+                            {weekCount}/{totalDays}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* Week summary footer */}
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span>
+                Avg submissions/day: {(data.weekDays || []).length > 0
+                  ? ((data.weekDays || []).reduce((s, wd) => s + wd.slugs.length, 0) / (data.weekDays || []).length).toFixed(1)
+                  : '0'}/17
+              </span>
+              <span>
+                {(data.weekDays || []).length} reporting day{(data.weekDays || []).length !== 1 ? 's' : ''} this week
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two-Column Trend Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

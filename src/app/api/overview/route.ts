@@ -100,6 +100,14 @@ function findField(fields: Record<string, string | number>, ...patterns: string[
   return null;
 }
 
+function formatNumberShort(num: number | null): string {
+  if (num === null) return '—';
+  if (Math.abs(num) >= 10000000) return (num / 10000000).toFixed(2) + ' Cr';
+  if (Math.abs(num) >= 100000) return (num / 100000).toFixed(2) + ' L';
+  if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toFixed(0);
+}
+
 interface DayMetrics {
   date: string;
   revenue: number | null;
@@ -289,6 +297,73 @@ export async function GET(req: NextRequest) {
   `;
   const availableMonths = monthsResult.rows.map(r => r.month);
 
+  // Get today's date and calculate the start of this week (Monday)
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
+  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - mondayOffset);
+  const weekStartStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+
+  // All 17 department slugs with display names
+  const ALL_DEPARTMENTS = [
+    { slug: 'emergency', name: 'Emergency' },
+    { slug: 'customer-care', name: 'Customer Care' },
+    { slug: 'patient-safety', name: 'Patient Safety' },
+    { slug: 'finance', name: 'Finance' },
+    { slug: 'billing', name: 'Billing' },
+    { slug: 'supply-chain', name: 'Supply Chain' },
+    { slug: 'facility', name: 'Facility & Engineering' },
+    { slug: 'it', name: 'IT' },
+    { slug: 'nursing', name: 'Nursing' },
+    { slug: 'pharmacy', name: 'Pharmacy' },
+    { slug: 'clinical-lab', name: 'Clinical Lab' },
+    { slug: 'radiology', name: 'Radiology' },
+    { slug: 'ot', name: 'OT' },
+    { slug: 'hr-manpower', name: 'HR & Manpower' },
+    { slug: 'training', name: 'Training' },
+    { slug: 'diet', name: 'Diet & Nutrition' },
+    { slug: 'biomedical', name: 'Biomedical' },
+  ];
+
+  // Fetch today's submissions (which departments submitted)
+  const todayResult = await sql`
+    SELECT slug, entries FROM department_data WHERE date = ${todayStr};
+  `;
+  const todaySubmissions = todayResult.rows.map(r => {
+    const entries = r.entries as Array<{ fields: Record<string, string | number> }>;
+    const fields = entries?.[0]?.fields || {};
+    // Extract a one-line highlight from the data
+    let highlight = '';
+    if (r.slug === 'finance') {
+      const rev = findField(fields, 'revenue for the day', 'revnue for the day');
+      if (rev) highlight = `Rev: ₹${formatNumberShort(extractNumber(rev))}`;
+    } else if (r.slug === 'emergency') {
+      const er = findField(fields, 'er cases', '# of ER cases', 'walk-in');
+      if (er) highlight = `ER Cases: ${extractCount(er)}`;
+    } else if (r.slug === 'pharmacy') {
+      const stock = findField(fields, 'stockout', 'shortage', 'critical stock');
+      highlight = stock ? String(firstPipeSegment(stock)).substring(0, 50) : '';
+    } else if (r.slug === 'nursing') {
+      const census = findField(fields, 'census', 'ip count', 'bed');
+      if (census) highlight = `Census: ${extractNumber(census) || ''}`;
+    }
+    return { slug: r.slug, highlight };
+  });
+
+  // Fetch this week's submissions (Mon–today), grouped by date and slug
+  const weekResult = await sql`
+    SELECT date, slug FROM department_data
+    WHERE date >= ${weekStartStr} AND date <= ${todayStr}
+    ORDER BY date, slug;
+  `;
+  const weekByDate = new Map<string, string[]>();
+  for (const row of weekResult.rows) {
+    if (!weekByDate.has(row.date)) weekByDate.set(row.date, []);
+    weekByDate.get(row.date)!.push(row.slug);
+  }
+  const weekDays = Array.from(weekByDate.entries()).map(([date, slugs]) => ({ date, slugs }));
+
   return NextResponse.json({
     currentMonth,
     previousMonth: prevMonth,
@@ -296,5 +371,10 @@ export async function GET(req: NextRequest) {
     previous,
     availableMonths,
     dailyMetrics: currentData,
+    todayDate: todayStr,
+    todaySubmissions,
+    weekStartDate: weekStartStr,
+    weekDays,
+    allDepartments: ALL_DEPARTMENTS,
   });
 }
