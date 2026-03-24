@@ -216,8 +216,8 @@ function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
     { key: 'arpob_daily', label: 'ARPOB (Daily)', format: (v) => formatIndian(v), getValue: b => b.arpob_daily },
     { key: 'opd_footfall', label: 'OPD Footfall', format: formatNumber, getValue: b => b.opd_footfall_total },
     { key: 'ip_admissions', label: 'IP Admissions', format: formatNumber, getValue: b => b.ip_admissions },
-    { key: 'avg_beds', label: 'Avg Occupied Beds', format: (v) => v.toFixed(1), getValue: b => b.avg_occupied_beds },
-    { key: 'alos', label: 'ALOS (days)', format: (v) => v.toFixed(1), getValue: b => b.alos_days },
+    { key: 'avg_beds', label: 'Avg Occupied Beds', format: (v) => v != null ? v.toFixed(1) : '—', getValue: b => b.avg_occupied_beds },
+    { key: 'alos', label: 'ALOS (days)', format: (v) => v != null ? v.toFixed(1) : '—', getValue: b => b.alos_days },
     { key: 'days', label: 'Operating Days', format: formatNumber, getValue: b => b.operating_days },
   ];
 
@@ -256,7 +256,7 @@ function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
                   const change = pctChange(val, prevVal);
                   return (
                     <td key={b.month} className="px-3 py-2 text-right whitespace-nowrap">
-                      <span className="text-slate-800 font-medium">{val !== null ? metric.format(val) : '—'}</span>
+                      <span className="text-slate-800 font-medium">{val != null ? metric.format(val) : '—'}</span>
                       {change && (
                         <span className={`block text-[9px] font-medium ${
                           metric.invert ? (!change.positive ? 'text-emerald-600' : 'text-red-500') : (change.positive ? 'text-emerald-600' : 'text-red-500')
@@ -317,9 +317,9 @@ function DualTrackBars({ brmMonths, dailyMonths, metric }: {
       dailyColor: '#a78bfa',
     },
     occupancy: {
-      getBrm: b => b.occupancy_pct ? b.occupancy_pct * 100 : null,
+      getBrm: b => b.occupancy_pct != null ? b.occupancy_pct * 100 : null,
       getDaily: _ => null,
-      formatVal: n => n.toFixed(1) + '%',
+      formatVal: n => n != null ? n.toFixed(1) + '%' : '—',
       label: 'Occupancy %',
       brmColor: '#059669',
       dailyColor: '#34d399',
@@ -436,7 +436,7 @@ function BrmHeroCards({ brmMonths }: { brmMonths: BrmMonth[] }) {
     {
       label: 'EBITDAR',
       value: formatLakhs(latest.ebitdar_lakhs),
-      subLabel: latest.ebitdar_pct !== null ? formatPct(latest.ebitdar_pct) + ' margin' : '',
+      subLabel: latest.ebitdar_pct != null ? formatPct(latest.ebitdar_pct) + ' margin' : '',
       current: latest.ebitdar_lakhs,
       previous: prev?.ebitdar_lakhs ?? null,
       color: latest.ebitdar_lakhs !== null && latest.ebitdar_lakhs >= 0 ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50',
