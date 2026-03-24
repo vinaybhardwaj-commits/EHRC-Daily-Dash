@@ -3,14 +3,12 @@
 import { DaySnapshot, DEPARTMENTS } from '@/lib/types';
 
 interface Props {
-  snapshots: DaySnapshot[]; // All snapshots for the current month
-  currentMonth: string; // YYYY-MM
+  snapshots: DaySnapshot[];
+  currentMonth: string;
 }
 
 export default function SubmissionHeatmap({ snapshots, currentMonth }: Props) {
-  // Get all dates in the current month
   const [year, month] = currentMonth.split('-').map(Number);
-  const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
   const daysInMonth = lastDay.getDate();
   const today = new Date();
@@ -21,7 +19,6 @@ export default function SubmissionHeatmap({ snapshots, currentMonth }: Props) {
     return `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   });
 
-  // Create a map of date -> submitted department slugs
   const submissionMap = new Map<string, Set<string>>();
   snapshots.forEach(snapshot => {
     if (!submissionMap.has(snapshot.date)) {
@@ -38,71 +35,73 @@ export default function SubmissionHeatmap({ snapshots, currentMonth }: Props) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6 overflow-x-auto">
-      <h3 className="font-semibold text-gray-900 text-lg mb-4">Department Submission Heatmap</h3>
-      <div className="inline-block min-w-full">
-        <table className="text-xs border-collapse">
-          <thead>
-            <tr>
-              <th className="text-left p-2 font-semibold text-gray-700 bg-gray-50 border border-gray-200" style={{ minWidth: '140px' }}>
-                Department
-              </th>
-              {dates.map(date => {
-                const d = new Date(date);
-                const dayNum = d.getDate();
-                return (
-                  <th
-                    key={date}
-                    className="p-1.5 font-medium text-gray-600 bg-gray-50 border border-gray-200 text-center"
-                    style={{ minWidth: '32px' }}
-                    title={date}
-                  >
-                    {dayNum}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {DEPARTMENTS.map(dept => (
-              <tr key={dept.slug}>
-                <td className="p-2 font-medium text-gray-700 bg-gray-50 border border-gray-200 sticky left-0 z-10">
-                  {dept.name}
-                </td>
+    <div>
+      <h3 className="font-semibold text-slate-800 text-sm uppercase tracking-wider mb-4">Department Submission Heatmap</h3>
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 overflow-x-auto">
+        <div className="inline-block min-w-full">
+          <table className="text-xs border-collapse w-full">
+            <thead>
+              <tr>
+                <th className="text-left p-2 font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-tl-lg" style={{ minWidth: '120px' }}>
+                  Department
+                </th>
                 {dates.map(date => {
-                  const status = getStatus(dept.slug, date);
-                  const bgColor =
-                    status === 'submitted'
-                      ? 'bg-green-200'
-                      : status === 'not-submitted'
-                        ? 'bg-red-200'
-                        : 'bg-gray-100';
-
+                  const dayNum = new Date(date + 'T00:00:00').getDate();
+                  const isToday = date === todayStr;
                   return (
-                    <td
-                      key={`${dept.slug}-${date}`}
-                      className={`p-1.5 border border-gray-300 text-center ${bgColor} transition-colors hover:opacity-75`}
-                      title={`${dept.name} - ${date}: ${status}`}
-                    />
+                    <th
+                      key={date}
+                      className={`p-1 font-medium text-slate-500 bg-slate-50 border border-slate-200 text-center ${isToday ? 'bg-blue-50 text-blue-700 font-bold' : ''}`}
+                      style={{ minWidth: '28px' }}
+                      title={date}
+                    >
+                      {dayNum}
+                    </th>
                   );
                 })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-4 flex gap-4 text-xs">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-green-200 border border-gray-300 rounded" />
-          <span className="text-gray-700">Submitted</span>
+            </thead>
+            <tbody>
+              {DEPARTMENTS.map(dept => (
+                <tr key={dept.slug}>
+                  <td className="p-2 font-medium text-slate-700 bg-slate-50 border border-slate-200 sticky left-0 z-10 whitespace-nowrap">
+                    {dept.name}
+                  </td>
+                  {dates.map(date => {
+                    const status = getStatus(dept.slug, date);
+                    const bgColor =
+                      status === 'submitted'
+                        ? 'bg-emerald-400'
+                        : status === 'not-submitted'
+                          ? 'bg-red-300'
+                          : 'bg-slate-100';
+
+                    return (
+                      <td
+                        key={`${dept.slug}-${date}`}
+                        className={`p-1 border border-slate-200 text-center ${bgColor} transition-colors hover:opacity-80`}
+                        title={`${dept.name} â ${date}: ${status}`}
+                      />
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-red-200 border border-gray-300 rounded" />
-          <span className="text-gray-700">Not Submitted</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-gray-100 border border-gray-300 rounded" />
-          <span className="text-gray-700">Future Date</span>
+        <div className="mt-4 flex gap-4 text-xs">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 bg-emerald-400 rounded-sm" />
+            <span className="text-slate-600">Submitted</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 bg-red-300 rounded-sm" />
+            <span className="text-slate-600">Missing</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 bg-slate-100 border border-slate-200 rounded-sm" />
+            <span className="text-slate-600">Future</span>
+          </div>
         </div>
       </div>
     </div>
