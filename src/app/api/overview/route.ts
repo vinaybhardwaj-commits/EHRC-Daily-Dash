@@ -465,15 +465,22 @@ function buildGlobalIssues(
 }
 
 /**
- * Build per-department signature KPI data with trend.
+ * Build per-department signature KPI data with trend + previous month comparison.
  */
-function buildDeptKPIs(rawData: Map<string, Map<string, Record<string, string | number>>>) {
+function buildDeptKPIs(
+  rawData: Map<string, Map<string, Record<string, string | number>>>,
+  prevRawData: Map<string, Map<string, Record<string, string | number>>>
+) {
   const sortedDates = Array.from(rawData.keys()).sort();
   if (sortedDates.length === 0) return [];
 
   const latestDate = sortedDates[sortedDates.length - 1];
   // For trend: compare latest value to 7-day average
   const recentDates = sortedDates.slice(-7);
+
+  // Previous month dates
+  const prevSortedDates = Array.from(prevRawData.keys()).sort();
+  const prevLatestDate = prevSortedDates.length > 0 ? prevSortedDates[prevSortedDates.length - 1] : null;
 
   return DEPARTMENT_KPIS.map(kpiDef => {
     const latestFields = rawData.get(latestDate)?.get(kpiDef.slug) || {};
@@ -511,6 +518,49 @@ function buildDeptKPIs(rawData: Map<string, Map<string, Record<string, string | 
       if (deptMap.has(kpiDef.slug)) submissionCount++;
     }
 
+    // Previous month KPI: get the latest value from prev month
+    let prevValue: number | null = null;
+    let prevTextValue: string | null = null;
+    let prevStatus: 'good' | 'warning' | 'bad' | null = null;
+    let prevAvg: number | null = null;
+
+    if (prevLatestDate) {
+      const prevLatestFields = prevRawData.get(prevLatestDate)?.get(kpiDef.slug) || {};
+      const prevLatest = extractDeptKPI(kpiDef.slug, prevLatestFields);
+      prevValue = prevLatest.value;
+      prevTextValue = prevLatest.textValue;
+      prevStatus = prevLatest.status;
+
+      // Compute previous month average for numeric KPIs
+      if (kpiDef.type === 'number') {
+        const prevValues: number[] = [];
+        for (const date of prevSortedDates) {
+          const fields = prevRawData.get(date)?.get(kpiDef.slug);
+          if (fields) {
+            const kpiResult = extractDeptKPI(kpiDef.slug, fields);
+            if (kpiResult.value !== null) prevValues.push(kpiResult.value);
+          }
+        }
+        if (prevValues.length > 0) {
+          prevAvg = prevValues.reduce((s, v) => s + v, 0) / prevValues.length;
+        }
+      }
+    }
+
+    // Previous month submission count
+    let prevSubmissionCount = 0;
+    for (const [, deptMap] of prevRawData) {
+      if (deptMap.has(kpiDef.slug)) prevSubmissionCount++;
+    }
+
+    // Month-over-month trend (comparing averages for numeric, status for text)
+    let monthTrend: 'up' | 'down' | 'flat' = 'flat';
+    if (kpiDef.type === 'number' && avg7d !== null && prevAvg !== null && prevAvg !== 0) {
+      const diff = avg7d - prevAvg;
+      const pct = Math.abs(diff / prevAvg) * 100;
+      if (pct > 5) monthTrend = diff > 0 ? 'up' : 'down';
+    }
+
     return {
       slug: kpiDef.slug,
       label: kpiDef.label,
@@ -525,6 +575,14 @@ function buildDeptKPIs(rawData: Map<string, Map<string, Record<string, string | 
       totalDays: sortedDates.length,
       trend,
       avg7d,
+      // Previous month comparison
+      prevValue,
+      prevTextValue,
+      prevStatus,
+      prevAvg,
+      prevSubmissionCount,
+      prevTotalDays: prevSortedDates.length,
+      monthTrend,
     };
   });
 }
@@ -646,7 +704,7 @@ export async function GET(req: NextRequest) {
 
   // New: global issues, department KPIs, heatmap data, and per-dept alerts
   const globalIssues = buildGlobalIssues(currentRawData, prevRawData);
-  const departmentKPIs = buildDeptKPIs(currentRawData);
+  const departmentKPIs = buildDeptKPIs(currentRawData, prevRawData);
   const heatmapData = buildHeatmapData(currentRawData);
   const deptAlerts = buildDeptAlerts(currentRawData);
 

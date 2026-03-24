@@ -16,6 +16,14 @@ export interface DeptKPIData {
   totalDays: number;
   trend: 'up' | 'down' | 'flat';
   avg7d: number | null;
+  // Previous month comparison
+  prevValue?: number | null;
+  prevTextValue?: string | null;
+  prevStatus?: 'good' | 'warning' | 'bad' | null;
+  prevAvg?: number | null;
+  prevSubmissionCount?: number;
+  prevTotalDays?: number;
+  monthTrend?: 'up' | 'down' | 'flat';
 }
 
 export interface DeptAlertData {
@@ -48,6 +56,8 @@ interface Props {
   departments: DeptKPIData[];
   deptAlerts?: DeptAlertData[];
   onNavigateToDept?: (slug: string) => void;
+  currentMonth?: string;
+  previousMonth?: string;
 }
 
 function formatValue(value: number | null, unit?: string | null): string {
@@ -68,7 +78,14 @@ function formatDate(dateStr: string | null): string {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept }: Props) {
+function formatMonthLabel(ym: string | undefined): string {
+  if (!ym) return '';
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, currentMonth, previousMonth }: Props) {
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
 
   const alertsBySlug = new Map(
@@ -104,6 +121,21 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
             trendIcon = '\u2193';
           }
 
+          // Month-over-month trend
+          const mTrend = dept.monthTrend || 'flat';
+          let monthTrendColor = 'text-slate-400';
+          let monthTrendIcon = '\u2014';
+          let monthTrendLabel = 'flat';
+          if (mTrend === 'up') {
+            monthTrendColor = dept.invertTrend ? 'text-red-500' : 'text-emerald-500';
+            monthTrendIcon = '\u2191';
+            monthTrendLabel = dept.invertTrend ? 'worse' : 'better';
+          } else if (mTrend === 'down') {
+            monthTrendColor = dept.invertTrend ? 'text-emerald-500' : 'text-red-500';
+            monthTrendIcon = '\u2193';
+            monthTrendLabel = dept.invertTrend ? 'better' : 'worse';
+          }
+
           // Status badge
           const statusColors = {
             good: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -120,6 +152,18 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
           if (!dept.submitted && redAlerts.length > 0) borderClass = 'border-red-300';
           else if (!dept.submitted) borderClass = 'border-amber-300';
           else if (redAlerts.length > 0) borderClass = 'border-red-200';
+
+          // Previous month comparison data
+          const hasPrevData = dept.prevValue !== null && dept.prevValue !== undefined;
+          const hasPrevText = dept.prevTextValue !== null && dept.prevTextValue !== undefined;
+          const hasPrevStatus = dept.prevStatus !== null && dept.prevStatus !== undefined;
+          const hasComparison = hasPrevData || hasPrevText || hasPrevStatus;
+
+          // Calculate pct change for numeric KPIs
+          let pctChange: number | null = null;
+          if (dept.type === 'number' && dept.avg7d !== null && dept.prevAvg !== null && dept.prevAvg !== undefined && dept.prevAvg !== 0) {
+            pctChange = ((dept.avg7d - dept.prevAvg) / Math.abs(dept.prevAvg)) * 100;
+          }
 
           return (
             <div
@@ -207,6 +251,98 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
               {/* Expanded detail area */}
               {isExpanded && (
                 <div className="border-t border-slate-200 px-4 py-3 bg-slate-50/50 rounded-b-xl">
+                  {/* Month-over-month comparison */}
+                  {hasComparison && (
+                    <div className="mb-3 p-2.5 rounded-lg bg-white border border-slate-200">
+                      <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-2">
+                        Month-over-Month
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Current month */}
+                        <div>
+                          <div className="text-[10px] text-slate-400 mb-0.5">
+                            {formatMonthLabel(currentMonth) || 'This month'}
+                          </div>
+                          {dept.type === 'number' ? (
+                            <>
+                              <div className="text-sm font-bold text-slate-900">
+                                {formatValue(dept.value, dept.unit)}
+                              </div>
+                              {dept.avg7d !== null && (
+                                <div className="text-[10px] text-slate-400">
+                                  7d avg: {formatValue(dept.avg7d, dept.unit)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className={`inline-block px-2 py-0.5 rounded border text-xs font-semibold ${
+                              dept.status ? statusColors[dept.status] : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}>
+                              {dept.status === 'good' ? 'OK' :
+                               dept.status === 'warning' ? 'Partial' :
+                               dept.status === 'bad' ? 'Issue' :
+                               dept.textValue || '\u2014'}
+                            </div>
+                          )}
+                        </div>
+                        {/* Previous month */}
+                        <div>
+                          <div className="text-[10px] text-slate-400 mb-0.5">
+                            {formatMonthLabel(previousMonth) || 'Last month'}
+                          </div>
+                          {dept.type === 'number' ? (
+                            <>
+                              <div className="text-sm font-bold text-slate-500">
+                                {formatValue(dept.prevValue ?? null, dept.unit)}
+                              </div>
+                              {dept.prevAvg !== null && dept.prevAvg !== undefined && (
+                                <div className="text-[10px] text-slate-400">
+                                  Avg: {formatValue(dept.prevAvg, dept.unit)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className={`inline-block px-2 py-0.5 rounded border text-xs font-semibold ${
+                              dept.prevStatus ? statusColors[dept.prevStatus] : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}>
+                              {dept.prevStatus === 'good' ? 'OK' :
+                               dept.prevStatus === 'warning' ? 'Partial' :
+                               dept.prevStatus === 'bad' ? 'Issue' :
+                               dept.prevTextValue || '\u2014'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Change indicator */}
+                      {dept.type === 'number' && pctChange !== null && (
+                        <div className={`mt-2 text-xs font-semibold px-2 py-1 rounded-md inline-block ${
+                          (pctChange > 0 && !dept.invertTrend) || (pctChange < 0 && dept.invertTrend)
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : (pctChange < 0 && !dept.invertTrend) || (pctChange > 0 && dept.invertTrend)
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {monthTrendIcon} {Math.abs(pctChange).toFixed(1)}% {monthTrendLabel} vs last month
+                        </div>
+                      )}
+                      {dept.type === 'text-status' && dept.status !== dept.prevStatus && dept.prevStatus && (
+                        <div className={`mt-2 text-xs font-semibold px-2 py-1 rounded-md inline-block ${
+                          dept.status === 'good' ? 'bg-emerald-100 text-emerald-800' :
+                          dept.status === 'bad' ? 'bg-red-100 text-red-800' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          Status changed from {dept.prevStatus} to {dept.status}
+                        </div>
+                      )}
+                      {/* Submission comparison */}
+                      {dept.prevSubmissionCount !== undefined && dept.prevTotalDays !== undefined && dept.prevTotalDays > 0 && (
+                        <div className="text-[10px] text-slate-400 mt-1.5">
+                          Submissions: {dept.submissionCount}/{dept.totalDays}d this month vs {dept.prevSubmissionCount}/{dept.prevTotalDays}d last month
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Alerts list */}
                   {alerts.length > 0 ? (
                     <div className="space-y-1.5 mb-3">

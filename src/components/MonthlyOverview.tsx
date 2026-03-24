@@ -95,6 +95,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedPulse, setExpandedPulse] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -210,19 +211,55 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
 
   // ---- Hero metric cards config ----
   const heroCards = [
-    { label: 'Revenue MTD', value: formatIndian(current.revenueMTD), comparison: renderTrendBadge(current.revenueMTD, previous?.revenueMTD || null), color: 'emerald' },
-    { label: 'IP Census', value: current.latestCensus ? Math.round(current.latestCensus) : '\u2014', subtitle: `Avg: ${current.avgCensus ? Math.round(current.avgCensus) : '\u2014'}`, comparison: renderTrendBadge(current.latestCensus, previous?.latestCensus || null), color: 'blue' },
-    { label: 'Surgeries MTD', value: current.surgeriesMTD || '\u2014', comparison: renderTrendBadge(current.surgeriesMTD, previous?.surgeriesMTD || null), color: 'purple' },
-    { label: 'ARPOB', value: formatIndian(current.latestArpob), comparison: renderTrendBadge(current.latestArpob, previous?.latestArpob || null), color: 'amber' },
-    { label: 'ER Cases MTD', value: current.totalErCases || '\u2014', comparison: renderTrendBadge(current.totalErCases, previous?.totalErCases || null), color: 'red' },
+    {
+      id: 'revenue', label: 'Revenue MTD', value: formatIndian(current.revenueMTD),
+      comparison: renderTrendBadge(current.revenueMTD, previous?.revenueMTD || null), color: 'emerald',
+      currentVal: current.revenueMTD, prevVal: previous?.revenueMTD ?? null,
+      currentAvg: current.avgDailyRevenue, prevAvg: previous?.avgDailyRevenue ?? null,
+      detail: `Daily avg: ${formatIndian(current.avgDailyRevenue)}`,
+      prevDetail: previous ? `Last month: ${formatIndian(previous.revenueMTD)}` : null,
+      prevAvgDetail: previous?.avgDailyRevenue ? `Daily avg last month: ${formatIndian(previous.avgDailyRevenue)}` : null,
+    },
+    {
+      id: 'census', label: 'IP Census', value: current.latestCensus ? Math.round(current.latestCensus) : '\u2014',
+      subtitle: `Avg: ${current.avgCensus ? Math.round(current.avgCensus) : '\u2014'}`,
+      comparison: renderTrendBadge(current.latestCensus, previous?.latestCensus || null), color: 'blue',
+      currentVal: current.latestCensus, prevVal: previous?.latestCensus ?? null,
+      currentAvg: current.avgCensus, prevAvg: previous?.avgCensus ?? null,
+      detail: `Avg this month: ${current.avgCensus ? Math.round(current.avgCensus) : '\u2014'}`,
+      prevDetail: previous?.latestCensus ? `Last month latest: ${Math.round(previous.latestCensus)}` : null,
+      prevAvgDetail: previous?.avgCensus ? `Avg last month: ${Math.round(previous.avgCensus)}` : null,
+    },
+    {
+      id: 'surgeries', label: 'Surgeries MTD', value: current.surgeriesMTD || '\u2014',
+      comparison: renderTrendBadge(current.surgeriesMTD, previous?.surgeriesMTD || null), color: 'purple',
+      currentVal: current.surgeriesMTD, prevVal: previous?.surgeriesMTD ?? null,
+      detail: `${current.daysReported} days reported`,
+      prevDetail: previous?.surgeriesMTD ? `Last month: ${previous.surgeriesMTD}` : null,
+      prevAvgDetail: previous ? `Over ${previous.daysReported} days` : null,
+    },
+    {
+      id: 'arpob', label: 'ARPOB', value: formatIndian(current.latestArpob),
+      comparison: renderTrendBadge(current.latestArpob, previous?.latestArpob || null), color: 'amber',
+      currentVal: current.latestArpob, prevVal: previous?.latestArpob ?? null,
+      detail: `Latest value this month`,
+      prevDetail: previous?.latestArpob ? `Last month: ${formatIndian(previous.latestArpob)}` : null,
+    },
+    {
+      id: 'er', label: 'ER Cases MTD', value: current.totalErCases || '\u2014',
+      comparison: renderTrendBadge(current.totalErCases, previous?.totalErCases || null), color: 'red',
+      currentVal: current.totalErCases, prevVal: previous?.totalErCases ?? null,
+      detail: `${current.daysReported} days of data`,
+      prevDetail: previous ? `Last month: ${previous.totalErCases} over ${previous.daysReported} days` : null,
+    },
   ];
 
-  const colorMap: Record<string, { bg: string; border: string; text: string }> = {
-    emerald: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-900' },
-    blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900' },
-    purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-900' },
-    amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900' },
-    red: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900' },
+  const colorMap: Record<string, { bg: string; border: string; text: string; expandBg: string }> = {
+    emerald: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-900', expandBg: 'bg-emerald-50/60' },
+    blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', expandBg: 'bg-blue-50/60' },
+    purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-900', expandBg: 'bg-purple-50/60' },
+    amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900', expandBg: 'bg-amber-50/60' },
+    red: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', expandBg: 'bg-red-50/60' },
   };
 
   return (
@@ -254,14 +291,53 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
 
       {/* ===== SECTION 1: HOSPITAL PULSE ===== */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-        {heroCards.map((card, idx) => {
+        {heroCards.map((card) => {
           const c = colorMap[card.color];
+          const isExpanded = expandedPulse === card.id;
+          const pctVal = pctChange(card.currentVal ?? null, card.prevVal ?? null);
           return (
-            <div key={idx} className={`${c.bg} ${c.border} border rounded-xl p-3.5`}>
-              <div className="text-xs font-medium text-slate-600 mb-1">{card.label}</div>
-              <div className={`text-xl md:text-2xl font-bold ${c.text} leading-tight`}>{card.value}</div>
-              {'subtitle' in card && card.subtitle && <div className="text-[10px] text-slate-500 mt-0.5">{card.subtitle}</div>}
-              <div className="mt-1">{card.comparison}</div>
+            <div key={card.id} className={`${c.bg} ${c.border} border rounded-xl overflow-hidden transition-all ${
+              isExpanded ? 'ring-1 ring-blue-200 shadow-md col-span-2 md:col-span-1' : ''
+            }`}>
+              <button
+                onClick={() => setExpandedPulse(isExpanded ? null : card.id)}
+                className="w-full text-left p-3.5 cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs font-medium text-slate-600">{card.label}</div>
+                  <svg
+                    className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                <div className={`text-xl md:text-2xl font-bold ${c.text} leading-tight`}>{card.value}</div>
+                {'subtitle' in card && card.subtitle && <div className="text-[10px] text-slate-500 mt-0.5">{card.subtitle}</div>}
+                <div className="mt-1">{card.comparison}</div>
+              </button>
+              {isExpanded && (
+                <div className={`px-3.5 pb-3.5 pt-0 border-t ${c.border} ${c.expandBg}`}>
+                  <div className="space-y-1.5 mt-2">
+                    {card.detail && (
+                      <div className="text-xs text-slate-600">{card.detail}</div>
+                    )}
+                    {card.prevDetail && (
+                      <div className="text-xs text-slate-500">{card.prevDetail}</div>
+                    )}
+                    {'prevAvgDetail' in card && card.prevAvgDetail && (
+                      <div className="text-xs text-slate-500">{card.prevAvgDetail}</div>
+                    )}
+                    {pctVal !== null && (
+                      <div className={`text-xs font-semibold mt-1 px-2 py-1 rounded-md inline-block ${
+                        pctVal > 0 ? 'bg-emerald-100 text-emerald-800' : pctVal < 0 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {pctVal > 0 ? '\u2191' : '\u2193'} {Math.abs(pctVal).toFixed(1)}% vs last month
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -293,6 +369,8 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
             departments={data.departmentKPIs}
             deptAlerts={data.deptAlerts}
             onNavigateToDept={(slug) => onNavigateToDashboard(slug)}
+            currentMonth={data.currentMonth}
+            previousMonth={data.previousMonth}
           />
         </div>
       )}
