@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { DEPARTMENT_KPIS, GLOBAL_ISSUES, type GlobalIssue } from '@/lib/department-kpis';
 
 export const dynamic = 'force-dynamic';
 
@@ -271,6 +272,229 @@ function aggregateMonth(metrics: DayMetrics[]) {
   };
 }
 
+/**
+ * Get raw per-department fields for every day in a month.
+ * Returns Map<date, Map<slug, fields>>
+ */
+async function getRawDeptData(yearMonth: string): Promise<Map<string, Map<string, Record<string, string | number>>>> {
+  const result = await sql`
+    SELECT d.date, d.slug, d.entries
+    FROM department_data d
+    WHERE d.date LIKE ${yearMonth + '%'}
+    ORDER BY d.date, d.slug;
+  `;
+
+  const byDate = new Map<string, Map<string, Record<string, string | number>>>();
+  for (const row of result.rows) {
+    const date = row.date;
+    const slug = row.slug;
+    const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+    const fields = entries?.[0]?.fields || {};
+    if (!byDate.has(date)) byDate.set(date, new Map());
+    byDate.get(date)!.set(slug, fields);
+  }
+  return byDate;
+}
+
+/**
+ * Extract the signature KPI value for a department from its fields.
+ */
+function extractDeptKPI(slug: string, fields: Record<string, string | number>): { value: number | null; textValue: string | null; status: 'good' | 'warning' | 'bad' | null } {
+  const kpiDef = DEPARTMENT_KPIS.find(k => k.slug === slug);
+  if (!kpiDef) return { value: null, textValue: null, status: null };
+
+  if (kpiDef.type === 'number') {
+    // Special case: radiology sums X-Ray + USG + CT
+    if (slug === 'radiology') {
+      const xray = extractNumber(findField(fields, 'x-ray'));
+      const usg = extractNumber(findField(fields, 'usg'));
+      const ct = extractNumber(findField(fields, 'ct'));
+      const total = (xray || 0) + (usg || 0) + (ct || 0);
+      return { value: total > 0 ? total : null, textValue: null, status: null };
+    }
+    const raw = findField(fields, ...kpiDef.fieldPatterns);
+    const val = extractNumber(raw);
+    return { value: val, textValue: null, status: null };
+  }
+
+  if (kpiDef.type === 'text-status') {
+    const raw = findField(fields, ...kpiDef.fieldPatterns);
+    const text = raw ? String(raw).trim() : '';
+    if (!text) return { value: null, textValue: null, status: null };
+
+    const lower = text.toLowerCase();
+    const kw = kpiDef.statusKeywords!;
+    let status: 'good' | 'warning' | 'bad' = 'warning'; // default
+
+    // Check bad first (more specific), then good, then default to warning
+    if (kw.bad.some(w => lower.includes(w))) status = 'bad';
+    else if (kw.good.some(w => lower.includes(w))) status = 'good';
+    else if (kw.warning.some(w => lower.includes(w))) status = 'warning';
+
+    return { value: null, textValue: text.substring(0, 60), status };
+  }
+
+  return { value: null, textValue: null, status: null };
+}
+
+/**
+ * Extract global issue value for a single day.
+ */
+function extractIssueValue(issue: GlobalIssue, deptFields: Record<string, string | number>): { active: boolean; count: number } {
+  const raw = findField(deptFields, ...issue.fieldPatterns);
+
+  if (issue.type === 'count') {
+    const count = extractCount(raw);
+    const threshold = issue.threshold ?? 0;
+    return { active: count > threshold, count };
+  }
+
+  if (issue.type === 'boolean-text') {
+    const text = raw ? String(raw).trim().toLowerCase() : '';
+    if (!text) return { active: false, count: 0 };
+    const isClear = (issue.clearKeywords || []).some(w => text.includes(w));
+    if (isClear) return { active: false, count: 0 };
+    const isIssue = (issue.issueKeywords || []).some(w => text.includes(w));
+    return { active: isIssue || (!isClear && text.length > 0), count: isIssue ? 1 : 0 };
+  }
+
+  return { active: false, count: 0 };
+}
+
+/**
+ * Build global issues summary with weekly trend.
+ */
+function buildGlobalIssues(rawData: Map<string, Map<string, Record<string, string | number>>>) {
+  const sortedDates = Array.from(rawData.keys()).sort();
+  if (sortedDates.length === 0) return [];
+
+  const latestDate = sortedDates[sortedDates.length - 1];
+  // Last 7 reporting days for trend
+  const recentDates = sortedDates.slice(-7);
+  const olderDates = sortedDates.slice(0, -7).slice(-7); // previous 7 for comparison
+
+  return GLOBAL_ISSUES.map(issue => {
+    // Today's value
+    const todayDeptFields = rawData.get(latestDate)?.get(issue.deptSlug) || {};
+    const todayVal = extractIssueValue(issue, todayDeptFields);
+
+    // Recent week totals
+    let recentTotal = 0;
+    let recentActiveDays = 0;
+    for (const date of recentDates) {
+      const fields = rawData.get(date)?.get(issue.deptSlug) || {};
+      const val = extractIssueValue(issue, fields);
+      recentTotal += val.count;
+      if (val.active) recentActiveDays++;
+    }
+
+    // Older week totals for comparison
+    let olderTotal = 0;
+    let olderActiveDays = 0;
+    for (const date of olderDates) {
+      const fields = rawData.get(date)?.get(issue.deptSlug) || {};
+      const val = extractIssueValue(issue, fields);
+      olderTotal += val.count;
+      if (val.active) olderActiveDays++;
+    }
+
+    // Trend: comparing recent week to older week
+    let trend: 'up' | 'down' | 'flat' = 'flat';
+    if (recentTotal > olderTotal) trend = 'up';
+    else if (recentTotal < olderTotal) trend = 'down';
+
+    return {
+      id: issue.id,
+      label: issue.label,
+      severity: issue.severity,
+      todayCount: todayVal.count,
+      todayActive: todayVal.active,
+      weekTotal: recentTotal,
+      weekActiveDays: recentActiveDays,
+      prevWeekTotal: olderTotal,
+      trend,
+    };
+  });
+}
+
+/**
+ * Build per-department signature KPI data with trend.
+ */
+function buildDeptKPIs(rawData: Map<string, Map<string, Record<string, string | number>>>) {
+  const sortedDates = Array.from(rawData.keys()).sort();
+  if (sortedDates.length === 0) return [];
+
+  const latestDate = sortedDates[sortedDates.length - 1];
+  // For trend: compare latest value to 7-day average
+  const recentDates = sortedDates.slice(-7);
+
+  return DEPARTMENT_KPIS.map(kpiDef => {
+    const latestFields = rawData.get(latestDate)?.get(kpiDef.slug) || {};
+    const latest = extractDeptKPI(kpiDef.slug, latestFields);
+
+    // Check if department submitted on the latest date
+    const submitted = rawData.get(latestDate)?.has(kpiDef.slug) || false;
+
+    // Compute 7-day average for numeric KPIs
+    let avg7d: number | null = null;
+    let trend: 'up' | 'down' | 'flat' = 'flat';
+
+    if (kpiDef.type === 'number') {
+      const recentValues: number[] = [];
+      for (const date of recentDates) {
+        const fields = rawData.get(date)?.get(kpiDef.slug);
+        if (fields) {
+          const kpiResult = extractDeptKPI(kpiDef.slug, fields);
+          if (kpiResult.value !== null) recentValues.push(kpiResult.value);
+        }
+      }
+      if (recentValues.length >= 2) {
+        avg7d = recentValues.reduce((s, v) => s + v, 0) / recentValues.length;
+        if (latest.value !== null) {
+          const diff = latest.value - avg7d;
+          const pct = avg7d !== 0 ? Math.abs(diff / avg7d) * 100 : 0;
+          if (pct > 5) trend = diff > 0 ? 'up' : 'down';
+        }
+      }
+    }
+
+    // Monthly submission count
+    let submissionCount = 0;
+    for (const [, deptMap] of rawData) {
+      if (deptMap.has(kpiDef.slug)) submissionCount++;
+    }
+
+    return {
+      slug: kpiDef.slug,
+      label: kpiDef.label,
+      unit: kpiDef.unit || null,
+      type: kpiDef.type,
+      invertTrend: kpiDef.invertTrend || false,
+      value: latest.value,
+      textValue: latest.textValue,
+      status: latest.status,
+      submitted,
+      submissionCount,
+      totalDays: sortedDates.length,
+      trend,
+      avg7d,
+    };
+  });
+}
+
+/**
+ * Build heatmap data: for each date, which department slugs submitted.
+ */
+function buildHeatmapData(rawData: Map<string, Map<string, Record<string, string | number>>>) {
+  const result: { date: string; slugs: string[] }[] = [];
+  const sortedDates = Array.from(rawData.keys()).sort();
+  for (const date of sortedDates) {
+    const deptMap = rawData.get(date)!;
+    result.push({ date, slugs: Array.from(deptMap.keys()) });
+  }
+  return result;
+}
+
 export async function GET(req: NextRequest) {
   const monthParam = req.nextUrl.searchParams.get('month'); // e.g., '2026-03'
 
@@ -283,13 +507,19 @@ export async function GET(req: NextRequest) {
   const prevDate = new Date(year, month - 2, 1); // month-2 because month is 1-based and we want previous
   const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
 
-  const [currentData, prevData] = await Promise.all([
+  const [currentData, prevData, currentRawData] = await Promise.all([
     getMonthData(currentMonth),
     getMonthData(prevMonth),
+    getRawDeptData(currentMonth),
   ]);
 
   const current = aggregateMonth(currentData);
   const previous = aggregateMonth(prevData);
+
+  // New: global issues, department KPIs, and heatmap data
+  const globalIssues = buildGlobalIssues(currentRawData);
+  const departmentKPIs = buildDeptKPIs(currentRawData);
+  const heatmapData = buildHeatmapData(currentRawData);
 
   // Get total available months for the month selector
   const monthsResult = await sql`
@@ -376,5 +606,9 @@ export async function GET(req: NextRequest) {
     weekStartDate: weekStartStr,
     weekDays,
     allDepartments: ALL_DEPARTMENTS,
+    // New sections for upgraded overview
+    globalIssues,
+    departmentKPIs,
+    heatmapData,
   });
 }
