@@ -97,6 +97,7 @@ interface ApiResponse {
 interface Props {
   onBack: () => void;
   onNavigateToDashboard: (date: string, slug: string) => void;
+  embedded?: boolean;
 }
 
 // ── Formatting Helpers ───────────────────────────────────────────────
@@ -688,7 +689,7 @@ function DataTable({ days, expanded, onToggle }: {
 
 // ── Main Component ───────────────────────────────────────────────────
 
-const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard }) => {
+const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard, embedded = false }) => {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -745,60 +746,73 @@ const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard }) => 
   const hasBrm = brmMonths && brmMonths.length > 0;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
-            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Finance Department Overview</h1>
-            <p className="text-sm text-slate-500">
-              {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} — {brmMonths[brmMonths.length - 1].label}</span>}
-              {hasBrm && summary.dateRange && ' · '}
-              {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} — {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
-            </p>
+    <div className={embedded ? 'space-y-5' : 'max-w-7xl mx-auto px-4 py-6 space-y-6'}>
+      {/* Header — hidden in embedded mode */}
+      {!embedded && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+              <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Finance Department Overview</h1>
+              <p className="text-sm text-slate-500">
+                {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} — {brmMonths[brmMonths.length - 1].label}</span>}
+                {hasBrm && summary.dateRange && ' · '}
+                {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} — {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Month range picker */}
-        {data.availableMonths.length > 0 && (
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedRange?.from || ''}
-              onChange={e => {
-                const from = e.target.value;
-                if (!from) { setSelectedRange(null); return; }
-                setSelectedRange(prev => ({ from, to: prev?.to || data.availableMonths[data.availableMonths.length - 1] }));
-              }}
-              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
-            >
-              <option value="">All time</option>
-              {data.availableMonths.map(m => (
-                <option key={m} value={m}>{formatFullMonth(m)}</option>
-              ))}
-            </select>
-            {selectedRange && (
-              <>
-                <span className="text-xs text-slate-400">to</span>
-                <select
-                  value={selectedRange.to}
-                  onChange={e => setSelectedRange(prev => prev ? { ...prev, to: e.target.value } : null)}
-                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
-                >
-                  {data.availableMonths.map(m => (
-                    <option key={m} value={m}>{formatFullMonth(m)}</option>
-                  ))}
-                </select>
-                <button onClick={() => setSelectedRange(null)} className="text-xs text-blue-600 hover:underline">Reset</button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+          {/* Month range picker */}
+          {data.availableMonths.length > 0 && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedRange?.from || ''}
+                onChange={e => {
+                  const from = e.target.value;
+                  if (!from) { setSelectedRange(null); return; }
+                  setSelectedRange(prev => ({ from, to: prev?.to || data.availableMonths[data.availableMonths.length - 1] }));
+                }}
+                className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+              >
+                <option value="">All time</option>
+                {data.availableMonths.map(m => (
+                  <option key={m} value={m}>{formatFullMonth(m)}</option>
+                ))}
+              </select>
+              {selectedRange && (
+                <>
+                  <span className="text-xs text-slate-400">to</span>
+                  <select
+                    value={selectedRange.to}
+                    onChange={e => setSelectedRange(prev => prev ? { ...prev, to: e.target.value } : null)}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                  >
+                    {data.availableMonths.map(m => (
+                      <option key={m} value={m}>{formatFullMonth(m)}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setSelectedRange(null)} className="text-xs text-blue-600 hover:underline">Reset</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Embedded mode: compact date range display */}
+      {embedded && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500">
+            {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} — {brmMonths[brmMonths.length - 1].label}</span>}
+            {hasBrm && summary.dateRange && ' · '}
+            {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} — {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
+          </p>
+        </div>
+      )}
 
       {/* ═══ TRACK TOGGLE ═══ */}
       {hasBrm && (
