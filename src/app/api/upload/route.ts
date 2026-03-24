@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { csvToDepartmentDataByDate } from '@/lib/parse-csv';
-import { upsertDepartmentData, loadDaySnapshot, saveDaySnapshot, saveSummaryFile } from '@/lib/storage';
+import { upsertDepartmentData, loadDaySnapshot, saveDaySnapshot, saveHuddleSummary } from '@/lib/storage';
 import { HuddleSummary } from '@/lib/types';
 import * as XLSX from 'xlsx';
 
@@ -30,23 +30,17 @@ export async function POST(req: NextRequest) {
         content = `[PDF file: ${file.name}]`;
       }
 
-      saveSummaryFile(targetDate, file.name, buffer);
-
-      let snapshot = loadDaySnapshot(targetDate);
-      if (!snapshot) {
-        snapshot = { date: targetDate, departments: [], huddleSummaries: [], updatedAt: new Date().toISOString() };
-      }
-
       const ext = filename.split('.').pop() || '';
       const fileType: HuddleSummary['type'] = (ext === 'md' || ext === 'txt') ? 'md' : ext === 'docx' ? 'docx' : 'pdf';
-      snapshot.huddleSummaries.push({
+
+      const summary: HuddleSummary = {
         filename: file.name,
         content,
         uploadedAt: new Date().toISOString(),
         type: fileType,
-      });
-      snapshot.updatedAt = new Date().toISOString();
-      saveDaySnapshot(snapshot);
+      };
+
+      await saveHuddleSummary(targetDate, summary);
 
       return NextResponse.json({ success: true, date: targetDate, filename: file.name });
     }
@@ -66,7 +60,7 @@ export async function POST(req: NextRequest) {
     const { deptName, slug, tab, byDate } = csvToDepartmentDataByDate(csvText, file.name);
     const dates: string[] = [];
     for (const [date, deptData] of byDate) {
-      upsertDepartmentData(date, deptData);
+      await upsertDepartmentData(date, deptData);
       dates.push(date);
     }
 
