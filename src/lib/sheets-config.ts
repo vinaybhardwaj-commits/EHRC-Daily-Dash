@@ -11,7 +11,7 @@ export const SHEET_TAB_MAP: Record<string, string> = {
   'finance': 'Finance',
   'billing': 'Billing',
   'supply-chain': 'Supply Chain',
-  'facilities': 'FMS',
+  'facility': 'FMS',
   'it': 'IT',
   'nursing': 'Nursing',
   'pharmacy': 'Pharmacy',
