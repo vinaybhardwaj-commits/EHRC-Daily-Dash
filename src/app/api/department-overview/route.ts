@@ -309,6 +309,142 @@ function aggregateBiomedicalMonth(month: string, days: BiomedicalDayData[]): Bio
   };
 }
 
+// ── Clinical Lab field extractors ────────────────────────────────────
+
+interface ClinicalLabDayData {
+  date: string;
+  outsourcedTestCount: number;
+  outsourcedRaw: string | null;
+  hasReagentShortage: boolean;
+  reagentText: string | null;
+  equipmentOk: boolean;
+  tatOnTarget: boolean;
+  hasSampleError: boolean;
+  sampleErrorText: string | null;
+  hasCriticalReport: boolean;
+  criticalReportText: string | null;
+  hasTransfusionActivity: boolean;
+  transfusionText: string | null;
+}
+
+function countOutsourcedTests(raw: string | null): number {
+  if (!raw) return 0;
+  const s = raw.trim();
+  if (/^(none|nil|na|no|0|not done)$/i.test(s) || s === '') return 0;
+  // Recent entries are just numbers
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  // Parse delimited test lists: split on + , / and count entries, respecting (N) multipliers
+  const parts = s.split(/[+,/]/);
+  let count = 0;
+  for (const p of parts) {
+    const t = p.trim();
+    if (!t || /^(none|nil|na)$/i.test(t)) continue;
+    const mult = t.match(/\((\d+)\)/);
+    count += mult ? parseInt(mult[1], 10) : 1;
+  }
+  return count;
+}
+
+function isNilText(text: string | null): boolean {
+  if (!text) return true;
+  const t = text.toLowerCase().trim();
+  return t === '' || /^(none|nil|na|no|0|not done|not received\.?)$/i.test(t);
+}
+
+function extractClinicalLabDay(date: string, fields: Record<string, string | number>): ClinicalLabDayData {
+  const outsourcedRaw = findField(fields, 'outsourced test', 'outsourced');
+  const reagentRaw = findField(fields, 'reagent');
+  const equipRaw = findField(fields, 'machine', 'equipment');
+  const tatRaw = findField(fields, 'tat', 'turnaround');
+  const errorRaw = findField(fields, 'recollection', 'reporting error', 'sample recollection');
+  const criticalRaw = findField(fields, 'critical report', 'critical');
+  const transRaw = findField(fields, 'transfusion', 'blood request');
+
+  const outsourcedStr = outsourcedRaw ? String(outsourcedRaw).trim() : null;
+  const reagentStr = reagentRaw ? String(reagentRaw).trim() : null;
+  const equipStr = equipRaw ? String(equipRaw).trim() : null;
+  const tatStr = tatRaw ? String(tatRaw).trim() : null;
+  const errorStr = errorRaw ? String(errorRaw).trim() : null;
+  const criticalStr = criticalRaw ? String(criticalRaw).trim() : null;
+  const transStr = transRaw ? String(transRaw).trim() : null;
+
+  // Reagent shortage: adequate/none = false, anything else = true
+  const hasReagentShortage = reagentStr !== null && !isNilText(reagentStr) &&
+    !/adequate|all reagent|available|sufficient/i.test(reagentStr);
+
+  // Equipment OK
+  const equipmentOk = !equipStr || /all equip|all machine|all the machine|functioning|working/i.test(equipStr);
+
+  // TAT on target
+  const tatOnTarget = !tatStr || /within|target|timely|qc done|following|fillowing/i.test(tatStr);
+
+  return {
+    date,
+    outsourcedTestCount: countOutsourcedTests(outsourcedStr),
+    outsourcedRaw: outsourcedStr,
+    hasReagentShortage,
+    reagentText: reagentStr,
+    equipmentOk,
+    tatOnTarget,
+    hasSampleError: !isNilText(errorStr),
+    sampleErrorText: isNilText(errorStr) ? null : errorStr,
+    hasCriticalReport: !isNilText(criticalStr) && !/^[01]$/.test(criticalStr?.trim() || ''),
+    criticalReportText: isNilText(criticalStr) ? null : criticalStr,
+    hasTransfusionActivity: !isNilText(transStr),
+    transfusionText: isNilText(transStr) ? null : transStr,
+  };
+}
+
+interface ClinicalLabMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalOutsourcedTests: number;
+  avgOutsourcedPerDay: number;
+  reagentShortageDays: number;
+  equipmentOkDays: number;
+  tatOnTargetDays: number;
+  sampleErrorCount: number;
+  criticalReportCount: number;
+  transfusionDays: number;
+  qualityScore: number;       // composite: (errorFreeDays + tatOnTarget + equipOk) / (3 * daysReported) * 100
+  reagentReliability: number; // % days without shortage
+}
+
+function aggregateClinicalLabMonth(month: string, days: ClinicalLabDayData[]): ClinicalLabMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const n = days.length;
+  const totalOutsourced = days.reduce((s, d) => s + d.outsourcedTestCount, 0);
+  const reagentShortageDays = days.filter(d => d.hasReagentShortage).length;
+  const equipmentOkDays = days.filter(d => d.equipmentOk).length;
+  const tatOnTargetDays = days.filter(d => d.tatOnTarget).length;
+  const sampleErrorCount = days.filter(d => d.hasSampleError).length;
+  const criticalReportCount = days.filter(d => d.hasCriticalReport).length;
+  const transfusionDays = days.filter(d => d.hasTransfusionActivity).length;
+
+  const errorFreeDays = n - sampleErrorCount;
+  const qualityScore = n > 0 ? ((errorFreeDays + tatOnTargetDays + equipmentOkDays) / (3 * n)) * 100 : 0;
+  const reagentReliability = n > 0 ? ((n - reagentShortageDays) / n) * 100 : 0;
+
+  return {
+    month, label, daysReported: n,
+    totalOutsourcedTests: totalOutsourced,
+    avgOutsourcedPerDay: n > 0 ? totalOutsourced / n : 0,
+    reagentShortageDays,
+    equipmentOkDays,
+    tatOnTargetDays,
+    sampleErrorCount,
+    criticalReportCount,
+    transfusionDays,
+    qualityScore,
+    reagentReliability,
+  };
+}
+
 // ── Monthly aggregation ─────────────────────────────────────────────
 
 interface MonthSummary {
@@ -465,8 +601,8 @@ export async function GET(req: NextRequest) {
   }
 
   // Currently finance, billing, and biomedical are supported
-  if (slug !== 'finance' && slug !== 'billing' && slug !== 'biomedical') {
-    return NextResponse.json({ error: 'Only finance, billing, and biomedical department overviews are currently available' }, { status: 400 });
+  if (!['finance', 'billing', 'biomedical', 'clinical-lab'].includes(slug)) {
+    return NextResponse.json({ error: 'Department overview not yet available for this department' }, { status: 400 });
   }
 
   try {
@@ -503,8 +639,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -621,6 +757,41 @@ export async function GET(req: NextRequest) {
 
       allDays = biomedicalDays;
       months = biomedicalMonths;
+    } else if (slug === 'clinical-lab') {
+      const clinicalLabDays: ClinicalLabDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+        const dayData = extractClinicalLabDay(date, mergedFields);
+        clinicalLabDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      const byMonth = new Map<string, ClinicalLabDayData[]>();
+      for (const d of clinicalLabDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const clinicalLabMonths: ClinicalLabMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        clinicalLabMonths.push(aggregateClinicalLabMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = clinicalLabDays;
+      months = clinicalLabMonths;
     }
 
     // Get sorted months list
@@ -834,6 +1005,33 @@ export async function GET(req: NextRequest) {
         months: biomedicalMonths,
         availableMonths: sortedMonths,
         allDays: biomedicalDays,
+      });
+    } else if (slug === 'clinical-lab') {
+      // ── Clinical Lab summary ──────────────────────────────────────
+      const clMonths = months as ClinicalLabMonthSummary[];
+      const clDays = allDays as ClinicalLabDayData[];
+
+      const summary = {
+        totalDaysReported: clDays.length,
+        dateRange: clDays.length > 0 ? { from: clDays[0].date, to: clDays[clDays.length - 1].date } : null,
+        totalOutsourcedTests: clDays.reduce((s, d) => s + d.outsourcedTestCount, 0),
+        totalSampleErrors: clDays.filter(d => d.hasSampleError).length,
+        totalCriticalReports: clDays.filter(d => d.hasCriticalReport).length,
+        totalTransfusionDays: clDays.filter(d => d.hasTransfusionActivity).length,
+        overallQualityScore: clMonths.length > 0 ? clMonths.reduce((s, m) => s + m.qualityScore, 0) / clMonths.length : 0,
+        overallReagentReliability: clMonths.length > 0 ? clMonths.reduce((s, m) => s + m.reagentReliability, 0) / clMonths.length : 0,
+        tatComplianceRate: clDays.length > 0 ? (clDays.filter(d => d.tatOnTarget).length / clDays.length) * 100 : 0,
+        equipmentUptimeRate: clDays.length > 0 ? (clDays.filter(d => d.equipmentOk).length / clDays.length) * 100 : 0,
+        errorRate: clDays.length > 0 ? (clDays.filter(d => d.hasSampleError).length / clDays.length) * 100 : 0,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Clinical Lab',
+        summary,
+        months: clMonths,
+        availableMonths: sortedMonths,
+        allDays: clDays,
       });
     }
   } catch (err) {
