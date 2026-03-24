@@ -20,8 +20,9 @@ export default function FormPage({ params }: PageProps) {
   useEffect(() => {
     params.then(p => {
       setSlug(p.slug);
+      // Auto-fill date in DD-MM-YYYY format (IST timezone)
       const now = new Date();
-      const istOffset = 5.5 * 60;
+      const istOffset = 5.5 * 60; // IST is UTC+5:30
       const istDate = new Date(now.getTime() + (istOffset * 60 * 1000) - (now.getTimezoneOffset() * 60 * 1000));
       const dd = String(istDate.getUTCDate()).padStart(2, '0');
       const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
@@ -42,22 +43,27 @@ export default function FormPage({ params }: PageProps) {
         </div>
         <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">The form \"{slug}\" could not be found.</p>
+            <p className="text-red-800">The form "{slug}" could not be found.</p>
           </div>
         </div>
       </div>
     );
   }
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
+
     form.sections.forEach(section => {
       section.fields.forEach(field => {
         if (field.type === 'section') return;
+
         const value = formData[field.id];
         const isEmpty = value === '' || value === undefined || value === null;
+
         if (field.required && isEmpty) {
           newErrors[field.id] = `${field.label} is required`;
         }
+
         if (field.type === 'number' && value !== '' && value !== undefined && value !== null) {
           const num = typeof value === 'string' ? parseFloat(value) : value;
           if (isNaN(num)) {
@@ -73,6 +79,7 @@ export default function FormPage({ params }: PageProps) {
         }
       });
     });
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -91,22 +98,36 @@ export default function FormPage({ params }: PageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
-    if (!validateForm()) return;
+
+    if (!validateForm()) {
+      return;
+    }
+
     setSubmitting(true);
+
     try {
       const response = await fetch('/api/form-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, date: formData.date as string, fields: formData }),
+        body: JSON.stringify({
+          slug,
+          date: formData.date as string,
+          fields: formData,
+        }),
       });
+
       const data = await response.json();
+
       if (!response.ok) {
         setSubmitError(data.error || 'Failed to submit form');
         setSubmitting(false);
         return;
       }
+
       setSubmitted(true);
       setSubmitting(false);
+
+      // Reset form after 3 seconds
       setTimeout(() => {
         setSubmitted(false);
         setFormData({ date: formData.date });
@@ -116,6 +137,7 @@ export default function FormPage({ params }: PageProps) {
       setSubmitting(false);
     }
   };
+
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -128,8 +150,12 @@ export default function FormPage({ params }: PageProps) {
           <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
             <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-green-800 mb-2">Form Submitted Successfully</h2>
-            <p className="text-green-700 mb-4">Your {form.department} department form has been recorded.</p>
-            <p className="text-sm text-green-600">Redirecting in a moment...</p>
+            <p className="text-green-700 mb-4">
+              Your {form.department} department form has been recorded.
+            </p>
+            <p className="text-sm text-green-600">
+              Redirecting in a moment...
+            </p>
           </div>
         </div>
       </div>
@@ -148,10 +174,12 @@ export default function FormPage({ params }: PageProps) {
 
       {/* Main Content */}
       <div className="max-w-2xl mx-auto px-4 py-8">
+        {/* Description */}
         <div className="bg-white rounded-lg p-6 mb-6 border border-gray-200">
           <p className="text-gray-700 whitespace-pre-line">{form.description}</p>
         </div>
 
+        {/* Error Alert */}
         {submitError && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex gap-3">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -161,30 +189,39 @@ export default function FormPage({ params }: PageProps) {
             </div>
           </div>
         )}
+
+        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           {form.sections.map((section, sectionIdx) => (
             <div key={sectionIdx}>
+              {/* Section Header */}
               <div className="mb-4">
                 <h2 className="text-lg font-bold text-gray-900">{section.title}</h2>
                 {section.description && (
                   <p className="text-sm text-gray-600 mt-1">{section.description}</p>
                 )}
               </div>
+
+              {/* Section Fields */}
               <div className="bg-white rounded-lg p-6 border border-gray-200 space-y-5">
                 {section.fields.map(field => {
                   if (field.type === 'section') return null;
+
                   const value = formData[field.id] ?? '';
                   const error = errors[field.id];
                   const hasError = !!error;
+
                   return (
                     <div key={field.id}>
                       <label htmlFor={field.id} className="block text-sm font-medium text-gray-700 mb-2">
                         {field.label}
                         {field.required && <span className="text-red-600 ml-1">*</span>}
                       </label>
+
                       {field.description && (
                         <p className="text-xs text-gray-600 mb-2">{field.description}</p>
                       )}
+
                       {field.type === 'text' && (
                         <input
                           id={field.id}
@@ -192,11 +229,14 @@ export default function FormPage({ params }: PageProps) {
                           value={value}
                           onChange={e => handleChange(field.id, e.target.value)}
                           className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                            hasError ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-white'
+                            hasError
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-gray-300 bg-white'
                           }`}
                           disabled={field.id === 'date'}
                         />
                       )}
+
                       {field.type === 'number' && (
                         <input
                           id={field.id}
@@ -206,10 +246,13 @@ export default function FormPage({ params }: PageProps) {
                           min={field.validation?.min}
                           max={field.validation?.max}
                           className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                            hasError ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-white'
+                            hasError
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-gray-300 bg-white'
                           }`}
                         />
                       )}
+
                       {field.type === 'paragraph' && (
                         <textarea
                           id={field.id}
@@ -217,10 +260,13 @@ export default function FormPage({ params }: PageProps) {
                           onChange={e => handleChange(field.id, e.target.value)}
                           rows={4}
                           className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                            hasError ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-white'
+                            hasError
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-gray-300 bg-white'
                           }`}
                         />
                       )}
+
                       {field.type === 'radio' && field.options && (
                         <div className="space-y-2">
                           {field.options.map(option => (
@@ -238,6 +284,7 @@ export default function FormPage({ params }: PageProps) {
                           ))}
                         </div>
                       )}
+
                       {hasError && (
                         <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
@@ -251,6 +298,7 @@ export default function FormPage({ params }: PageProps) {
             </div>
           ))}
 
+          {/* Submit Button */}
           <div className="flex gap-3">
             <button
               type="submit"

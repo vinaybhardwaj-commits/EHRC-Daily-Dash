@@ -15,13 +15,13 @@ interface DepartmentEntry {
 // Normalize date to YYYY-MM-DD format
 function normalizeDate(dateStr: string): string {
   // Try DD-MM-YYYY format
-  const ddmmyyyy = /^(\d{2})[\/-](\d{2})[\/-](\d{4})$/.exec(dateStr);
+  const ddmmyyyy = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(dateStr);
   if (ddmmyyyy) {
     return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
   }
 
   // Try YYYY-MM-DD format
-  const yyyymmdd = /^(\d{4})[\/-](\d{2})[\/-](\d{2})$/.exec(dateStr);
+  const yyyymmdd = /^(\d{4})[/-](\d{2})[/-](\d{2})$/.exec(dateStr);
   if (yyyymmdd) {
     return `${yyyymmdd[1]}-${yyyymmdd[2]}-${yyyymmdd[3]}`;
   }
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const form = FORMS_BY_SLUG[slug];
     if (!form) {
       return Response.json(
-        { error: `Form with slug \"${slug}\" not found` },
+        { error: `Form with slug "${slug}" not found` },
         { status: 400 }
       );
     }

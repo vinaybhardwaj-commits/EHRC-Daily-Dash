@@ -6,13 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "tsx scripts/seed.ts",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed-from-sheets.ts"
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@types/papaparse": "^5.5.2",
-    "@vercel/postgres": "^0.10.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.0.0",
     "mammoth": "^1.12.0",
@@ -20,17 +17,18 @@
     "papaparse": "^5.5.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "@vercel/postgres": "^0.10.0",
     "resend": "^4.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "postcss": "^8.0.0",
     "tailwindcss": "^4.0.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.0.0"
+    "@tailwindcss/postcss": "^4.0.0",
+    "postcss": "^8.0.0",
+    "typescript": "^5.0.0",
+    "tsx": "^4.21.0"
   }
 }

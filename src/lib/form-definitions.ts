@@ -1,12 +1,15 @@
-// Complete form definitions extracted from all 17 Google Forms
-// Each department has sections with fields, types, and required status
+export type FieldType = 'text' | 'number' | 'paragraph' | 'radio' | 'section';
 
 export interface FormField {
-  name: string;
-  type: 'number' | 'text' | 'paragraph' | 'radio';
+  id: string;           // camelCase identifier
+  label: string;        // display label
+  name?: string;        // alias for label (populated by enrichField)
+  description?: string; // help text
+  helper?: string;      // alias for description (populated by enrichField)
+  type: FieldType;
   required: boolean;
-  helper?: string;
-  options?: string[]; // for radio fields
+  options?: string[];   // for radio type only
+  validation?: { min?: number; max?: number }; // for number fields with range
 }
 
 export interface FormSection {
@@ -15,690 +18,1419 @@ export interface FormSection {
   fields: FormField[];
 }
 
-export interface DepartmentFormDef {
-  name: string;
+export interface DepartmentForm {
   slug: string;
-  tab: string;
+  title: string;
+  department: string;
+  name?: string;         // alias for department (populated by enrichForm)
+  tab?: string;          // Google Sheet tab name (populated by enrichForm)
   description: string;
-  owner?: string;
   sections: FormSection[];
-  kpiFields: string[]; // fields to show as KPI cards
-  trendFields: string[]; // numeric fields to chart over time
+  kpiFields?: string[];  // field labels to show as KPI cards (populated by enrichForm)
 }
 
-export const FORM_DEFINITIONS: DepartmentFormDef[] = [
-  {
-    name: 'Emergency',
-    slug: 'emergency',
-    tab: 'ED',
-    description: 'Keep genuine emergencies and planned admissions separate.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: '# of genuine walk-in / ambulance emergencies (last 24h)', type: 'number', required: true, helper: 'Do NOT include planned admissions routed through ED' },
-          { name: '# of after-hours planned admissions routed through ED', type: 'number', required: true, helper: 'Estimate from night register' },
-          { name: 'Door-to-doctor TAT — emergencies only (average minutes, last 24h)', type: 'number', required: true, helper: 'Exclude planned admissions' },
-          { name: '# of patients Left Without Being Seen / LWBS', type: 'number', required: true, helper: 'Enter 0 if none' },
-          { name: '# of Deaths', type: 'number', required: true, helper: 'Enter 0 if none' },
-          { name: '# of MLC cases registered', type: 'number', required: true, helper: 'Enter 0 if none' },
-          { name: 'Triage L1 + L2 count (critical / emergent cases only)', type: 'number', required: true },
-          { name: 'ED revenue today (Rs.)', type: 'number', required: true, helper: 'Total ED billing for the day' },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: '# of LAMA / DAMA', type: 'number', required: false },
-          { name: '# of Critical alerts (Code Blue / Red / Yellow)', type: 'number', required: false },
-          { name: '# of ED incident reports', type: 'number', required: false, helper: 'Near miss or sentinel events' },
-          { name: 'Anticipated challenges / other notes', type: 'paragraph', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of genuine walk-in / ambulance emergencies (last 24h)',
-      'Triage L1 + L2 count (critical / emergent cases only)',
-      'Door-to-doctor TAT — emergencies only (average minutes, last 24h)',
-      '# of Deaths',
-      '# of Critical alerts (Code Blue / Red / Yellow)',
-      'ED revenue today (Rs.)',
-    ],
-    trendFields: [
-      '# of genuine walk-in / ambulance emergencies (last 24h)',
-      'ED revenue today (Rs.)',
-      'Triage L1 + L2 count (critical / emergent cases only)',
-    ],
-  },
-  {
-    name: 'Customer Care',
-    slug: 'customer-care',
-    tab: 'Customer Care',
-    description: 'OPD volumes, complaints, doctor punctuality, reputation.',
-    owner: 'Lavanya',
-    sections: [
-      {
-        title: 'OPD Volumes',
-        description: "Yesterday's appointment and attendance numbers.",
-        fields: [
-          { name: '# of OPD appointments — in-person', type: 'number', required: true, helper: 'Total scheduled in-person OPD appointments for the day' },
-          { name: '# of OPD appointments — tele', type: 'number', required: true, helper: 'Total scheduled tele-consultation appointments' },
-          { name: '# of OPD no-shows (patients who booked but did not arrive)', type: 'number', required: true, helper: 'Check appointment register vs actual attendance. Enter 0 if none.' },
-          { name: '# of patients who left OPD without being seen (gave up waiting)', type: 'number', required: true, helper: 'Use tally mark sheet at front desk. Enter 0 if none.' },
-          { name: '# of patients waiting > 10 min in OPD (at peak)', type: 'number', required: true, helper: 'Approximate count at busiest point of the day' },
-          { name: '# of Health check appointments', type: 'number', required: true, helper: 'Enter 0 if none' },
-        ],
-      },
-      {
-        title: 'Complaints',
-        description: 'Track the flow — not just the pile. New vs closed tells us if we are keeping up.',
-        fields: [
-          { name: '# of new complaints received today', type: 'number', required: true, helper: 'All channels: in-person, phone, WhatsApp, online. Enter 0 if none.' },
-          { name: '# of complaints closed / resolved today', type: 'number', required: true, helper: 'Enter 0 if none' },
-          { name: '# of total complaints currently pending resolution', type: 'number', required: true, helper: 'Running total from your register' },
-          { name: 'Age of oldest open complaint (days)', type: 'number', required: true, helper: 'How many days has the oldest unresolved complaint been open? Enter 0 if no pending complaints.' },
-          { name: '# of customer escalations (complaints escalated to senior management)', type: 'number', required: true, helper: 'Enter 0 if none' },
-        ],
-      },
-      {
-        title: 'Doctor Punctuality',
-        description: 'Tracks patient impact — not just whether doctors were late.',
-        fields: [
-          { name: 'Doctors on leave today (names, or write NIL)', type: 'text', required: true, helper: 'So patients calling to book are informed proactively' },
-          { name: 'Doctors late > 10 min (names, or write NIL)', type: 'text', required: true },
-          { name: '# of patients affected by doctor delays (kept waiting due to late/absent doctor)', type: 'number', required: true, helper: 'Approximate count. Enter 0 if none.' },
-        ],
-      },
-      {
-        title: 'Reputation',
-        description: 'Google is our public scorecard. Rating matters as much as count.',
-        fields: [
-          { name: '# of Google Reviews received today', type: 'number', required: true, helper: 'Enter 0 if none' },
-          { name: 'Average star rating of new Google Reviews (1–5, enter 0 if no reviews today)', type: 'number', required: true, helper: 'Check Google Business profile.' },
-          { name: '# of Video Testimonials collected', type: 'number', required: true, helper: 'Enter 0 if none' },
-        ],
-      },
-      {
-        title: 'Optional — Alerts & Notes',
-        fields: [
-          { name: 'VIP / International patient alerts', type: 'text', required: false, helper: 'Names, special requirements, or expected arrival time' },
-          { name: 'Call centre / front office performance note', type: 'text', required: false, helper: 'Any issues with call handling, response time, or staff concerns' },
-          { name: 'Any other notes', type: 'paragraph', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of OPD appointments — in-person',
-      '# of OPD no-shows (patients who booked but did not arrive)',
-      '# of new complaints received today',
-      '# of total complaints currently pending resolution',
-      '# of Google Reviews received today',
-      '# of patients affected by doctor delays (kept waiting due to late/absent doctor)',
-    ],
-    trendFields: [
-      '# of OPD appointments — in-person',
-      '# of new complaints received today',
-      '# of complaints closed / resolved today',
-      '# of Google Reviews received today',
-    ],
-  },
-  {
-    name: 'Patient Safety & Quality',
-    slug: 'patient-safety',
-    tab: 'Patient Safety',
-    description: 'Incident reporting, RCA follow-through, HAI bundle compliance, NABH audit status.',
-    owner: 'Dr. Ankita Priya',
-    sections: [
-      {
-        title: 'Incident Reporting',
-        description: 'Report ALL incidents — near misses included. High near-miss reporting = healthy safety culture.',
-        fields: [
-          { name: '# of Near-miss incidents reported today', type: 'number', required: true, helper: 'Near misses = caught before reaching patient.' },
-          { name: '# of Adverse events reported today', type: 'number', required: true, helper: 'Adverse = reached patient, caused some harm.' },
-          { name: '# of Sentinel events reported today', type: 'number', required: true, helper: 'Sentinel = serious harm, death, or never-event.' },
-          { name: '# of Patient falls today', type: 'number', required: true, helper: 'Includes all falls regardless of severity.' },
-          { name: '# of Medication errors today', type: 'number', required: true, helper: 'Wrong drug / dose / route / patient / time. Enter 0 if none.' },
-          { name: 'Under-reporting flag — any incident type you suspect was not reported today? (write NIL if none)', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'RCA & Follow-Through',
-        description: 'The biggest patient safety gap is not incidents — it is incidents with no follow-through.',
-        fields: [
-          { name: '# of open RCAs currently in progress (total pending)', type: 'number', required: true },
-          { name: '# of open RCAs past their due date', type: 'number', required: true, helper: 'Due dates: Near-miss = 72h, Adverse = 7 days, Sentinel = 24h.' },
-          { name: '# of corrective actions closed today', type: 'number', required: true },
-          { name: 'RCA summary — any new RCA initiated or closed today? (brief details, or write NIL)', type: 'paragraph', required: true },
-        ],
-      },
-      {
-        title: 'HAI Bundle Compliance',
-        description: 'Daily bundle compliance is the best leading indicator for HAI rates.',
-        fields: [
-          { name: 'Central Line bundle compliance today (CLABSI prevention)', type: 'radio', required: true, options: ['Yes — full compliance', 'Partial — some steps missed', 'No — bundle not followed', 'N/A — no patients on this device today'] },
-          { name: 'Urinary Catheter bundle compliance today (CAUTI prevention)', type: 'radio', required: true, options: ['Yes — full compliance', 'Partial — some steps missed', 'No — bundle not followed', 'N/A — no patients on this device today'] },
-          { name: 'Ventilator bundle compliance today (VAP prevention)', type: 'radio', required: true, options: ['Yes — full compliance', 'Partial — some steps missed', 'No — bundle not followed', 'N/A — no patients on this device today'] },
-          { name: 'Surgical site care bundle compliance today (SSI prevention)', type: 'radio', required: true, options: ['Yes — full compliance', 'Partial — some steps missed', 'No — bundle not followed', 'N/A — no patients on this device today'] },
-        ],
-      },
-      {
-        title: 'NABH & Audit Status',
-        description: 'Track the flow of non-compliances — not just that they exist.',
-        fields: [
-          { name: '# of new NABH non-compliances identified today', type: 'number', required: true },
-          { name: '# of NABH non-compliances closed today', type: 'number', required: true },
-          { name: '# of total open NABH non-compliances (running total)', type: 'number', required: true, helper: 'This number should trend downward over time.' },
-          { name: '# of open audit findings past their due date', type: 'number', required: true },
-          { name: 'Clinical audit status today', type: 'radio', required: true, options: ['On track', 'Delayed — minor', 'Delayed — needs escalation', 'Not applicable today'] },
-          { name: 'Non-clinical audit status today', type: 'radio', required: true, options: ['On track', 'Delayed — minor', 'Delayed — needs escalation', 'Not applicable today'] },
-        ],
-      },
-      {
-        title: 'Safety Communication',
-        description: 'NABH requires documented daily safety communication.',
-        fields: [
-          { name: '# of staff who received a safety briefing or communication today', type: 'number', required: true },
-          { name: 'Topic of safety communication today (or write NIL)', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Any other quality / safety notes', type: 'paragraph', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of Near-miss incidents reported today',
-      '# of Adverse events reported today',
-      '# of Sentinel events reported today',
-      '# of open RCAs past their due date',
-      '# of total open NABH non-compliances (running total)',
-      '# of Medication errors today',
-    ],
-    trendFields: [
-      '# of Near-miss incidents reported today',
-      '# of Adverse events reported today',
-      '# of total open NABH non-compliances (running total)',
-      '# of corrective actions closed today',
-    ],
-  },
-  {
-    name: 'Finance',
-    slug: 'finance',
-    tab: 'Finance',
-    description: 'Revenue, census, surgeries, ARPOB.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Revenue for the day (Rs.)', type: 'number', required: true },
-          { name: 'Total revenue MTD (Rs.)', type: 'number', required: true },
-          { name: 'Midnight census — total IP patients', type: 'number', required: true },
-          { name: 'Surgeries MTD', type: 'number', required: true },
-          { name: 'ARPOB — Avg Revenue Per Occupied Bed (Rs.)', type: 'number', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'OPD revenue MTD (Rs.)', type: 'number', required: false },
-          { name: 'Revenue leakage alerts', type: 'text', required: false },
-          { name: 'Other finance notes', type: 'paragraph', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Revenue for the day (Rs.)',
-      'Total revenue MTD (Rs.)',
-      'Midnight census — total IP patients',
-      'Surgeries MTD',
-      'ARPOB — Avg Revenue Per Occupied Bed (Rs.)',
-      'OPD revenue MTD (Rs.)',
-    ],
-    trendFields: [
-      'Revenue for the day (Rs.)',
-      'Total revenue MTD (Rs.)',
-      'Midnight census — total IP patients',
-      'ARPOB — Avg Revenue Per Occupied Bed (Rs.)',
-    ],
-  },
-  {
-    name: 'Billing',
-    slug: 'billing',
-    tab: 'Billing',
-    description: 'Pipeline cases, billing clearance, counselling.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: '# of Pipeline cases (active, pending billing)', type: 'number', required: true },
-          { name: '# of OT cases with billing clearance pending', type: 'number', required: true },
-          { name: '# of DAMA / LAMA', type: 'number', required: true },
-          { name: '# of Financial counselling sessions done today', type: 'number', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: '# of Interim financial counselling done', type: 'number', required: false },
-          { name: 'ICU / NICU census', type: 'number', required: false },
-          { name: 'Surgeries planned for next day (details)', type: 'paragraph', required: false },
-          { name: 'High-risk patient alerts', type: 'paragraph', required: false },
-          { name: '# of IP admissions where prior OPD / doctor consultation existed (planned, routed via ED after hours)', type: 'number', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of Pipeline cases (active, pending billing)',
-      '# of OT cases with billing clearance pending',
-      '# of DAMA / LAMA',
-      '# of Financial counselling sessions done today',
-    ],
-    trendFields: [
-      '# of Pipeline cases (active, pending billing)',
-      '# of Financial counselling sessions done today',
-    ],
-  },
-  {
-    name: 'Supply Chain & Procurement',
-    slug: 'supply-chain',
-    tab: 'Supply Chain',
-    description: 'Stock availability, GRNs, POs, emergency procurement.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Critical stock availability (status)', type: 'text', required: true },
-          { name: '# of GRN prepared', type: 'number', required: true },
-          { name: '# of PO issued', type: 'number', required: true },
-          { name: '# of items procured in emergency / after 5pm', type: 'number', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Shortages / backorders', type: 'text', required: false },
-          { name: 'Procurement escalations', type: 'text', required: false },
-          { name: 'High-value purchase alerts', type: 'text', required: false },
-          { name: 'Pending consumption reporting issues by dept', type: 'paragraph', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Critical stock availability (status)',
-      '# of GRN prepared',
-      '# of PO issued',
-      '# of items procured in emergency / after 5pm',
-    ],
-    trendFields: [
-      '# of GRN prepared',
-      '# of PO issued',
-      '# of items procured in emergency / after 5pm',
-    ],
-  },
-  {
-    name: 'Facility',
-    slug: 'facility',
-    tab: 'FMS',
-    description: 'Facility readiness, safety, housekeeping.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Facility readiness — power / water / gases', type: 'text', required: true },
-          { name: 'Safety issues', type: 'text', required: true },
-          { name: 'Housekeeping & room readiness', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Preventive maintenance update', type: 'text', required: false },
-          { name: 'Other notes', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Facility readiness — power / water / gases',
-      'Safety issues',
-      'Housekeeping & room readiness',
-    ],
-    trendFields: [],
-  },
-  {
-    name: 'Pharmacy',
-    slug: 'pharmacy',
-    tab: 'Pharmacy',
-    description: 'Revenue (IP/OP), stockouts, stock values.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Pharmacy revenue — IP today (Rs.)', type: 'number', required: true },
-          { name: 'Pharmacy revenue — OP today (Rs.)', type: 'number', required: true },
-          { name: 'Pharmacy revenue MTD (Rs.)', type: 'number', required: true },
-          { name: 'Stockouts / shortages', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Medicine stock value — IP (Rs.)', type: 'number', required: false },
-          { name: 'Medicine stock value — OP (Rs.)', type: 'number', required: false },
-          { name: 'Items expiring within 3 months', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Pharmacy revenue — IP today (Rs.)',
-      'Pharmacy revenue — OP today (Rs.)',
-      'Pharmacy revenue MTD (Rs.)',
-      'Stockouts / shortages',
-    ],
-    trendFields: [
-      'Pharmacy revenue — IP today (Rs.)',
-      'Pharmacy revenue — OP today (Rs.)',
-      'Pharmacy revenue MTD (Rs.)',
-    ],
-  },
-  {
-    name: 'Clinical Lab',
-    slug: 'clinical-lab',
-    tab: 'Clinical Lab',
-    description: 'Equipment status, critical reports, TAT, transfusion.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Machine & equipment status', type: 'text', required: true },
-          { name: '# of Critical reports issued', type: 'number', required: true },
-          { name: 'TAT performance', type: 'text', required: true },
-          { name: 'Transfusion / blood request issues', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: '# of Outsourced tests MTD', type: 'number', required: false },
-          { name: 'Reagent shortages', type: 'text', required: false },
-          { name: 'Sample recollection / reporting errors', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of Critical reports issued',
-      'TAT performance',
-      'Machine & equipment status',
-      '# of Outsourced tests MTD',
-    ],
-    trendFields: [
-      '# of Critical reports issued',
-      '# of Outsourced tests MTD',
-    ],
-  },
-  {
-    name: 'Radiology',
-    slug: 'radiology',
-    tab: 'Radiology',
-    description: 'Case volumes (X-Ray/USG/CT), equipment uptime, reporting.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: '# of X-Ray cases (yesterday)', type: 'number', required: true },
-          { name: '# of USG cases (yesterday)', type: 'number', required: true },
-          { name: '# of CT cases (yesterday)', type: 'number', required: true },
-          { name: 'Equipment status — CT / MRI / USG uptime', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: '# of Reports done in-house', type: 'number', required: false },
-          { name: 'Pending reports — critical / non-critical', type: 'text', required: false },
-          { name: 'Critical results escalated within TAT', type: 'text', required: false },
-          { name: 'Film / contrast stock status', type: 'text', required: false },
-          { name: 'Radiation safety log', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of X-Ray cases (yesterday)',
-      '# of USG cases (yesterday)',
-      '# of CT cases (yesterday)',
-      '# of Reports done in-house',
-    ],
-    trendFields: [
-      '# of X-Ray cases (yesterday)',
-      '# of USG cases (yesterday)',
-      '# of CT cases (yesterday)',
-    ],
-  },
-  {
-    name: 'OT',
-    slug: 'ot',
-    tab: 'OT',
-    description: 'Cases done, first case delay, surgeon escalations.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: '# of OT cases done (yesterday)', type: 'number', required: true },
-          { name: 'First case delay — time in minutes', type: 'number', required: true },
-          { name: 'First case delay — reason', type: 'text', required: true },
-          { name: '# of Escalations by surgeon', type: 'number', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: '# of times team left OT for consumables', type: 'number', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      '# of OT cases done (yesterday)',
-      'First case delay — time in minutes',
-      '# of Escalations by surgeon',
-      '# of times team left OT for consumables',
-    ],
-    trendFields: [
-      '# of OT cases done (yesterday)',
-      'First case delay — time in minutes',
-    ],
-  },
-  {
-    name: 'HR & Manpower',
-    slug: 'hr-manpower',
-    tab: 'Human Resources',
-    description: 'Joiners, exits, replacement status, training.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'New joiners today (names / nil)', type: 'text', required: true },
-          { name: 'Resignations / exits today (names / nil)', type: 'text', required: true },
-          { name: 'Replacement status', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Mandatory training / induction status', type: 'text', required: false },
-          { name: 'New doctor profile creation status', type: 'text', required: false },
-          { name: 'Other notes', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'New joiners today (names / nil)',
-      'Resignations / exits today (names / nil)',
-      'Replacement status',
-    ],
-    trendFields: [],
-  },
-  {
-    name: 'Training',
-    slug: 'training',
-    tab: 'Training',
-    description: 'Daily training conducted, participants, MTD progress.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Training conducted today (topic)', type: 'text', required: true },
-          { name: '# of participants', type: 'number', required: true },
-          { name: 'MTD trainings completed vs planned', type: 'text', required: true },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Training conducted today (topic)',
-      '# of participants',
-      'MTD trainings completed vs planned',
-    ],
-    trendFields: [
-      '# of participants',
-    ],
-  },
-  {
-    name: 'Diet',
-    slug: 'diet',
-    tab: 'Clinical Nutrition, F&B',
-    description: 'Diet census, BCA, food feedback.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Daily census — diet patients', type: 'number', required: true },
-          { name: 'BCA done today', type: 'number', required: true },
-          { name: 'BCA MTD total', type: 'number', required: true },
-          { name: 'Food feedback summary', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Discharge plan completed with diet', type: 'text', required: false },
-          { name: 'Kitchen update', type: 'text', required: false },
-          { name: 'Delays / incidents', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Daily census — diet patients',
-      'BCA done today',
-      'BCA MTD total',
-      'Food feedback summary',
-    ],
-    trendFields: [
-      'Daily census — diet patients',
-      'BCA done today',
-      'BCA MTD total',
-    ],
-  },
-  {
-    name: 'Biomedical',
-    slug: 'biomedical',
-    tab: 'Biomedical',
-    description: 'Equipment readiness, breakdowns, repairs, PM compliance.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Equipment readiness — OT, ICU, etc.', type: 'text', required: true },
-          { name: 'Breakdown updates', type: 'text', required: true },
-          { name: 'Pending repairs', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Preventive maintenance compliance', type: 'text', required: false },
-          { name: 'Other notes', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Equipment readiness — OT, ICU, etc.',
-      'Breakdown updates',
-      'Pending repairs',
-    ],
-    trendFields: [],
-  },
-  {
-    name: 'Nursing',
-    slug: 'nursing',
-    tab: 'Nursing',
-    description: 'Census, staffing, escalations, HAI/IPC status.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'Midnight census — patient count', type: 'number', required: true },
-          { name: 'Staffing matrix — nurses on duty', type: 'number', required: true },
-          { name: 'Escalations / concerns', type: 'paragraph', required: true },
-          { name: 'Daily HAI/IPC status (CLABSI,VAP,CAUTI,SSI)', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Patient complaints & satisfaction', type: 'text', required: false },
-          { name: 'Infection control update', type: 'text', required: false },
-          { name: 'Biomedical waste incidents', type: 'number', required: false },
-          { name: 'Cafeteria / dialysis update', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'Midnight census — patient count',
-      'Staffing matrix — nurses on duty',
-      'Daily HAI/IPC status (CLABSI,VAP,CAUTI,SSI)',
-    ],
-    trendFields: [
-      'Midnight census — patient count',
-      'Staffing matrix — nurses on duty',
-    ],
-  },
-  {
-    name: 'IT',
-    slug: 'it',
-    tab: 'IT',
-    description: 'HIS uptime, tickets, upgrades, integrations.',
-    sections: [
-      {
-        title: 'Mandatory',
-        fields: [
-          { name: 'HIS uptime / downtime status', type: 'text', required: true },
-          { name: '# of Pending IT tickets', type: 'number', required: true },
-          { name: 'Upgrades / patches in progress', type: 'text', required: true },
-        ],
-      },
-      {
-        title: 'Optional',
-        fields: [
-          { name: 'Integration issues', type: 'text', required: false },
-          { name: 'Other notes', type: 'text', required: false },
-        ],
-      },
-    ],
-    kpiFields: [
-      'HIS uptime / downtime status',
-      '# of Pending IT tickets',
-      'Upgrades / patches in progress',
-    ],
-    trendFields: [
-      '# of Pending IT tickets',
-    ],
-  },
-];
+// Date section template
+const dateSection: FormSection = {
+  title: 'Date',
+  fields: [
+    {
+      id: 'date',
+      label: 'Date (DD-MM-YYYY)',
+      type: 'text',
+      required: true,
+    },
+  ],
+};
 
-export function getFormDef(slug: string): DepartmentFormDef | undefined {
-  return FORM_DEFINITIONS.find(d => d.slug === slug);
+// 1. EMERGENCY
+const emergencyForm: DepartmentForm = {
+  slug: 'emergency',
+  title: 'EHRC Morning Meeting — Emergency Department',
+  department: 'Emergency',
+  description: 'Fill this before the daily morning meeting — Dr. Gautham.\n★ Starred fields are mandatory.\nTakes under 3 minutes.\n\nSeparate genuine walk-in/ambulance emergencies from planned admissions routed through ED after hours.',
+  sections: [
+    dateSection,
+    {
+      title: '★ MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'genuineEmergencies',
+          label: '# of genuine walk-in/ambulance emergencies (last 24h)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'afterHoursAdmissions',
+          label: '# of after-hours planned admissions routed through ED',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'doorToDoctorTat',
+          label: 'Door-to-doctor TAT emergencies only (avg minutes)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'patientsLwbs',
+          label: '# of patients LWBS',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'deaths',
+          label: '# of Deaths',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'mlcCases',
+          label: '# of MLC cases registered',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'triageL1L2Count',
+          label: 'Triage L1 + L2 count',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'edRevenueToday',
+          label: 'ED revenue today (Rs.)',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'lamaDama',
+          label: '# of LAMA/DAMA',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'criticalAlerts',
+          label: '# of Critical alerts (Code Blue/Red/Yellow)',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'edIncidentReports',
+          label: '# of ED incident reports',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'anticipatedChallenges',
+          label: 'Anticipated challenges/other notes',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 2. CUSTOMER CARE
+const customerCareForm: DepartmentForm = {
+  slug: 'customer-care',
+  title: 'EHRC Morning Meeting — Customer Care',
+  department: 'Customer Care',
+  description: 'Fill this before the daily morning meeting — Lavanya.\n★ Starred fields are mandatory.\nTakes under 3 minutes to complete.\n\nTIP: Keep a tally sheet at the front desk for patients who leave OPD without being seen.',
+  sections: [
+    dateSection,
+    {
+      title: '★ OPD VOLUMES',
+      description: "Yesterday's appointment and attendance numbers.",
+      fields: [
+        {
+          id: 'opdAppointmentsInPerson',
+          label: '# of OPD appointments — in-person',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'opdAppointmentsTele',
+          label: '# of OPD appointments — tele',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'opdNoShows',
+          label: '# of OPD no-shows (patients who booked but did not arrive)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'patientsLeftWithoutSeen',
+          label: '# of patients who left OPD without being seen (gave up waiting)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'patientsWaitingOver10Min',
+          label: '# of patients waiting > 10 min in OPD (at peak)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'healthCheckAppointments',
+          label: '# of Health check appointments',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: '★ COMPLAINTS',
+      description: 'Track the flow — not just the pile. New vs closed tells us if we\'re keeping up.',
+      fields: [
+        {
+          id: 'newComplaintsReceived',
+          label: '# of new complaints received today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'complaintsClosed',
+          label: '# of complaints closed / resolved today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'totalComplaintsPending',
+          label: '# of total complaints currently pending resolution',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'oldestComplaintAge',
+          label: 'Age of oldest open complaint (days)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'customerEscalations',
+          label: '# of customer escalations (complaints escalated to senior management)',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: '★ DOCTOR PUNCTUALITY',
+      description: 'Tracks patient impact — not just whether doctors were late.',
+      fields: [
+        {
+          id: 'doctorsOnLeave',
+          label: 'Doctors on leave today (names, or write NIL)',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'doctorsLate',
+          label: 'Doctors late > 10 min (names, or write NIL)',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'patientsAffectedByDelays',
+          label: '# of patients affected by doctor delays',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: '★ REPUTATION',
+      description: 'Google is our public scorecard. Rating matters as much as count.',
+      fields: [
+        {
+          id: 'googleReviewsReceived',
+          label: '# of Google Reviews received today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'averageStarRating',
+          label: 'Average star rating of new Google Reviews (1–5, enter 0 if no reviews today)',
+          type: 'number',
+          required: true,
+          validation: { min: 0, max: 5 },
+        },
+        {
+          id: 'videoTestimonialsCollected',
+          label: '# of Video Testimonials collected',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL — ALERTS & NOTES',
+      description: 'Fill only if relevant.',
+      fields: [
+        {
+          id: 'vipInternationalAlerts',
+          label: 'VIP / International patient alerts',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'callCentrePerformance',
+          label: 'Call centre / front office performance note',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'otherNotes',
+          label: 'Any other notes',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 3. PATIENT SAFETY & QUALITY
+const patientSafetyForm: DepartmentForm = {
+  slug: 'patient-safety',
+  title: 'EHRC Morning Meeting — Patient Safety & Quality',
+  department: 'Patient Safety & Quality',
+  description: 'Fill this before the daily morning meeting — Dr. Ankita Priya.\n★ Starred fields are mandatory.\n\nThis form is a safety intelligence tool, not just a compliance checklist.\nAccurate daily data here directly supports NABH accreditation and drives RCA follow-through.',
+  sections: [
+    dateSection,
+    {
+      title: '★ INCIDENT REPORTING',
+      description: 'Report ALL incidents — near misses included. High near-miss reporting = healthy safety culture.\nNear miss: no patient harm, caught before reaching patient.\nAdverse event: reached patient, caused harm.\nSentinel event: serious harm, death, or never-event.',
+      fields: [
+        {
+          id: 'nearMissIncidents',
+          label: '# of Near-miss incidents reported today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'adverseEvents',
+          label: '# of Adverse events reported today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'sentinelEvents',
+          label: '# of Sentinel events reported today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'patientFalls',
+          label: '# of Patient falls today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'medicationErrors',
+          label: '# of Medication errors today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'underReportingFlag',
+          label: 'Under-reporting flag — any incident type you suspect was not reported today? (write NIL if none)',
+          description: 'Mandatory — not about naming individuals. About identifying where the culture of hiding exists.\ne.g. \'Likely medication error in ICU not reported\' or \'OT team may have had a near miss\'\nThis field is reviewed only by V and Dr. Ankita.',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: '★ RCA & FOLLOW-THROUGH',
+      description: 'The biggest patient safety gap is not incidents — it\'s incidents with no follow-through.\nThese fields track the aging of open RCAs.',
+      fields: [
+        {
+          id: 'openRcasInProgress',
+          label: '# of open RCAs currently in progress (total pending)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'openRcasPastDue',
+          label: '# of open RCAs past their due date',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'correctiveActionsClosed',
+          label: '# of corrective actions closed today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'rcaSummary',
+          label: 'RCA summary — any new RCA initiated or closed today? (brief details, or write NIL)',
+          type: 'paragraph',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: '★ HAI BUNDLE COMPLIANCE',
+      description: 'Daily bundle compliance is the best leading indicator for HAI rates.\nBundle = the prevention checklist for each device/procedure.\nIf unsure, check with ICU/nursing in-charge before the meeting.',
+      fields: [
+        {
+          id: 'centralLineBundleCompliance',
+          label: 'Central Line bundle compliance today (CLABSI prevention)',
+          type: 'radio',
+          required: true,
+          options: [
+            'Yes — full compliance',
+            'Partial — some steps missed',
+            'No — bundle not followed',
+            'N/A — no patients on this device today',
+          ],
+        },
+        {
+          id: 'urinaryCathetherBundleCompliance',
+          label: 'Urinary Catheter bundle compliance today (CAUTI prevention)',
+          type: 'radio',
+          required: true,
+          options: [
+            'Yes — full compliance',
+            'Partial — some steps missed',
+            'No — bundle not followed',
+            'N/A — no patients on this device today',
+          ],
+        },
+        {
+          id: 'ventilatorBundleCompliance',
+          label: 'Ventilator bundle compliance today (VAP prevention)',
+          type: 'radio',
+          required: true,
+          options: [
+            'Yes — full compliance',
+            'Partial — some steps missed',
+            'No — bundle not followed',
+            'N/A — no patients on this device today',
+          ],
+        },
+        {
+          id: 'surgicalSiteBundleCompliance',
+          label: 'Surgical site care bundle compliance today (SSI prevention)',
+          type: 'radio',
+          required: true,
+          options: [
+            'Yes — full compliance',
+            'Partial — some steps missed',
+            'No — bundle not followed',
+            'N/A — no patients on this device today',
+          ],
+        },
+      ],
+    },
+    {
+      title: '★ NABH & AUDIT STATUS',
+      description: 'Track the flow of non-compliances — not just that they exist.',
+      fields: [
+        {
+          id: 'newNabhNonCompliances',
+          label: '# of new NABH non-compliances identified today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'nabhNonComplainancesClosed',
+          label: '# of NABH non-compliances closed today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'totalOpenNabhNonCompliances',
+          label: '# of total open NABH non-compliances (running total)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'openAuditFindingsPastDue',
+          label: '# of open audit findings past their due date',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'clinicalAuditStatus',
+          label: 'Clinical audit status today',
+          type: 'radio',
+          required: true,
+          options: ['On track', 'Delayed — minor', 'Delayed — needs escalation', 'Not applicable today'],
+        },
+        {
+          id: 'nonClinicalAuditStatus',
+          label: 'Non-clinical audit status today',
+          type: 'radio',
+          required: true,
+          options: ['On track', 'Delayed — minor', 'Delayed — needs escalation', 'Not applicable today'],
+        },
+      ],
+    },
+    {
+      title: '★ SAFETY COMMUNICATION',
+      description: 'NABH requires documented daily safety communication. This replaces the \'quality training reminders\' field.',
+      fields: [
+        {
+          id: 'staffSafetyBriefing',
+          label: '# of staff who received a safety briefing or communication today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'safetyTopicToday',
+          label: 'Topic of safety communication today (or write NIL)',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL — ADDITIONAL NOTES',
+      description: 'Fill only if relevant.',
+      fields: [
+        {
+          id: 'qualitySafetyNotes',
+          label: 'Any other quality / safety notes',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 4. FINANCE
+const financeForm: DepartmentForm = {
+  slug: 'finance',
+  title: 'EHRC Morning Meeting — Finance',
+  department: 'Finance',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Finance',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'revenueForDay',
+          label: 'Revenue for the day (Rs.)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'totalRevenueMtd',
+          label: 'Total revenue MTD (Rs.)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'midnightCensus',
+          label: 'Midnight census — total IP patients',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'surgeriesMtd',
+          label: 'Surgeries MTD',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'arpob',
+          label: 'ARPOB — Avg Revenue Per Occupied Bed (Rs.)',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'opdRevenueMtd',
+          label: 'OPD revenue MTD (Rs.)',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'revenueLeakageAlerts',
+          label: 'Revenue leakage alerts',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'financeNotes',
+          label: 'Other finance notes',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 5. BILLING
+const billingForm: DepartmentForm = {
+  slug: 'billing',
+  title: 'EHRC Morning Meeting — Billing',
+  department: 'Billing',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Billing',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'pipelineCases',
+          label: '# of Pipeline cases (active, pending billing)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'otCasesAwaitingBilling',
+          label: '# of OT cases with billing clearance pending',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'damaLama',
+          label: '# of DAMA / LAMA',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'financialCounsellingDone',
+          label: '# of Financial counselling sessions done today',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'interimFinancialCounselling',
+          label: '# of Interim financial counselling done',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'icuNicuCensus',
+          label: 'ICU / NICU census',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'surgeriesPlannedNextDay',
+          label: 'Surgeries planned for next day (details)',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'highRiskAlerts',
+          label: 'High-risk patient alerts',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'ipAdmissionsWithPriorConsultation',
+          label: '# of IP admissions where prior OPD / doctor consultation existed (planned, routed via ED after hours)',
+          description: 'Cross-check against ED head\'s night register count. Pull from system — look for admissions with a prior OPD visit or doctor note on file.',
+          type: 'number',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 6. SUPPLY CHAIN
+const supplyChainForm: DepartmentForm = {
+  slug: 'supply-chain',
+  title: 'EHRC Morning Meeting — Supply Chain & Procurement',
+  department: 'Supply Chain & Procurement',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Supply Chain & Procurement',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'criticalStockAvailability',
+          label: 'Critical stock availability (status)',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'grnPrepared',
+          label: '# of GRN prepared',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'poIssued',
+          label: '# of PO issued',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'itemsProcuredEmergency',
+          label: '# of items procured in emergency / after 5pm',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'shortagesBackorders',
+          label: 'Shortages / backorders',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'procurementEscalations',
+          label: 'Procurement escalations',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'highValuePurchaseAlerts',
+          label: 'High-value purchase alerts',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'pendingConsumptionReporting',
+          label: 'Pending consumption reporting issues by dept',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 7. FACILITY
+const facilityForm: DepartmentForm = {
+  slug: 'facility',
+  title: 'EHRC Morning Meeting — Facility',
+  department: 'Facility',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Facility',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'facilityReadiness',
+          label: 'Facility readiness — power / water / gases',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'safetyIssues',
+          label: 'Safety issues',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'housekeepingReadiness',
+          label: 'Housekeeping & room readiness',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'preventiveMaintenanceUpdate',
+          label: 'Preventive maintenance update',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'facilityOtherNotes',
+          label: 'Other notes',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 8. PHARMACY
+const pharmacyForm: DepartmentForm = {
+  slug: 'pharmacy',
+  title: 'EHRC Morning Meeting — Pharmacy',
+  department: 'Pharmacy',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Pharmacy',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'pharmacyRevenueIpToday',
+          label: 'Pharmacy revenue — IP today (Rs.)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'pharmacyRevenueOpToday',
+          label: 'Pharmacy revenue — OP today (Rs.)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'pharmacyRevenueMtd',
+          label: 'Pharmacy revenue MTD (Rs.)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'stockoutsShortages',
+          label: 'Stockouts / shortages',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'medicineStockValueIp',
+          label: 'Medicine stock value — IP (Rs.)',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'medicineStockValueOp',
+          label: 'Medicine stock value — OP (Rs.)',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'itemsExpiringWithin3Months',
+          label: 'Items expiring within 3 months',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 9. TRAINING
+const trainingForm: DepartmentForm = {
+  slug: 'training',
+  title: 'EHRC Morning Meeting — Training',
+  department: 'Training',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Training',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'trainingConductedTopic',
+          label: 'Training conducted today (topic)',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'trainingParticipants',
+          label: '# of participants',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'mtdTrainingsStatus',
+          label: 'MTD trainings completed vs planned',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+  ],
+};
+
+// 10. CLINICAL LAB
+const clinicalLabForm: DepartmentForm = {
+  slug: 'clinical-lab',
+  title: 'EHRC Morning Meeting — Clinical Lab',
+  department: 'Clinical Lab',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Clinical Lab',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'machineEquipmentStatus',
+          label: 'Machine & equipment status',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'criticalReportsIssued',
+          label: '# of Critical reports issued',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'tatPerformance',
+          label: 'TAT performance',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'transfusionBloodIssues',
+          label: 'Transfusion / blood request issues',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'outsourcedTestsMtd',
+          label: '# of Outsourced tests MTD',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'reagentShortages',
+          label: 'Reagent shortages',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'sampleRecollectionErrors',
+          label: 'Sample recollection / reporting errors',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 11. RADIOLOGY
+const radiologyForm: DepartmentForm = {
+  slug: 'radiology',
+  title: 'EHRC Morning Meeting — Radiology',
+  department: 'Radiology',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Radiology',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'xrayCasesYesterday',
+          label: '# of X-Ray cases (yesterday)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'usgCasesYesterday',
+          label: '# of USG cases (yesterday)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'ctCasesYesterday',
+          label: '# of CT cases (yesterday)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'equipmentStatus',
+          label: 'Equipment status — CT / MRI / USG uptime',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'reportsDoneInHouse',
+          label: '# of Reports done in-house',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'pendingReports',
+          label: 'Pending reports — critical / non-critical',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'criticalResultsEscalated',
+          label: 'Critical results escalated within TAT',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'filmContrastStock',
+          label: 'Film / contrast stock status',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'radiationSafetyLog',
+          label: 'Radiation safety log',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 12. OT
+const otForm: DepartmentForm = {
+  slug: 'ot',
+  title: 'EHRC Morning Meeting — OT',
+  department: 'OT',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: OT',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'otCasesDoneYesterday',
+          label: '# of OT cases done (yesterday)',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'firstCaseDelayMinutes',
+          label: 'First case delay — time in minutes',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'firstCaseDelayReason',
+          label: 'First case delay — reason',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'escalationsBySurgeon',
+          label: '# of Escalations by surgeon',
+          type: 'number',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'timesTeamLeftOt',
+          label: '# of times team left OT for consumables',
+          type: 'number',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 13. HR & MANPOWER
+const hrManpowerForm: DepartmentForm = {
+  slug: 'hr-manpower',
+  title: 'EHRC Morning Meeting — HR & Manpower',
+  department: 'HR & Manpower',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: HR & Manpower',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'newJoinersToday',
+          label: 'New joiners today (names / nil)',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'resignationsExitsToday',
+          label: 'Resignations / exits today (names / nil)',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'replacementStatus',
+          label: 'Replacement status',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'mandatoryTrainingInduction',
+          label: 'Mandatory training / induction status',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'doctorProfileCreation',
+          label: 'New doctor profile creation status',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'hrOtherNotes',
+          label: 'Other notes',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 14. DIET
+const dietForm: DepartmentForm = {
+  slug: 'diet',
+  title: 'EHRC Morning Meeting — Diet',
+  department: 'Diet',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Diet',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'dietPatientsCensus',
+          label: 'Daily census — diet patients',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'bcaDoneToday',
+          label: 'BCA done today',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'bcaMtdTotal',
+          label: 'BCA MTD total',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'foodFeedbackSummary',
+          label: 'Food feedback summary',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'dischargePlanWithDiet',
+          label: 'Discharge plan completed with diet',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'kitchenUpdate',
+          label: 'Kitchen update',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'delaysIncidents',
+          label: 'Delays / incidents',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 15. BIOMEDICAL
+const biomedicalForm: DepartmentForm = {
+  slug: 'biomedical',
+  title: 'EHRC Morning Meeting — Biomedical',
+  department: 'Biomedical',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Biomedical',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'equipmentReadiness',
+          label: 'Equipment readiness — OT, ICU, etc.',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'breakdownUpdates',
+          label: 'Breakdown updates',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'pendingRepairs',
+          label: 'Pending repairs',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'preventiveMaintenanceCompliance',
+          label: 'Preventive maintenance compliance',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'biomedicalOtherNotes',
+          label: 'Other notes',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 16. NURSING
+const nursingForm: DepartmentForm = {
+  slug: 'nursing',
+  title: 'EHRC Morning Meeting — Nursing',
+  department: 'Nursing',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: Nursing',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'midnightCensusNursing',
+          label: 'Midnight census — patient count',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'staffingMatrixNurses',
+          label: 'Staffing matrix — nurses on duty',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'escalationsConcerns',
+          label: 'Escalations / concerns',
+          type: 'paragraph',
+          required: true,
+        },
+        {
+          id: 'dailyHaiIpcStatus',
+          label: 'Daily HAI/IPC status (CLABSI,VAP,CAUTI,SSI)',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'patientComplaintsSatisfaction',
+          label: 'Patient complaints & satisfaction',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'infectionControlUpdate',
+          label: 'Infection control update',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'biomedicalWasteIncidents',
+          label: 'Biomedical waste incidents',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'cafeteriaDialysisUpdate',
+          label: 'Cafeteria / dialysis update',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// 17. IT
+const itForm: DepartmentForm = {
+  slug: 'it',
+  title: 'EHRC Morning Meeting — IT',
+  department: 'IT',
+  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: IT',
+  sections: [
+    dateSection,
+    {
+      title: 'MANDATORY FIELDS',
+      fields: [
+        {
+          id: 'hisUptimeDowntime',
+          label: 'HIS uptime / downtime status',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'pendingItTickets',
+          label: '# of Pending IT tickets',
+          type: 'number',
+          required: true,
+        },
+        {
+          id: 'upgradesPatchesProgress',
+          label: 'Upgrades / patches in progress',
+          type: 'text',
+          required: true,
+        },
+      ],
+    },
+    {
+      title: 'OPTIONAL FIELDS',
+      fields: [
+        {
+          id: 'integrationIssues',
+          label: 'Integration issues',
+          type: 'text',
+          required: false,
+        },
+        {
+          id: 'itOtherNotes',
+          label: 'Other notes',
+          type: 'text',
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+// Google Sheet tab names (mirrors sheets-config.ts SHEET_TAB_MAP)
+const SLUG_TO_TAB: Record<string, string> = {
+  'emergency': 'ED',
+  'customer-care': 'Customer Care',
+  'patient-safety': 'Patient Safety',
+  'finance': 'Finance',
+  'billing': 'Billing',
+  'supply-chain': 'Supply Chain',
+  'facility': 'FMS',
+  'it': 'IT',
+  'nursing': 'Nursing',
+  'pharmacy': 'Pharmacy',
+  'clinical-lab': 'Clinical Lab',
+  'radiology': 'Radiology',
+  'ot': 'OT',
+  'hr-manpower': 'Human Resources',
+  'training': 'Training',
+  'diet': 'Clinical Nutrition, F&B',
+  'biomedical': 'Biomedical',
+};
+
+// Helper to enrich form defs with backward-compat fields
+function enrichField(field: FormField): FormField {
+  return {
+    ...field,
+    name: field.label,
+    helper: field.description,
+  };
 }
 
-export function getAllFields(def: DepartmentFormDef): FormField[] {
-  return def.sections.flatMap(s => s.fields);
+function enrichForm(form: DepartmentForm): DepartmentForm {
+  const enrichedSections = form.sections.map(s => ({
+    ...s,
+    fields: s.fields.map(enrichField),
+  }));
+  // KPI fields = required numeric fields (shown as metric cards on dashboard)
+  const kpiFields = enrichedSections
+    .flatMap(s => s.fields)
+    .filter(f => f.required && (f.type === 'number' || f.type === 'radio'))
+    .map(f => f.label);
+
+  return {
+    ...form,
+    sections: enrichedSections,
+    name: form.department,
+    tab: SLUG_TO_TAB[form.slug] || form.department,
+    kpiFields,
+  };
 }
+
+// Export all forms
+export const DEPARTMENT_FORMS: DepartmentForm[] = [
+  emergencyForm,
+  customerCareForm,
+  patientSafetyForm,
+  financeForm,
+  billingForm,
+  supplyChainForm,
+  facilityForm,
+  pharmacyForm,
+  trainingForm,
+  clinicalLabForm,
+  radiologyForm,
+  otForm,
+  hrManpowerForm,
+  dietForm,
+  biomedicalForm,
+  nursingForm,
+  itForm,
+].map(enrichForm);
+
+// Create lookup map by slug
+export const FORMS_BY_SLUG: Record<string, DepartmentForm> = DEPARTMENT_FORMS.reduce(
+  (acc, form) => {
+    acc[form.slug] = form;
+    return acc;
+  },
+  {} as Record<string, DepartmentForm>,
+);
+
+// Backward-compatible aliases used by existing components
+export type DepartmentFormDef = DepartmentForm;
+export const FORM_DEFINITIONS = DEPARTMENT_FORMS;

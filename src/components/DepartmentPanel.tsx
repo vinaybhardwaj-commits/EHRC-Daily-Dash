@@ -59,7 +59,7 @@ export default function DepartmentPanel({ dept }: Props) {
   }
 
   // Data exists â show KPI cards and sections
-  const kpiCards = formDef.kpiFields
+  const kpiCards = (formDef.kpiFields || [])
     .map(fieldName => ({ fieldName, value: latestEntry.fields[fieldName] }))
     .filter(item => item.value !== undefined && item.value !== '');
 
@@ -104,7 +104,7 @@ export default function DepartmentPanel({ dept }: Props) {
       {/* Sections */}
       {formDef.sections.map((section, sectionIdx) => {
         const sectionValues = section.fields
-          .map(field => ({ field, value: latestEntry.fields[field.name] }))
+          .map(field => ({ field, value: latestEntry.fields[field.name || field.label] }))
           .filter(item => item.value !== undefined && item.value !== '');
 
         if (sectionValues.length === 0) return null;

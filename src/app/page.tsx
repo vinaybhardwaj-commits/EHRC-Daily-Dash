@@ -395,8 +395,8 @@ export default function Home() {
                       </div>
                     ) : activeDept && activeFormDef ? (
                       <div>
-                        <h2 className="text-lg sm:text-xl font-bold text-slate-900 mb-4">{activeFormDef.name}</h2>
-                        <DepartmentPanel dept={{ name: activeFormDef.name, slug: activeFormDef.slug, tab: activeFormDef.tab, entries: [] }} />
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-900 mb-4">{activeFormDef.name || activeFormDef.department}</h2>
+                        <DepartmentPanel dept={{ name: activeFormDef.name || activeFormDef.department, slug: activeFormDef.slug, tab: activeFormDef.tab || '', entries: [] }} />
                       </div>
                     ) : null}
                   </>

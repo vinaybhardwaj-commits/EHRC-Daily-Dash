@@ -47,11 +47,11 @@ export default function FormIndexPage() {
         <div className="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="font-semibold text-gray-900 mb-2">How it works</h3>
           <ul className="text-sm text-gray-700 space-y-1">
-            <li>\u2022 Select your department from the list above</li>
-            <li>\u2022 Fill in all required fields marked with <span className="text-red-600">*</span></li>
-            <li>\u2022 Today's date is pre-filled automatically</li>
-            <li>\u2022 Takes under 5 minutes for most departments</li>
-            <li>\u2022 Your submission is recorded immediately</li>
+            <li>• Select your department from the list above</li>
+            <li>• Fill in all required fields marked with <span className="text-red-600">*</span></li>
+            <li>• Today's date is pre-filled automatically</li>
+            <li>• Takes under 5 minutes for most departments</li>
+            <li>• Your submission is recorded immediately</li>
           </ul>
         </div>
       </div>
