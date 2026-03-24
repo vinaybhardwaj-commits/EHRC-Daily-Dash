@@ -10,6 +10,7 @@ import FileUpload from '@/components/FileUpload';
 import HuddleSummaryViewer from '@/components/HuddleSummaryViewer';
 import SubmissionHeatmap from '@/components/SubmissionHeatmap';
 import TrendCharts from '@/components/TrendCharts';
+import DepartmentForms from '@/components/DepartmentForms';
 
 function todayStr() {
   const d = new Date();
@@ -24,7 +25,7 @@ export default function Home() {
   const [activeDept, setActiveDept] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
-  const [activeTab, setActiveTab] = useState<'department' | 'trends' | 'heatmap'>('department');
+  const [activeTab, setActiveTab] = useState<'department' | 'trends' | 'heatmap' | 'forms'>('department');
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -316,6 +317,7 @@ export default function Home() {
                     { key: 'department' as const, label: activeFormDef?.name || 'Department', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
                     { key: 'trends' as const, label: 'Trends', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
                     { key: 'heatmap' as const, label: 'Heatmap', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z' },
+                    { key: 'forms' as const, label: 'Forms', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
                   ]).map(tab => (
                     <button
                       key={tab.key}
@@ -358,6 +360,9 @@ export default function Home() {
 
                 {activeTab === 'trends' && <TrendCharts snapshots={allSnapshots} />}
                 {activeTab === 'heatmap' && <SubmissionHeatmap snapshots={allSnapshots} currentMonth={selectedDate.substring(0, 7)} />}
+                {activeTab === 'forms' && (
+                  <DepartmentForms submittedSlugs={snapshot?.departments.map(d => d.slug) || []} />
+                )}
 
                 {snapshot?.huddleSummaries && snapshot.huddleSummaries.length > 0 && (
                   <HuddleSummaryViewer summaries={snapshot.huddleSummaries} />
