@@ -4,6 +4,18 @@ import { sql } from '@vercel/postgres';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Take only the first pipe-segment of a value.
+ * Historical data often has "value1 | value2" where value1 is current day.
+ */
+function firstPipeSegment(value: string | number | undefined | null): string | number | undefined | null {
+  if (value === undefined || value === null) return value;
+  if (typeof value === 'number') return value;
+  const s = String(value);
+  const pipeIdx = s.indexOf('|');
+  return pipeIdx >= 0 ? s.substring(0, pipeIdx).trim() : s;
+}
+
+/**
  * Extract the first number from a messy text string.
  * Handles Indian-style formatting: "Revenue For The Day- 7,28,265.63"
  * Also handles clean numbers: "403320.17"
@@ -11,7 +23,11 @@ export const dynamic = 'force-dynamic';
 function extractNumber(value: string | number | undefined | null): number | null {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') return value;
-  const s = String(value).trim();
+  // Always take first pipe segment to avoid mixing current/previous day data
+  const raw = firstPipeSegment(value);
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'number') return raw;
+  const s = String(raw).trim();
   if (!s || s.toLowerCase() === 'nil' || s.toLowerCase() === 'none' || s.toLowerCase() === 'na' || s.toLowerCase() === 'nill') return null;
 
   // Try to find a number pattern (with optional Indian comma formatting)
@@ -19,13 +35,33 @@ function extractNumber(value: string | number | undefined | null): number | null
   const matches = s.match(/[\d,]+\.?\d*/g);
   if (!matches) return null;
 
-  // Take the first match that looks like a substantial number
+  // Prefer formatted numbers (containing commas or decimal points) over plain small numbers
+  // This handles cases like "Revenue For the Day 14 & 15- 4,25,720.86"
+  // where "14" and "15" are day numbers, not the actual value
+  let bestFormatted: number | null = null;
+  let firstPlain: number | null = null;
   for (const m of matches) {
     const cleaned = m.replace(/,/g, '');
     const num = parseFloat(cleaned);
-    if (!isNaN(num)) return num;
+    if (isNaN(num)) continue;
+    if (m.includes(',') || (m.includes('.') && cleaned.length > 3)) {
+      if (bestFormatted === null) bestFormatted = num;
+    } else {
+      if (firstPlain === null) firstPlain = num;
+    }
   }
-  return null;
+  return bestFormatted !== null ? bestFormatted : firstPlain;
+}
+
+/**
+ * Extract a number but validate it falls within a reasonable range.
+ * Used to catch cases where Excel column misalignment puts wrong data in a field.
+ */
+function extractNumberInRange(value: string | number | undefined | null, min: number, max: number): number | null {
+  const num = extractNumber(value);
+  if (num === null) return null;
+  if (num < min || num > max) return null; // Out of range = likely wrong data
+  return num;
 }
 
 /**
@@ -35,7 +71,11 @@ function extractNumber(value: string | number | undefined | null): number | null
 function extractCount(value: string | number | undefined | null): number {
   if (value === undefined || value === null) return 0;
   if (typeof value === 'number') return value;
-  const s = String(value).trim().toLowerCase();
+  // Take first pipe segment for historical data
+  const raw = firstPipeSegment(value);
+  if (raw === undefined || raw === null) return 0;
+  if (typeof raw === 'number') return raw;
+  const s = String(raw).trim().toLowerCase();
   if (!s || s === 'nil' || s === 'none' || s === 'no' || s === 'na' || s === 'nill' || s === '0' || s === 'no cases') return 0;
   const num = extractNumber(s);
   if (num !== null && num > 0) return num;
@@ -136,13 +176,19 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
     const breakdownText = breakdownRaw ? String(breakdownRaw).toLowerCase() : '';
     const hasEquipmentIssue = breakdownText.length > 0 && !['nil', 'none', 'no', 'na', 'nill', 'no breakdowns', 'no pending'].some(w => breakdownText.includes(w));
 
+    // IP Census should be a small number (1-200 patients), not a revenue figure
+    // ARPOB should be in the range of ~50,000 to ~500,000 (Rs per bed per month)
+    // Surgeries MTD should be reasonable (1-500)
+    const censusVal = extractNumberInRange(censusRaw, 0, 200);
+    const arpobVal = extractNumberInRange(arpobRaw, 10000, 1000000);
+
     metrics.push({
       date,
       revenue: extractNumber(revenueRaw),
       revenueMTD: extractNumber(revenueMTDRaw),
-      arpob: extractNumber(arpobRaw),
-      ipCensus: extractNumber(censusRaw),
-      surgeriesMTD: extractNumber(surgeriesRaw),
+      arpob: arpobVal,
+      ipCensus: censusVal,
+      surgeriesMTD: extractNumberInRange(surgeriesRaw, 0, 500),
       erCases: extractCount(erCasesRaw),
       deaths: extractCount(deathsRaw),
       lama: extractCount(lamaRaw),
