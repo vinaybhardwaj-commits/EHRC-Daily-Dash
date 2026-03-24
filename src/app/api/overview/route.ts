@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { DEPARTMENT_KPIS, GLOBAL_ISSUES, type GlobalIssue } from '@/lib/department-kpis';
+import { DEPARTMENT_KPIS, GLOBAL_ISSUES, DEPT_ALERT_DEFS, type GlobalIssue } from '@/lib/department-kpis';
 
 export const dynamic = 'force-dynamic';
 
@@ -495,6 +495,86 @@ function buildHeatmapData(rawData: Map<string, Map<string, Record<string, string
   return result;
 }
 
+/**
+ * Build per-department alerts: recent red-flag items and missed submissions.
+ */
+function buildDeptAlerts(rawData: Map<string, Map<string, Record<string, string | number>>>) {
+  const sortedDates = Array.from(rawData.keys()).sort();
+  if (sortedDates.length === 0) return [];
+
+  const latestDate = sortedDates[sortedDates.length - 1];
+  const recentDates = sortedDates.slice(-5); // last 5 reporting days
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  return DEPT_ALERT_DEFS.map(def => {
+    const alerts: { message: string; severity: 'red' | 'amber' | 'info' }[] = [];
+
+    // Check for missed submissions in last 5 days
+    const missedDates = recentDates.filter(d => !rawData.get(d)?.has(def.slug) && d <= todayStr);
+    if (missedDates.length > 0) {
+      const dateLabels = missedDates.map(d => {
+        const dt = new Date(d + 'T00:00:00');
+        return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      });
+      alerts.push({
+        message: `Missed submission: ${dateLabels.join(', ')}`,
+        severity: 'amber',
+      });
+    }
+
+    // Check field-level alerts from latest available data for this dept
+    let latestDeptDate: string | null = null;
+    for (let i = sortedDates.length - 1; i >= 0; i--) {
+      if (rawData.get(sortedDates[i])?.has(def.slug)) {
+        latestDeptDate = sortedDates[i];
+        break;
+      }
+    }
+
+    if (latestDeptDate) {
+      const fields = rawData.get(latestDeptDate)!.get(def.slug)!;
+
+      for (const check of def.checks) {
+        const raw = findField(fields, ...check.fieldPatterns);
+
+        if (check.type === 'count-above') {
+          const count = extractCount(raw);
+          const threshold = check.threshold ?? 0;
+          if (count > threshold) {
+            alerts.push({
+              message: `${check.label}: ${count}`,
+              severity: 'red',
+            });
+          }
+        }
+
+        if (check.type === 'text-issue') {
+          const text = raw ? String(raw).trim() : '';
+          if (!text) continue;
+          const lower = text.toLowerCase();
+          const isClear = (check.clearKeywords || []).some(w => w && lower === w || lower.startsWith(w));
+          if (isClear) continue;
+          const isIssue = (check.issueKeywords || []).some(w => lower.includes(w));
+          if (isIssue) {
+            const truncated = text.length > 50 ? text.substring(0, 50) + '...' : text;
+            alerts.push({
+              message: `${check.label}: ${truncated}`,
+              severity: 'amber',
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      slug: def.slug,
+      alerts,
+      lastSubmissionDate: latestDeptDate,
+    };
+  });
+}
+
 export async function GET(req: NextRequest) {
   const monthParam = req.nextUrl.searchParams.get('month'); // e.g., '2026-03'
 
@@ -516,10 +596,11 @@ export async function GET(req: NextRequest) {
   const current = aggregateMonth(currentData);
   const previous = aggregateMonth(prevData);
 
-  // New: global issues, department KPIs, and heatmap data
+  // New: global issues, department KPIs, heatmap data, and per-dept alerts
   const globalIssues = buildGlobalIssues(currentRawData);
   const departmentKPIs = buildDeptKPIs(currentRawData);
   const heatmapData = buildHeatmapData(currentRawData);
+  const deptAlerts = buildDeptAlerts(currentRawData);
 
   // Get total available months for the month selector
   const monthsResult = await sql`
@@ -610,5 +691,6 @@ export async function GET(req: NextRequest) {
     globalIssues,
     departmentKPIs,
     heatmapData,
+    deptAlerts,
   });
 }

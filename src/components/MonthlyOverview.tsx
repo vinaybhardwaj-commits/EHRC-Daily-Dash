@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import GlobalIssuesPanel, { type GlobalIssueData } from './GlobalIssuesPanel';
-import DepartmentGrid, { type DeptKPIData } from './DepartmentGrid';
+import DepartmentGrid, { type DeptKPIData, type DeptAlertData } from './DepartmentGrid';
 import OverviewHeatmap from './OverviewHeatmap';
 
 interface DailyMetric {
@@ -83,10 +83,11 @@ interface ApiResponse {
   globalIssues?: GlobalIssueData[];
   departmentKPIs?: DeptKPIData[];
   heatmapData?: HeatmapDay[];
+  deptAlerts?: DeptAlertData[];
 }
 
 interface Props {
-  onNavigateToDashboard: () => void;
+  onNavigateToDashboard: (deptSlug?: string) => void;
 }
 
 const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
@@ -288,7 +289,11 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
       {/* ===== SECTION 3: DEPARTMENT GRID ===== */}
       {data.departmentKPIs && data.departmentKPIs.length > 0 && (
         <div className="mb-6">
-          <DepartmentGrid departments={data.departmentKPIs} />
+          <DepartmentGrid
+            departments={data.departmentKPIs}
+            deptAlerts={data.deptAlerts}
+            onNavigateToDept={(slug) => onNavigateToDashboard(slug)}
+          />
         </div>
       )}
 
@@ -306,7 +311,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
       {/* Action Button */}
       <div className="flex justify-center pt-2 pb-4">
         <button
-          onClick={onNavigateToDashboard}
+          onClick={() => onNavigateToDashboard()}
           className="px-8 py-3 bg-gradient-to-r from-blue-700 to-blue-800 text-white font-semibold rounded-xl hover:from-blue-800 hover:to-blue-900 transition-all shadow-lg hover:shadow-xl"
         >
           View Daily Details Dashboard

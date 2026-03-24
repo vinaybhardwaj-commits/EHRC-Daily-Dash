@@ -191,7 +191,11 @@ export default function Home() {
 
       {/* Overview View */}
       {view === 'overview' && (
-        <MonthlyOverview onNavigateToDashboard={() => setView('dashboard')} />
+        <MonthlyOverview onNavigateToDashboard={(deptSlug) => {
+          if (deptSlug) setActiveDept(deptSlug);
+          setActiveTab('department');
+          setView('dashboard');
+        }} />
       )}
 
       {/* Dashboard View */}

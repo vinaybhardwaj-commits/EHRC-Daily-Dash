@@ -1,17 +1,9 @@
 /**
  * Signature KPI configuration for each of the 17 departments.
  *
- * Each department gets ONE primary metric shown on the main overview grid.
- * - `fieldPatterns`: partial key matches used by `findField()` to locate the value
- *   in the department's submitted `fields` object.
- * - `type`: how to interpret the value
- *   - 'number' → extract numeric value, show trend arrow
- *   - 'text-status' → parse free-text into green/amber/red badge
- *   - 'ratio' → compute from two numeric fields (e.g., nurse:patient)
- * - `label`: short display label for the KPI card
- * - `unit`: optional suffix (e.g., '₹', 'min', 'cases')
- * - `invertTrend`: if true, "going down" is good (e.g., pending complaints)
- * - `statusKeywords`: for text-status type, keywords that map to green/amber/red
+ * `fieldPatterns` are partial key matches (case-insensitive) used by `findField()`
+ * to locate the value in the department's submitted `fields` object.
+ * Patterns are checked in order; first match wins.
  */
 
 export interface DepartmentKPI {
@@ -19,9 +11,9 @@ export interface DepartmentKPI {
   label: string;
   unit?: string;
   type: 'number' | 'text-status' | 'ratio';
-  fieldPatterns: string[];          // patterns to match in fields
-  secondaryFieldPatterns?: string[]; // for 'ratio' type (denominator)
-  invertTrend?: boolean;            // true = lower is better
+  fieldPatterns: string[];
+  secondaryFieldPatterns?: string[];
+  invertTrend?: boolean;
   statusKeywords?: {
     good: string[];
     warning: string[];
@@ -35,14 +27,15 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'ER Cases',
     unit: 'cases',
     type: 'number',
-    fieldPatterns: ['walk-in', 'genuine walk-in', 'er cases', '# of genuine'],
+    // Actual DB: "# of ER cases" or "# of genuine walk-in/ambulance emergencies"
+    fieldPatterns: ['er cases', 'walk-in', 'genuine walk-in', '# of genuine'],
   },
   {
     slug: 'customer-care',
     label: 'Pending Complaints',
     unit: 'open',
     type: 'number',
-    fieldPatterns: ['pending resolution', 'complaints currently pending'],
+    fieldPatterns: ['pending resolution', 'complaints currently pending', 'pending complaint'],
     invertTrend: true,
   },
   {
@@ -50,7 +43,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'Adverse Events',
     unit: 'events',
     type: 'number',
-    fieldPatterns: ['adverse event', '# of Adverse'],
+    fieldPatterns: ['adverse event', '# of adverse'],
     invertTrend: true,
   },
   {
@@ -58,14 +51,16 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'Revenue MTD',
     unit: '₹',
     type: 'number',
-    fieldPatterns: ['total revenue', 'Total revenue MTD'],
+    // Actual DB: "Total revenue MTD (Rs.)"
+    fieldPatterns: ['total revenue mtd', 'revenue mtd'],
   },
   {
     slug: 'billing',
     label: 'Pipeline Cases',
     unit: 'pending',
     type: 'number',
-    fieldPatterns: ['pipeline', 'Pipeline cases'],
+    // Actual DB: "# of Pipeline cases (active, pending billing)"
+    fieldPatterns: ['pipeline', 'pipeline cases'],
     invertTrend: true,
   },
   {
@@ -73,15 +68,17 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'GRN Prepared',
     unit: 'today',
     type: 'number',
-    fieldPatterns: ['grn', 'GRN prepared'],
+    // Actual DB: "# of GRN prepared" or "No of GRN prepared"
+    fieldPatterns: ['grn prepared', 'grn'],
   },
   {
     slug: 'facility',
     label: 'Readiness',
     type: 'text-status',
-    fieldPatterns: ['readiness', 'power', 'facility readiness'],
+    // Actual DB: "Facility readiness — power / water / gases"
+    fieldPatterns: ['facility readiness', 'readiness', 'power'],
     statusKeywords: {
-      good: ['all ok', 'ok', 'ready', 'normal', 'all systems', 'no issue', 'functional', 'running', 'all running'],
+      good: ['all ok', 'ok', 'ready', 'normal', 'all systems', 'no issue', 'functional', 'running', 'all running', 'available'],
       warning: ['partial', 'one', 'minor', 'backup', 'intermittent'],
       bad: ['down', 'failure', 'critical', 'not ready', 'outage', 'issue', 'breakdown'],
     },
@@ -91,15 +88,17 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'Pharmacy Rev MTD',
     unit: '₹',
     type: 'number',
-    fieldPatterns: ['pharmacy revenue mtd', 'revenue MTD'],
+    // Actual DB: "Pharmacy revenue MTD (Rs.)"
+    fieldPatterns: ['pharmacy revenue mtd', 'revenue mtd'],
   },
   {
     slug: 'training',
     label: 'Training MTD',
     type: 'text-status',
-    fieldPatterns: ['mtd trainings', 'completed vs planned'],
+    // Actual DB: "MTD trainings completed vs planned"
+    fieldPatterns: ['mtd training', 'completed vs planned', 'training conducted'],
     statusKeywords: {
-      good: ['on track', 'ahead', 'completed', 'all done', '100%'],
+      good: ['on track', 'ahead', 'completed', 'all done', '100%', 'done'],
       warning: ['behind', 'partial', 'in progress', 'pending'],
       bad: ['not started', 'nil', 'none', 'cancelled', '0'],
     },
@@ -109,30 +108,33 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'Critical Reports',
     unit: 'issued',
     type: 'number',
-    fieldPatterns: ['critical report', '# of Critical reports'],
+    // Actual DB: "# of Critical reports issued"
+    fieldPatterns: ['critical report', 'critical reports issued'],
   },
   {
     slug: 'radiology',
     label: 'Imaging Cases',
     unit: 'total',
     type: 'number',
-    // We'll sum X-Ray + USG + CT in the API
-    fieldPatterns: ['x-ray', 'usg', 'ct'],
+    // Sum of: "# of X-Ray cases", "# of USG cases", "# of CT cases"
+    fieldPatterns: ['x-ray', 'usg', 'ct cases'],
   },
   {
     slug: 'ot',
     label: 'OT Cases',
     unit: 'done',
     type: 'number',
-    fieldPatterns: ['ot cases', '# of OT cases done'],
+    // Actual DB: "# of OT cases done (yesterday)"
+    fieldPatterns: ['ot cases done', 'ot cases'],
   },
   {
     slug: 'hr-manpower',
     label: 'Staffing Status',
     type: 'text-status',
+    // Actual DB: "Replacement status"
     fieldPatterns: ['replacement status', 'replacement'],
     statusKeywords: {
-      good: ['filled', 'on track', 'adequate', 'no gap', 'nil', 'none', 'no resignations'],
+      good: ['filled', 'on track', 'adequate', 'no gap', 'nil', 'none', 'no resignations', 'na', 'n/a'],
       warning: ['in process', 'pending', 'interview', 'partial', 'searching'],
       bad: ['critical', 'unfilled', 'delayed', 'shortage', 'multiple exits', 'urgent'],
     },
@@ -142,15 +144,17 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'BCA MTD',
     unit: 'done',
     type: 'number',
-    fieldPatterns: ['bca mtd', 'BCA MTD total'],
+    // Actual DB: "BCA MTD total"
+    fieldPatterns: ['bca mtd'],
   },
   {
     slug: 'biomedical',
     label: 'Equipment Status',
     type: 'text-status',
-    fieldPatterns: ['equipment readiness', 'equipment', 'readiness'],
+    // Actual DB: "Equipment readiness — OT, ICU, etc."
+    fieldPatterns: ['equipment readiness', 'equipment'],
     statusKeywords: {
-      good: ['all ok', 'functional', 'ready', 'operational', 'no issue', 'running', 'all equipment'],
+      good: ['all ok', 'functional', 'ready', 'operational', 'no issue', 'running', 'all equipment', 'working fine'],
       warning: ['partial', 'one', 'minor', 'under repair', 'maintenance'],
       bad: ['down', 'breakdown', 'critical', 'not working', 'failure', 'multiple'],
     },
@@ -160,6 +164,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'Nurses on Duty',
     unit: 'staff',
     type: 'number',
+    // Actual DB: "Staffing matrix" (just a number like "7")
     fieldPatterns: ['staffing matrix', 'nurses on duty'],
   },
   {
@@ -167,7 +172,8 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     label: 'Pending Tickets',
     unit: 'open',
     type: 'number',
-    fieldPatterns: ['pending it', '# of Pending IT tickets'],
+    // Actual DB: "# of Pending IT tickets"
+    fieldPatterns: ['pending it', 'pending it tickets'],
     invertTrend: true,
   },
 ];
@@ -187,11 +193,8 @@ export interface GlobalIssue {
   deptSlug: string;
   fieldPatterns: string[];
   type: 'count' | 'boolean-text';
-  /** For count type: threshold above which it becomes active */
   threshold?: number;
-  /** For boolean-text: keywords that indicate an issue IS present */
   issueKeywords?: string[];
-  /** For boolean-text: keywords that indicate NO issue */
   clearKeywords?: string[];
 }
 
@@ -202,8 +205,8 @@ export const GLOBAL_ISSUES: GlobalIssue[] = [
   { id: 'adverse', label: 'Adverse Events', severity: 'red', deptSlug: 'patient-safety', fieldPatterns: ['adverse', '# of Adverse'], type: 'count', threshold: 0 },
   { id: 'falls', label: 'Patient Falls', severity: 'red', deptSlug: 'patient-safety', fieldPatterns: ['fall', '# of Patient falls'], type: 'count', threshold: 0 },
   { id: 'med-errors', label: 'Medication Errors', severity: 'red', deptSlug: 'patient-safety', fieldPatterns: ['medication error', '# of Medication'], type: 'count', threshold: 0 },
-  { id: 'equipment-down', label: 'Equipment Breakdown', severity: 'red', deptSlug: 'biomedical', fieldPatterns: ['breakdown', 'pending repair'], type: 'boolean-text', issueKeywords: ['down', 'breakdown', 'failure', 'pending', 'repair', 'issue'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'no breakdown', 'no pending'] },
-  { id: 'stockout', label: 'Critical Stockouts', severity: 'red', deptSlug: 'supply-chain', fieldPatterns: ['shortage', 'stockout', 'critical stock'], type: 'boolean-text', issueKeywords: ['shortage', 'stockout', 'critical', 'out of stock', 'unavailable'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'adequate', 'no stock', 'available'] },
+  { id: 'equipment-down', label: 'Equipment Breakdown', severity: 'red', deptSlug: 'biomedical', fieldPatterns: ['breakdown', 'pending repair'], type: 'boolean-text', issueKeywords: ['down', 'breakdown', 'failure', 'pending', 'repair', 'issue', 'flooring', 'maintenance'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'no breakdown', 'no pending'] },
+  { id: 'stockout', label: 'Critical Stockouts', severity: 'red', deptSlug: 'supply-chain', fieldPatterns: ['shortage', 'stockout', 'shortages'], type: 'boolean-text', issueKeywords: ['shortage', 'stockout', 'critical', 'out of stock', 'unavailable', 'backorder'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'adequate', 'no stock', 'available'] },
   { id: 'dama-lama', label: 'DAMA/LAMA', severity: 'red', deptSlug: 'billing', fieldPatterns: ['dama', 'lama', '# of DAMA'], type: 'count', threshold: 0 },
 
   // Amber warnings
@@ -212,6 +215,143 @@ export const GLOBAL_ISSUES: GlobalIssue[] = [
   { id: 'open-nabh', label: 'Open NABH Issues', severity: 'amber', deptSlug: 'patient-safety', fieldPatterns: ['total open nabh', 'open NABH non-compliances'], type: 'count', threshold: 0 },
   { id: 'lwbs', label: 'Patients LWBS', severity: 'amber', deptSlug: 'emergency', fieldPatterns: ['lwbs', '# of patients LWBS'], type: 'count', threshold: 0 },
   { id: 'doctor-delays', label: 'Doctor Delay Impact', severity: 'amber', deptSlug: 'customer-care', fieldPatterns: ['affected by doctor delays', 'patients affected'], type: 'count', threshold: 0 },
-  { id: 'pending-tickets', label: 'Pending IT Tickets', severity: 'amber', deptSlug: 'it', fieldPatterns: ['pending it', '# of Pending IT tickets'], type: 'count', threshold: 3 },
-  { id: 'pending-repairs', label: 'Pending Repairs', severity: 'amber', deptSlug: 'biomedical', fieldPatterns: ['pending repair'], type: 'boolean-text', issueKeywords: ['pending', 'waiting', 'repair', 'parts ordered'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'no pending', 'all done'] },
+  { id: 'pending-tickets', label: 'Pending IT Tickets', severity: 'amber', deptSlug: 'it', fieldPatterns: ['pending it', 'pending it tickets'], type: 'count', threshold: 3 },
+  { id: 'pending-repairs', label: 'Pending Repairs', severity: 'amber', deptSlug: 'biomedical', fieldPatterns: ['pending repair'], type: 'boolean-text', issueKeywords: ['pending', 'waiting', 'repair', 'parts ordered', 'flooring', 'work'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'no pending', 'all done'] },
+];
+
+/**
+ * Per-department alert definitions — what to check when building the
+ * expandable detail view for each department card.
+ */
+export interface DeptAlertDef {
+  slug: string;
+  checks: {
+    label: string;
+    fieldPatterns: string[];
+    type: 'count-above' | 'text-issue' | 'missing-submission';
+    threshold?: number;
+    issueKeywords?: string[];
+    clearKeywords?: string[];
+  }[];
+}
+
+export const DEPT_ALERT_DEFS: DeptAlertDef[] = [
+  {
+    slug: 'emergency',
+    checks: [
+      { label: 'Deaths', fieldPatterns: ['death'], type: 'count-above', threshold: 0 },
+      { label: 'LAMA', fieldPatterns: ['lama'], type: 'count-above', threshold: 0 },
+      { label: 'MLC cases', fieldPatterns: ['mlc'], type: 'count-above', threshold: 0 },
+      { label: 'Critical alerts', fieldPatterns: ['critical alert', 'code blue', 'code red'], type: 'count-above', threshold: 0 },
+      { label: 'Patients LWBS', fieldPatterns: ['lwbs'], type: 'count-above', threshold: 0 },
+    ],
+  },
+  {
+    slug: 'customer-care',
+    checks: [
+      { label: 'Pending complaints', fieldPatterns: ['pending resolution', 'complaints currently pending'], type: 'count-above', threshold: 0 },
+      { label: 'Customer escalations', fieldPatterns: ['escalation'], type: 'count-above', threshold: 0 },
+      { label: 'Patients affected by delays', fieldPatterns: ['affected by doctor'], type: 'count-above', threshold: 0 },
+      { label: 'OPD no-shows', fieldPatterns: ['no-show'], type: 'count-above', threshold: 5 },
+    ],
+  },
+  {
+    slug: 'patient-safety',
+    checks: [
+      { label: 'Sentinel events', fieldPatterns: ['sentinel'], type: 'count-above', threshold: 0 },
+      { label: 'Adverse events', fieldPatterns: ['adverse'], type: 'count-above', threshold: 0 },
+      { label: 'Patient falls', fieldPatterns: ['fall'], type: 'count-above', threshold: 0 },
+      { label: 'Medication errors', fieldPatterns: ['medication error'], type: 'count-above', threshold: 0 },
+      { label: 'Overdue RCAs', fieldPatterns: ['past their due', 'overdue'], type: 'count-above', threshold: 0 },
+      { label: 'Open NABH issues', fieldPatterns: ['total open nabh'], type: 'count-above', threshold: 0 },
+    ],
+  },
+  {
+    slug: 'finance',
+    checks: [
+      { label: 'Revenue leakage', fieldPatterns: ['revenue leakage'], type: 'text-issue', issueKeywords: ['leak', 'loss', 'issue', 'alert'], clearKeywords: ['nil', 'none', 'no', 'na', ''] },
+    ],
+  },
+  {
+    slug: 'billing',
+    checks: [
+      { label: 'DAMA/LAMA', fieldPatterns: ['dama', 'lama'], type: 'count-above', threshold: 0 },
+      { label: 'OT cases pending billing', fieldPatterns: ['billing clearance pending', 'ot cases with billing'], type: 'count-above', threshold: 0 },
+    ],
+  },
+  {
+    slug: 'supply-chain',
+    checks: [
+      { label: 'Shortages', fieldPatterns: ['shortage', 'backorder'], type: 'text-issue', issueKeywords: ['shortage', 'backorder', 'out of stock', 'unavailable'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+      { label: 'Emergency procurement', fieldPatterns: ['emergency', 'after 5pm'], type: 'count-above', threshold: 0 },
+    ],
+  },
+  {
+    slug: 'facility',
+    checks: [
+      { label: 'Safety issues', fieldPatterns: ['safety issue'], type: 'text-issue', issueKeywords: ['issue', 'hazard', 'risk', 'leak', 'broken'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', ''] },
+    ],
+  },
+  {
+    slug: 'pharmacy',
+    checks: [
+      { label: 'Stockouts', fieldPatterns: ['stockout', 'shortage'], type: 'text-issue', issueKeywords: ['out', 'stock', 'shortage', 'unavailable', 'yes'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+    ],
+  },
+  {
+    slug: 'clinical-lab',
+    checks: [
+      { label: 'Sample errors', fieldPatterns: ['recollection', 'reporting error'], type: 'text-issue', issueKeywords: ['error', 'recollection', 'rejected', 'contaminated'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+      { label: 'Reagent shortages', fieldPatterns: ['reagent shortage'], type: 'text-issue', issueKeywords: ['shortage', 'out', 'low'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+    ],
+  },
+  {
+    slug: 'radiology',
+    checks: [
+      { label: 'Equipment down', fieldPatterns: ['equipment status', 'ct / mri', 'uptime'], type: 'text-issue', issueKeywords: ['down', 'maintenance', 'repair', 'not working', 'issue'], clearKeywords: ['ok', 'up', 'running', 'operational', 'functional', 'normal'] },
+    ],
+  },
+  {
+    slug: 'ot',
+    checks: [
+      { label: 'First case delay', fieldPatterns: ['first case delay', 'time in minutes'], type: 'count-above', threshold: 15 },
+      { label: 'Surgeon escalations', fieldPatterns: ['escalation'], type: 'count-above', threshold: 0 },
+    ],
+  },
+  {
+    slug: 'hr-manpower',
+    checks: [
+      { label: 'Resignations/exits', fieldPatterns: ['resignation', 'exit'], type: 'text-issue', issueKeywords: ['resign', 'exit', 'left', 'quit'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'n/a'] },
+    ],
+  },
+  {
+    slug: 'diet',
+    checks: [
+      { label: 'Delays/incidents', fieldPatterns: ['delay', 'incident'], type: 'text-issue', issueKeywords: ['delay', 'incident', 'complaint', 'late'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', ''] },
+    ],
+  },
+  {
+    slug: 'biomedical',
+    checks: [
+      { label: 'Breakdowns', fieldPatterns: ['breakdown'], type: 'text-issue', issueKeywords: ['down', 'breakdown', 'failure', 'repair', 'issue'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+      { label: 'Pending repairs', fieldPatterns: ['pending repair'], type: 'text-issue', issueKeywords: ['pending', 'waiting', 'repair', 'parts', 'flooring', 'work'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+    ],
+  },
+  {
+    slug: 'nursing',
+    checks: [
+      { label: 'Escalations', fieldPatterns: ['escalation', 'concern'], type: 'text-issue', issueKeywords: ['escalation', 'complaint', 'issue', 'concern', 'short', 'shortage'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill'] },
+      { label: 'HAI/IPC issues', fieldPatterns: ['hai', 'ipc', 'clabsi', 'vap', 'cauti'], type: 'text-issue', issueKeywords: ['positive', 'case', 'infection', 'suspected', 'yes'], clearKeywords: ['nil', 'none', 'no', 'na', 'nill', 'zero', '0'] },
+    ],
+  },
+  {
+    slug: 'it',
+    checks: [
+      { label: 'HIS downtime', fieldPatterns: ['his uptime', 'downtime'], type: 'text-issue', issueKeywords: ['down', 'outage', 'intermittent', 'slow', 'issue'], clearKeywords: ['up', 'ok', 'running', 'operational', 'normal', 'nil', 'none'] },
+    ],
+  },
+  {
+    slug: 'training',
+    checks: [],
+  },
 ];
