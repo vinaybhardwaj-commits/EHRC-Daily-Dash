@@ -101,7 +101,7 @@ const FORM_LINKS: FormLink[] = [
     slug: 'training',
     name: 'Training',
     tab: 'Training',
-    url: 'https://docs.google.com/forms/d/e/1FAIpQLSfDNSshJ7S0f9Wi-xLtjr85OROuU7XhBqt6MpilXuNP97c2dg/viewform?usp=header',
+    url: 'https://docs.google.com/forms/d/15JeNvjlL_TOmJCt6HsJyVn70i3LYJFrVRE7bYMePG44/edit',
   },
   {
     slug: 'diet',
