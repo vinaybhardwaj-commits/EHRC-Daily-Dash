@@ -4,7 +4,12 @@ import { SHEET_TAB_MAP, getSheetCsvUrl } from '@/lib/sheets-config';
 import { DEPARTMENT_CONTACTS, CONTACTS_BY_SLUG } from '@/lib/department-contacts';
 import Papa from 'papaparse';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-init: Resend client must NOT be created at module scope because
+// process.env.RESEND_API_KEY is unavailable during the Next.js build step.
+// Creating it at top level crashes the build and prevents ALL pages from generating.
+function getResendClient() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 // Sender email â must be verified in Resend (use onboarding@resend.dev for testing)
 const FROM_EMAIL = process.env.NOTIFICATION_FROM_EMAIL || 'EHRC Dashboard <onboarding@resend.dev>';
@@ -86,7 +91,7 @@ async function sendReminderEmail(
   today: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: FROM_EMAIL,
       to: contact.email,
       subject: `â° EHRC Daily Form â Pending Submission for ${today}`,
