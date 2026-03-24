@@ -13,6 +13,7 @@ import TrendCharts from '@/components/TrendCharts';
 import DepartmentForms from '@/components/DepartmentForms';
 import MonthlyOverview from '@/components/MonthlyOverview';
 import WhatsAppInsights from '@/components/WhatsAppInsights';
+import FinanceOverview from '@/components/FinanceOverview';
 
 function todayStr() {
   const d = new Date();
@@ -20,7 +21,8 @@ function todayStr() {
 }
 
 export default function Home() {
-  const [view, setView] = useState<'overview' | 'dashboard' | 'whatsapp'>('overview');
+  const [view, setView] = useState<'overview' | 'dashboard' | 'whatsapp' | 'dept-overview'>('overview');
+  const [deptOverviewSlug, setDeptOverviewSlug] = useState<string | null>(null);
   const [availableDays, setAvailableDays] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [snapshot, setSnapshot] = useState<DaySnapshot | null>(null);
@@ -213,11 +215,30 @@ export default function Home() {
 
       {/* Overview View */}
       {view === 'overview' && (
-        <MonthlyOverview onNavigateToDashboard={(deptSlug) => {
-          if (deptSlug) setActiveDept(deptSlug);
-          setActiveTab('department');
-          setView('dashboard');
-        }} />
+        <MonthlyOverview
+          onNavigateToDashboard={(deptSlug) => {
+            if (deptSlug) setActiveDept(deptSlug);
+            setActiveTab('department');
+            setView('dashboard');
+          }}
+          onNavigateToDeptOverview={(slug) => {
+            setDeptOverviewSlug(slug);
+            setView('dept-overview');
+          }}
+        />
+      )}
+
+      {/* Department Overview View */}
+      {view === 'dept-overview' && deptOverviewSlug === 'finance' && (
+        <FinanceOverview
+          onBack={() => setView('overview')}
+          onNavigateToDashboard={(date, slug) => {
+            setSelectedDate(date);
+            setActiveDept(slug);
+            setActiveTab('department');
+            setView('dashboard');
+          }}
+        />
       )}
 
       {/* Dashboard View */}

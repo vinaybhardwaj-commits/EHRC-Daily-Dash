@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import GlobalIssuesPanel, { type GlobalIssueData } from './GlobalIssuesPanel';
 import DepartmentGrid, { type DeptKPIData, type DeptAlertData } from './DepartmentGrid';
 import OverviewHeatmap from './OverviewHeatmap';
+import DepartmentDeepDiveCards from './DepartmentDeepDiveCards';
 
 interface DailyMetric {
   date: string;
@@ -93,9 +94,10 @@ interface ApiResponse {
 
 interface Props {
   onNavigateToDashboard: (deptSlug?: string) => void;
+  onNavigateToDeptOverview?: (slug: string) => void;
 }
 
-const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
+const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToDeptOverview }) => {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -617,6 +619,14 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard }) => {
             currentMonth={data.currentMonth}
           />
         </div>
+      )}
+
+      {/* ===== SECTION 5: DEPARTMENT DEEP DIVES ===== */}
+      {data.departmentKPIs && data.departmentKPIs.length > 0 && onNavigateToDeptOverview && (
+        <DepartmentDeepDiveCards
+          departments={data.departmentKPIs}
+          onSelectDepartment={onNavigateToDeptOverview}
+        />
       )}
 
       {/* Action Button */}
