@@ -230,8 +230,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch all data for this department
+    // Fetch all data for this department + BRM baselines
     let result;
+    let brmResult;
     if (from && to) {
       result = await sql`
         SELECT d.date, d.entries
@@ -241,12 +242,21 @@ export async function GET(req: NextRequest) {
           AND d.date <= ${to + '-31'}
         ORDER BY d.date ASC;
       `;
+      brmResult = await sql`
+        SELECT month, data FROM brm_monthly
+        WHERE month >= ${from} AND month <= ${to}
+        ORDER BY month ASC;
+      `;
     } else {
       result = await sql`
         SELECT d.date, d.entries
         FROM department_data d
         WHERE d.slug = ${slug}
         ORDER BY d.date ASC;
+      `;
+      brmResult = await sql`
+        SELECT month, data FROM brm_monthly
+        ORDER BY month ASC;
       `;
     }
 
@@ -343,6 +353,68 @@ export async function GET(req: NextRequest) {
       surgeriesSparkline: allDays.filter(d => d.surgeriesMTD !== null).map(d => ({ date: d.date, value: d.surgeriesMTD! })),
     };
 
+    // ── BRM baseline data ──────────────────────────────────────────
+    interface BrmMonth {
+      month: string;
+      label: string;
+      revenue_lakhs: number | null;
+      ebitdar_lakhs: number | null;
+      ebitdar_pct: number | null;
+      ebitda_before_lakhs: number | null;
+      ebitda_before_pct: number | null;
+      contribution_margin_pct: number | null;
+      operating_days: number | null;
+      opd_footfall_total: number | null;
+      ip_admissions: number | null;
+      ip_discharges: number | null;
+      avg_occupied_beds: number | null;
+      occupancy_pct: number | null;
+      arpob_daily: number | null;
+      arpob_annualized_lakhs: number | null;
+      alos_days: number | null;
+      ipd_revenue_lakhs: number | null;
+      opd_revenue_lakhs: number | null;
+      operating_revenue_lakhs: number | null;
+      census_beds: number | null;
+    }
+
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const brmMonths: BrmMonth[] = brmResult.rows.map((row: any) => {
+      const d = row.data as Record<string, unknown>;
+      const [y, m] = row.month.split('-');
+      return {
+        month: row.month,
+        label: `${monthNames[parseInt(m) - 1]} ${y}`,
+        revenue_lakhs: d.revenue_lakhs as number | null,
+        ebitdar_lakhs: d.ebitdar_lakhs as number | null,
+        ebitdar_pct: d.ebitdar_pct as number | null,
+        ebitda_before_lakhs: d.ebitda_before_lakhs as number | null,
+        ebitda_before_pct: d.ebitda_before_pct as number | null,
+        contribution_margin_pct: d.contribution_margin_pct as number | null,
+        operating_days: d.operating_days as number | null,
+        opd_footfall_total: d.opd_footfall_total as number | null,
+        ip_admissions: d.ip_admissions as number | null,
+        ip_discharges: d.ip_discharges as number | null,
+        avg_occupied_beds: d.avg_occupied_beds as number | null,
+        occupancy_pct: d.occupancy_pct as number | null,
+        arpob_daily: d.arpob_daily as number | null,
+        arpob_annualized_lakhs: d.arpob_annualized_lakhs as number | null,
+        alos_days: d.alos_days as number | null,
+        ipd_revenue_lakhs: d.ipd_revenue_lakhs as number | null,
+        opd_revenue_lakhs: d.opd_revenue_lakhs as number | null,
+        operating_revenue_lakhs: d.operating_revenue_lakhs as number | null,
+        census_beds: d.census_beds as number | null,
+      };
+    });
+
+    // Merge BRM months into available months set
+    const allMonthsSet = new Set(sortedMonths);
+    for (const b of brmMonths) allMonthsSet.add(b.month);
+    const allAvailableMonths = [...allMonthsSet].sort();
+
     return NextResponse.json({
       slug,
       department: 'Finance',
@@ -352,8 +424,9 @@ export async function GET(req: NextRequest) {
       monthlySurgeries,
       monthlyAvgCensus,
       monthlyAvgArpob,
-      availableMonths: sortedMonths,
+      availableMonths: allAvailableMonths,
       allDays,
+      brmMonths,
     });
   } catch (err) {
     console.error('Department overview error:', err);
