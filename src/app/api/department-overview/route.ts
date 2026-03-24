@@ -172,6 +172,143 @@ function extractBillingDay(date: string, fields: Record<string, string | number>
   };
 }
 
+// ── Biomedical field extractors ──────────────────────────────────────
+
+// Equipment categories to detect in narrative text
+const EQUIPMENT_CATEGORIES: { key: string; label: string; patterns: RegExp }[] = [
+  { key: 'ct', label: 'CT Scanner', patterns: /\b(ct\b|ct machine|ct gantry|ct console|ct tech)/i },
+  { key: 'eto', label: 'ETO / Sterilizer', patterns: /\b(eto|steriliz|autoclave)/i },
+  { key: 'ecg', label: 'ECG', patterns: /\b(ecg|electrocard)/i },
+  { key: 'ot_equip', label: 'OT Equipment', patterns: /\b(ot table|ot light|laparosc|trocar|sagittal|stryker|drill|cautery)/i },
+  { key: 'monitors', label: 'Patient Monitors', patterns: /\b(monitor|vital|spo2|patient warmer|warmer)/i },
+  { key: 'ventilator', label: 'Ventilators', patterns: /\b(ventilat|bipap|cpap|oxygen)/i },
+  { key: 'imaging', label: 'Imaging (X-ray/USG)', patterns: /\b(xray|x-ray|usg|ultrasound|echo|echo machine|radiology|agfa|printer|sony printer)/i },
+  { key: 'cssd', label: 'CSSD Equipment', patterns: /\b(cssd|sealing machine|packing)/i },
+  { key: 'other', label: 'Other', patterns: /\b(tmt|bp apparatus|suction|dvt pump|medicine cart|uroflow|cot|bed|alpha bed|defibrillat)/i },
+];
+
+function classifyText(text: string): { hasIssue: boolean; isResolved: boolean; equipmentCategories: string[] } {
+  const tl = text.toLowerCase().trim();
+  const noIssuePatterns = /^(no\s+(breakdown|pending|issue|repair|call|equipment)|nil|none|na|no$|all equip|ready to use|functioning|daily rounds|updated|documents up|schedule up|have been scheduled|pm done)/i;
+
+  if (noIssuePatterns.test(tl) || tl === '' || tl === '0') {
+    return { hasIssue: false, isResolved: false, equipmentCategories: [] };
+  }
+
+  const isResolved = /\b(resolved|rectified|fixed|sorted|replaced|returned|working properly|issue resolved|no issues found)\b/i.test(tl);
+  const categories: string[] = [];
+  for (const cat of EQUIPMENT_CATEGORIES) {
+    if (cat.patterns.test(tl)) categories.push(cat.key);
+  }
+
+  return { hasIssue: true, isResolved, equipmentCategories: categories.length > 0 ? categories : ['other'] };
+}
+
+interface BiomedicalDayData {
+  date: string;
+  hasBreakdown: boolean;
+  breakdownResolved: boolean;
+  breakdownCategories: string[];
+  breakdownText: string | null;
+  hasPendingRepair: boolean;
+  pendingText: string | null;
+  equipmentReady: boolean;
+  equipmentText: string | null;
+  pmCompliant: boolean;
+  pmText: string | null;
+  otherNotes: string | null;
+}
+
+function extractBiomedicalDay(date: string, fields: Record<string, string | number>): BiomedicalDayData {
+  const breakdownRaw = findField(fields, 'breakdown');
+  const pendingRaw = findField(fields, 'pending repair', 'pending');
+  const equipReadyRaw = findField(fields, 'equipment readiness', 'equipment ready');
+  const pmRaw = findField(fields, 'preventive maintenance', 'maintenance compliance');
+  const otherRaw = findField(fields, 'other', 'notes');
+
+  const breakdownText = breakdownRaw ? String(breakdownRaw).trim() : null;
+  const pendingText = pendingRaw ? String(pendingRaw).trim() : null;
+  const equipText = equipReadyRaw ? String(equipReadyRaw).trim() : null;
+  const pmText = pmRaw ? String(pmRaw).trim() : null;
+  const otherText = otherRaw ? String(otherRaw).trim() : null;
+
+  const breakdownClass = breakdownText ? classifyText(breakdownText) : { hasIssue: false, isResolved: false, equipmentCategories: [] };
+  const pendingClass = pendingText ? classifyText(pendingText) : { hasIssue: false, isResolved: false, equipmentCategories: [] };
+  const equipClass = equipText ? classifyText(equipText) : { hasIssue: false, isResolved: false, equipmentCategories: [] };
+  const pmClass = pmText ? classifyText(pmText) : { hasIssue: false, isResolved: false, equipmentCategories: [] };
+
+  return {
+    date,
+    hasBreakdown: breakdownClass.hasIssue,
+    breakdownResolved: breakdownClass.isResolved,
+    breakdownCategories: breakdownClass.equipmentCategories,
+    breakdownText,
+    hasPendingRepair: pendingClass.hasIssue,
+    pendingText,
+    equipmentReady: !equipClass.hasIssue,
+    equipmentText: equipText,
+    pmCompliant: pmText !== null && pmText !== '',
+    pmText,
+    otherNotes: otherText && otherText.toLowerCase() !== 'nil' && otherText.toLowerCase() !== 'none' ? otherText : null,
+  };
+}
+
+interface BiomedicalMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  breakdownDays: number;
+  breakdownResolvedDays: number;
+  pendingRepairDays: number;
+  equipmentReadyDays: number;
+  pmReportedDays: number;
+  equipmentReadinessRate: number;
+  breakdownRate: number;
+  resolutionRate: number;
+  pmComplianceRate: number;
+  topEquipmentIssues: { category: string; count: number }[];
+}
+
+function aggregateBiomedicalMonth(month: string, days: BiomedicalDayData[]): BiomedicalMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const breakdownDays = days.filter(d => d.hasBreakdown).length;
+  const breakdownResolvedDays = days.filter(d => d.hasBreakdown && d.breakdownResolved).length;
+  const pendingRepairDays = days.filter(d => d.hasPendingRepair).length;
+  const equipmentReadyDays = days.filter(d => d.equipmentReady).length;
+  const pmReportedDays = days.filter(d => d.pmCompliant).length;
+
+  // Count equipment categories across all breakdown days
+  const catCounts = new Map<string, number>();
+  for (const d of days) {
+    for (const cat of d.breakdownCategories) {
+      catCounts.set(cat, (catCounts.get(cat) || 0) + 1);
+    }
+  }
+  const topEquipmentIssues = [...catCounts.entries()]
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    month,
+    label,
+    daysReported: days.length,
+    breakdownDays,
+    breakdownResolvedDays,
+    pendingRepairDays,
+    equipmentReadyDays,
+    pmReportedDays,
+    equipmentReadinessRate: days.length > 0 ? (equipmentReadyDays / days.length) * 100 : 0,
+    breakdownRate: days.length > 0 ? (breakdownDays / days.length) * 100 : 0,
+    resolutionRate: breakdownDays > 0 ? (breakdownResolvedDays / breakdownDays) * 100 : 100,
+    pmComplianceRate: days.length > 0 ? (pmReportedDays / days.length) * 100 : 0,
+    topEquipmentIssues,
+  };
+}
+
 // ── Monthly aggregation ─────────────────────────────────────────────
 
 interface MonthSummary {
@@ -327,9 +464,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'slug parameter is required' }, { status: 400 });
   }
 
-  // Currently only finance and billing are supported with specific field extraction
-  if (slug !== 'finance' && slug !== 'billing') {
-    return NextResponse.json({ error: 'Only finance and billing department overviews are currently available' }, { status: 400 });
+  // Currently finance, billing, and biomedical are supported
+  if (slug !== 'finance' && slug !== 'billing' && slug !== 'biomedical') {
+    return NextResponse.json({ error: 'Only finance, billing, and biomedical department overviews are currently available' }, { status: 400 });
   }
 
   try {
@@ -366,8 +503,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -447,6 +584,43 @@ export async function GET(req: NextRequest) {
 
       allDays = billingDays;
       months = billingMonths;
+    } else if (slug === 'biomedical') {
+      const biomedicalDays: BiomedicalDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+
+        const dayData = extractBiomedicalDay(date, mergedFields);
+        biomedicalDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      // Group by month
+      const byMonth = new Map<string, BiomedicalDayData[]>();
+      for (const d of biomedicalDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const biomedicalMonths: BiomedicalMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        biomedicalMonths.push(aggregateBiomedicalMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = biomedicalDays;
+      months = biomedicalMonths;
     }
 
     // Get sorted months list
@@ -617,6 +791,49 @@ export async function GET(req: NextRequest) {
         months: billingMonths,
         availableMonths: sortedMonths,
         allDays: billingDays,
+      });
+    } else if (slug === 'biomedical') {
+      // ── Biomedical-specific summary ───────────────────────────────
+      const biomedicalMonths = months as BiomedicalMonthSummary[];
+      const biomedicalDays = allDays as BiomedicalDayData[];
+
+      // Aggregate equipment category counts across all time
+      const globalCatCounts = new Map<string, number>();
+      for (const d of biomedicalDays) {
+        for (const cat of d.breakdownCategories) {
+          globalCatCounts.set(cat, (globalCatCounts.get(cat) || 0) + 1);
+        }
+      }
+      const topEquipmentIssues = [...globalCatCounts.entries()]
+        .map(([category, count]) => ({ category, count }))
+        .sort((a, b) => b.count - a.count);
+
+      // Equipment category labels lookup
+      const catLabels: Record<string, string> = {};
+      for (const c of EQUIPMENT_CATEGORIES) catLabels[c.key] = c.label;
+
+      const summary = {
+        totalDaysReported: biomedicalDays.length,
+        dateRange: biomedicalDays.length > 0 ? { from: biomedicalDays[0].date, to: biomedicalDays[biomedicalDays.length - 1].date } : null,
+        totalBreakdownDays: biomedicalDays.filter(d => d.hasBreakdown).length,
+        totalPendingDays: biomedicalDays.filter(d => d.hasPendingRepair).length,
+        equipmentReadinessRate: biomedicalDays.length > 0 ? (biomedicalDays.filter(d => d.equipmentReady).length / biomedicalDays.length) * 100 : 0,
+        overallBreakdownRate: biomedicalDays.length > 0 ? (biomedicalDays.filter(d => d.hasBreakdown).length / biomedicalDays.length) * 100 : 0,
+        overallResolutionRate: (() => {
+          const bd = biomedicalDays.filter(d => d.hasBreakdown);
+          return bd.length > 0 ? (bd.filter(d => d.breakdownResolved).length / bd.length) * 100 : 100;
+        })(),
+        topEquipmentIssues,
+        categoryLabels: catLabels,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Biomedical',
+        summary,
+        months: biomedicalMonths,
+        availableMonths: sortedMonths,
+        allDays: biomedicalDays,
       });
     }
   } catch (err) {
