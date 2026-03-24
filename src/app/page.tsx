@@ -11,6 +11,7 @@ import HuddleSummaryViewer from '@/components/HuddleSummaryViewer';
 import SubmissionHeatmap from '@/components/SubmissionHeatmap';
 import TrendCharts from '@/components/TrendCharts';
 import DepartmentForms from '@/components/DepartmentForms';
+import MonthlyOverview from '@/components/MonthlyOverview';
 
 function todayStr() {
   const d = new Date();
@@ -18,6 +19,7 @@ function todayStr() {
 }
 
 export default function Home() {
+  const [view, setView] = useState<'overview' | 'dashboard'>('overview');
   const [availableDays, setAvailableDays] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [snapshot, setSnapshot] = useState<DaySnapshot | null>(null);
@@ -152,8 +154,50 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Top Navigation Bar */}
+      <nav className="bg-gradient-to-r from-blue-900 to-blue-950 text-white sticky top-0 z-50 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg className="w-6 h-6 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <span className="font-bold text-sm sm:text-base tracking-tight">EHRC</span>
+          </div>
+          <div className="flex items-center gap-1 bg-white/10 rounded-lg p-0.5">
+            <button
+              onClick={() => setView('overview')}
+              className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                view === 'overview'
+                  ? 'bg-white text-blue-900 shadow-sm'
+                  : 'text-blue-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setView('dashboard')}
+              className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                view === 'dashboard'
+                  ? 'bg-white text-blue-900 shadow-sm'
+                  : 'text-blue-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              Daily Dashboard
+            </button>
+          </div>
+          <div className="w-16 sm:w-20" /> {/* Spacer for balance */}
+        </div>
+      </nav>
+
+      {/* Overview View */}
+      {view === 'overview' && (
+        <MonthlyOverview onNavigateToDashboard={() => setView('dashboard')} />
+      )}
+
+      {/* Dashboard View */}
+      {view === 'dashboard' && (<>
       {/* Header */}
-      <header className="bg-gradient-to-r from-blue-800 to-blue-900 text-white sticky top-0 z-40 shadow-lg">
+      <header className="bg-gradient-to-r from-blue-800 to-blue-900 text-white sticky top-[44px] z-40 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-3">
           {/* Top row */}
           <div className="flex items-center justify-between">
@@ -382,6 +426,7 @@ export default function Home() {
           </div>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
