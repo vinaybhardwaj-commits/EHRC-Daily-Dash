@@ -378,14 +378,25 @@ function buildGlobalIssues(rawData: Map<string, Map<string, Record<string, strin
     const todayDeptFields = rawData.get(latestDate)?.get(issue.deptSlug) || {};
     const todayVal = extractIssueValue(issue, todayDeptFields);
 
-    // Recent week totals
+    // Recent week totals + collect detail text for active days
     let recentTotal = 0;
     let recentActiveDays = 0;
+    const recentDetails: { date: string; text: string; count: number }[] = [];
     for (const date of recentDates) {
       const fields = rawData.get(date)?.get(issue.deptSlug) || {};
       const val = extractIssueValue(issue, fields);
       recentTotal += val.count;
-      if (val.active) recentActiveDays++;
+      if (val.active) {
+        recentActiveDays++;
+        // Get the raw text that triggered the issue
+        const rawText = findField(fields, ...issue.fieldPatterns);
+        const displayText = rawText ? String(rawText).trim() : '';
+        recentDetails.push({
+          date,
+          text: displayText.length > 80 ? displayText.substring(0, 80) + '...' : displayText,
+          count: val.count,
+        });
+      }
     }
 
     // Older week totals for comparison
@@ -407,12 +418,14 @@ function buildGlobalIssues(rawData: Map<string, Map<string, Record<string, strin
       id: issue.id,
       label: issue.label,
       severity: issue.severity,
+      deptSlug: issue.deptSlug,
       todayCount: todayVal.count,
       todayActive: todayVal.active,
       weekTotal: recentTotal,
       weekActiveDays: recentActiveDays,
       prevWeekTotal: olderTotal,
       trend,
+      recentDetails: recentDetails.sort((a, b) => b.date.localeCompare(a.date)),
     };
   });
 }
