@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { type DeptKPIData } from './DepartmentGrid';
 import FinanceOverview from './FinanceOverview';
+import BillingOverview from './BillingOverview';
 
 // ── Config ────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ const DEPT_ACCENT: Record<string, { bg: string; border: string; text: string; ri
 const DEFAULT_ACCENT = { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', ring: 'ring-slate-200' };
 
 // Departments with full overview pages
-const AVAILABLE_OVERVIEWS = new Set(['finance']);
+const AVAILABLE_OVERVIEWS = new Set(['finance', 'billing']);
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -230,6 +231,14 @@ const DepartmentAccordion: React.FC<Props> = ({ departments, onNavigateToDashboa
                   {dept.slug === 'finance' ? (
                     <div className="px-4 py-4">
                       <FinanceOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'billing' ? (
+                    <div className="px-4 py-4">
+                      <BillingOverview
                         embedded
                         onBack={() => setExpandedSlug(null)}
                         onNavigateToDashboard={onNavigateToDashboard}
