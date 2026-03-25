@@ -803,14 +803,12 @@ export async function GET(req: NextRequest) {
         globalIssues.push({
           id: 'ip-unbilled-due',
           label: 'IP Unbilled Due: \u20B9' + fmtAmt + ' (' + ub.total_patients + ' patients, ' + depositPct.toFixed(0) + '% deposit cover)',
-          severity: dueAmt > 500000 ? 'red' : 'amber',
+          severity: (dueAmt > 500000 ? 'red' : 'amber') as 'red' | 'amber',
           deptSlug: 'finance',
           todayCount: 1,
           todayActive: true,
-          weekTotal: 1,
           weekActiveDays: 1,
           prevWeekTotal: 0,
-          trend: 'flat' as const,
           recentDetails: [{ date: ub.snapshot_date, text: 'Net due: \u20B9' + fmtAmt, count: 1 }],
           currentMonthTotal: 1,
           currentMonthActiveDays: 1,
@@ -819,9 +817,6 @@ export async function GET(req: NextRequest) {
           prevMonthTotal: 0,
           prevMonthActiveDays: 0,
           prevMonthDaysReported: 0,
-          changeSummary: 'IP unbilled revenue snapshot',
-          sourceDate: ub.snapshot_date,
-          sourceSlug: 'finance',
         });
       }
     }
