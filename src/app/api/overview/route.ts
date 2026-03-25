@@ -782,6 +782,54 @@ export async function GET(req: NextRequest) {
 
   // New: global issues, department KPIs, heatmap data, and per-dept alerts
   const globalIssues = buildGlobalIssues(currentRawData, prevRawData);
+
+  // ── IP Unbilled Revenue alert for global issues ──
+  try {
+    const unbilledResult = await sql`
+      SELECT snapshot_date, total_bill_amt, total_deposit_amt, total_due_amt, total_patients
+      FROM ip_unbilled_snapshots
+      ORDER BY snapshot_date DESC LIMIT 1
+    `;
+    if (unbilledResult.rows.length > 0) {
+      const ub = unbilledResult.rows[0];
+      const dueAmt = Number(ub.total_due_amt);
+      const billAmt = Number(ub.total_bill_amt);
+      const depositPct = billAmt > 0 ? ((Number(ub.total_deposit_amt) / billAmt) * 100) : 0;
+      // Add to globalIssues if net due is significant (> 1 lakh)
+      if (dueAmt > 100000) {
+        const fmtAmt = dueAmt >= 10000000 ? (dueAmt / 10000000).toFixed(2) + ' Cr' :
+                        dueAmt >= 100000 ? (dueAmt / 100000).toFixed(2) + ' L' :
+                        (dueAmt / 1000).toFixed(1) + ' K';
+        globalIssues.push({
+          id: 'ip-unbilled-due',
+          label: 'IP Unbilled Due: \u20B9' + fmtAmt + ' (' + ub.total_patients + ' patients, ' + depositPct.toFixed(0) + '% deposit cover)',
+          severity: dueAmt > 500000 ? 'red' : 'amber',
+          deptSlug: 'finance',
+          todayCount: 1,
+          todayActive: true,
+          weekTotal: 1,
+          weekActiveDays: 1,
+          prevWeekTotal: 0,
+          trend: 'flat' as const,
+          recentDetails: [{ date: ub.snapshot_date, text: 'Net due: \u20B9' + fmtAmt, count: 1 }],
+          currentMonthTotal: 1,
+          currentMonthActiveDays: 1,
+          currentMonthDaysReported: 1,
+          prevDetails: [],
+          prevMonthTotal: 0,
+          prevMonthActiveDays: 0,
+          prevMonthDaysReported: 0,
+          changeSummary: 'IP unbilled revenue snapshot',
+          sourceDate: ub.snapshot_date,
+          sourceSlug: 'finance',
+        });
+      }
+    }
+  } catch (e) {
+    // ip_unbilled_snapshots table may not exist yet - silently skip
+    console.error('Unbilled check skipped:', e);
+  }
+
   const departmentKPIs = buildDeptKPIs(currentRawData, prevRawData);
   const heatmapData = buildHeatmapData(currentRawData);
   const deptAlerts = buildDeptAlerts(currentRawData);
