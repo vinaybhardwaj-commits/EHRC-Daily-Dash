@@ -14,16 +14,24 @@ interface DepartmentEntry {
 
 // Normalize date to YYYY-MM-DD format
 function normalizeDate(dateStr: string): string {
-  // Try DD-MM-YYYY format
-  const ddmmyyyy = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(dateStr);
-  if (ddmmyyyy) {
-    return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
-  }
+  const s = dateStr.trim().replace(/_/g, '-');
 
   // Try YYYY-MM-DD format
-  const yyyymmdd = /^(\d{4})[/-](\d{2})[/-](\d{2})$/.exec(dateStr);
+  const yyyymmdd = /^(\d{4})[/.\-](\d{1,2})[/.\-](\d{1,2})$/.exec(s);
   if (yyyymmdd) {
-    return `${yyyymmdd[1]}-${yyyymmdd[2]}-${yyyymmdd[3]}`;
+    return `${yyyymmdd[1]}-${yyyymmdd[2].padStart(2, '0')}-${yyyymmdd[3].padStart(2, '0')}`;
+  }
+
+  // Try DD-MM-YYYY format (4-digit year)
+  const ddmmyyyy = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/.exec(s);
+  if (ddmmyyyy) {
+    return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
+  }
+
+  // Try DD-MM-YY format (2-digit year — assume 20xx)
+  const ddmmyy = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2})$/.exec(s);
+  if (ddmmyy) {
+    return `20${ddmmyy[3]}-${ddmmyy[2].padStart(2, '0')}-${ddmmyy[1].padStart(2, '0')}`;
   }
 
   throw new Error(`Invalid date format: ${dateStr}. Expected DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD`);
