@@ -309,6 +309,222 @@ function aggregateBiomedicalMonth(month: string, days: BiomedicalDayData[]): Bio
   };
 }
 
+// ── Diet & Nutrition field extractors ────────────────────────────────
+
+interface DietDayData {
+  date: string;
+  census: number | null;
+  teleConsults: number | null;
+  opConsults: number | null;
+  totalConsults: number | null;
+  bcaDone: number | null;
+  bcaMTD: number | null;
+  dischargesWithDiet: number | null;
+  hasFoodIssue: boolean;
+  foodFeedbackText: string | null;
+  hasKitchenIssue: boolean;
+  kitchenText: string | null;
+  hasDelay: boolean;
+  delayText: string | null;
+  clinicalAuditText: string | null;
+  hasClinicalAudit: boolean;
+}
+
+function extractDietConsultation(raw: string | number | null): { tele: number | null; op: number | null } {
+  if (raw === null || raw === undefined) return { tele: null, op: null };
+  if (typeof raw === 'number') return { tele: raw, op: null };
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s) || /on leave/i.test(s)) return { tele: null, op: null };
+
+  let tele: number | null = null;
+  let op: number | null = null;
+
+  const teleM = s.match(/(\d+)\s*tele/i);
+  if (teleM) tele = parseInt(teleM[1], 10);
+
+  const opM = s.match(/(\d+)\s*(?:op|in[\s-]*person|physical|bca)/i);
+  if (opM) op = parseInt(opM[1], 10);
+
+  // If just a number with no qualifier
+  if (tele === null && op === null) {
+    const num = s.match(/(\d+)/);
+    if (num) tele = parseInt(num[1], 10);
+  }
+
+  return { tele, op };
+}
+
+function extractDietDay(date: string, fields: Record<string, string | number>): DietDayData {
+  const censusRaw = findField(fields, 'census', 'sensus');
+  const consultRaw = findField(fields, 'revenue', 'consultation');
+  const bcaDoneRaw = findField(fields, 'bca done', 'bca today');
+  const bcaMTDRaw = findField(fields, 'bca till', 'bca mtd');
+  const dcRaw = findField(fields, 'discharg', 'dischage');
+  const foodRaw = findField(fields, 'food feedback', 'food summary');
+  const kitchenRaw = findField(fields, 'kitchen');
+  const delayRaw = findField(fields, 'delay', 'incident');
+  const auditRaw = findField(fields, 'audit');
+
+  // Census: extract first number from text like "11 Diet" or "5 Diet"
+  let census: number | null = null;
+  if (censusRaw) {
+    const s = String(censusRaw).trim();
+    if (s && !/^(nil|none|na|no|0)$/i.test(s)) {
+      // Sum all numbers for multi-part entries like "1 SD 2 LD 2 NPO" or "Saturday 10 Diet Sunday 5"
+      const nums = s.match(/(\d+)/g);
+      if (nums) {
+        // Take the first significant number (usually the diet count)
+        census = nums.reduce((sum, n) => sum + parseInt(n, 10), 0);
+        // But if it's clearly a date reference like "Saturday 10 Diet Sunday 5", sum both
+        if (nums.length === 1) census = parseInt(nums[0], 10);
+        else {
+          // Multi-number: sum all
+          census = nums.reduce((sum, n) => sum + parseInt(n, 10), 0);
+        }
+      }
+    }
+  }
+
+  const consult = extractDietConsultation(consultRaw);
+
+  let bcaDone: number | null = null;
+  if (bcaDoneRaw) {
+    const s = String(bcaDoneRaw).trim();
+    if (s && !/^(nil|none|na|no)$/i.test(s)) {
+      const m = s.match(/(\d+)/);
+      if (m) bcaDone = parseInt(m[1], 10);
+    }
+  }
+
+  let bcaMTD: number | null = null;
+  if (bcaMTDRaw) {
+    const s = String(bcaMTDRaw).trim();
+    if (s && !/^(nil|none|na|no)$/i.test(s)) {
+      const m = s.match(/(\d+)/);
+      if (m) bcaMTD = parseInt(m[1], 10);
+    }
+  }
+
+  let dischargesWithDiet: number | null = null;
+  if (dcRaw) {
+    const s = String(dcRaw).trim();
+    if (s && !/^(nil|none|na|no|0)$/i.test(s)) {
+      const m = s.match(/(\d+)/);
+      if (m) dischargesWithDiet = parseInt(m[1], 10);
+    }
+  }
+
+  const foodStr = foodRaw ? String(foodRaw).trim() : null;
+  const hasFoodIssue = foodStr !== null && !isNilText(foodStr) &&
+    !/no negative|no issue|good|satisf|positive|not collected|na/i.test(foodStr);
+
+  const kitchenStr = kitchenRaw ? String(kitchenRaw).trim() : null;
+  const hasKitchenIssue = kitchenStr !== null && !isNilText(kitchenStr);
+
+  const delayStr = delayRaw ? String(delayRaw).trim() : null;
+  const hasDelay = delayStr !== null && !isNilText(delayStr);
+
+  const auditStr = auditRaw ? String(auditRaw).trim() : null;
+  const hasClinicalAudit = auditStr !== null && !isNilText(auditStr);
+
+  return {
+    date,
+    census,
+    teleConsults: consult.tele,
+    opConsults: consult.op,
+    totalConsults: (consult.tele || 0) + (consult.op || 0) > 0
+      ? (consult.tele || 0) + (consult.op || 0) : null,
+    bcaDone,
+    bcaMTD,
+    dischargesWithDiet,
+    hasFoodIssue,
+    foodFeedbackText: hasFoodIssue ? foodStr : null,
+    hasKitchenIssue,
+    kitchenText: hasKitchenIssue ? kitchenStr : null,
+    hasDelay,
+    delayText: hasDelay ? delayStr : null,
+    clinicalAuditText: hasClinicalAudit ? auditStr : null,
+    hasClinicalAudit,
+  };
+}
+
+interface DietMonthSummary {
+  month: string;
+  daysReported: number;
+  avgCensus: number;
+  totalCensus: number;
+  totalTeleConsults: number;
+  totalOPConsults: number;
+  totalConsults: number;
+  avgConsultsPerDay: number;
+  telePercentage: number;
+  bcaDoneSum: number;
+  bcaMTDLatest: number | null;
+  dischargesWithDietSum: number;
+  dischargeDietRate: number;
+  foodIssueDays: number;
+  kitchenIssueDays: number;
+  delayDays: number;
+  clinicalAuditDays: number;
+  incidentFreeDays: number;
+  incidentFreeRate: number;
+}
+
+function aggregateDietMonth(month: string, days: DietDayData[]): DietMonthSummary {
+  const n = days.length;
+  const censusDays = days.filter(d => d.census !== null);
+  const totalCensus = censusDays.reduce((s, d) => s + (d.census || 0), 0);
+  const avgCensus = censusDays.length > 0 ? totalCensus / censusDays.length : 0;
+
+  const totalTele = days.reduce((s, d) => s + (d.teleConsults || 0), 0);
+  const totalOP = days.reduce((s, d) => s + (d.opConsults || 0), 0);
+  const totalConsults = totalTele + totalOP;
+  const consultDays = days.filter(d => d.totalConsults !== null);
+  const avgConsultsPerDay = consultDays.length > 0 ? totalConsults / consultDays.length : 0;
+  const telePercentage = totalConsults > 0 ? (totalTele / totalConsults) * 100 : 0;
+
+  const bcaDoneSum = days.reduce((s, d) => s + (d.bcaDone || 0), 0);
+  // Get the latest non-null BCA MTD value
+  let bcaMTDLatest: number | null = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (days[i].bcaMTD !== null) { bcaMTDLatest = days[i].bcaMTD; break; }
+  }
+
+  const dcDays = days.filter(d => d.dischargesWithDiet !== null);
+  const dischargesWithDietSum = dcDays.reduce((s, d) => s + (d.dischargesWithDiet || 0), 0);
+  const dischargeDietRate = n > 0 ? (dcDays.length / n) * 100 : 0;
+
+  const foodIssueDays = days.filter(d => d.hasFoodIssue).length;
+  const kitchenIssueDays = days.filter(d => d.hasKitchenIssue).length;
+  const delayDays = days.filter(d => d.hasDelay).length;
+  const clinicalAuditDays = days.filter(d => d.hasClinicalAudit).length;
+
+  const incidentFreeDays = days.filter(d => !d.hasFoodIssue && !d.hasKitchenIssue && !d.hasDelay).length;
+  const incidentFreeRate = n > 0 ? (incidentFreeDays / n) * 100 : 0;
+
+  return {
+    month,
+    daysReported: n,
+    avgCensus,
+    totalCensus,
+    totalTeleConsults: totalTele,
+    totalOPConsults: totalOP,
+    totalConsults,
+    avgConsultsPerDay,
+    telePercentage,
+    bcaDoneSum,
+    bcaMTDLatest,
+    dischargesWithDietSum,
+    dischargeDietRate,
+    foodIssueDays,
+    kitchenIssueDays,
+    delayDays,
+    clinicalAuditDays,
+    incidentFreeDays,
+    incidentFreeRate,
+  };
+}
+
 // ── Customer Care field extractors ───────────────────────────────────
 
 interface CustomerCareDayData {
@@ -911,7 +1127,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Currently finance, billing, and biomedical are supported
-  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care'].includes(slug)) {
+  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet'].includes(slug)) {
     return NextResponse.json({ error: 'Department overview not yet available for this department' }, { status: 400 });
   }
 
@@ -949,8 +1165,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -1137,6 +1353,41 @@ export async function GET(req: NextRequest) {
 
       allDays = ccDays;
       months = ccMonths;
+    } else if (slug === 'diet') {
+      const dietDays: DietDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+        const dayData = extractDietDay(date, mergedFields);
+        dietDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      const byMonth = new Map<string, DietDayData[]>();
+      for (const d of dietDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const dietMonths: DietMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        dietMonths.push(aggregateDietMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = dietDays;
+      months = dietMonths;
     }
 
     // Get sorted months list
@@ -1425,6 +1676,44 @@ export async function GET(req: NextRequest) {
         months: ccMonths,
         availableMonths: sortedMonths,
         allDays: ccDays,
+      });
+    } else if (slug === 'diet') {
+      // ── Diet & Nutrition summary ───────────────────────────────────
+      const dietMonths = months as DietMonthSummary[];
+      const dietDays = allDays as DietDayData[];
+
+      const censusDays = dietDays.filter(d => d.census !== null);
+      const consultDays = dietDays.filter(d => d.totalConsults !== null);
+
+      const summary = {
+        totalDaysReported: dietDays.length,
+        dateRange: dietDays.length > 0 ? { from: dietDays[0].date, to: dietDays[dietDays.length - 1].date } : null,
+        totalCensus: censusDays.reduce((s, d) => s + (d.census || 0), 0),
+        avgCensusPerDay: censusDays.length > 0 ? censusDays.reduce((s, d) => s + (d.census || 0), 0) / censusDays.length : 0,
+        totalConsults: consultDays.reduce((s, d) => s + (d.totalConsults || 0), 0),
+        totalTeleConsults: dietDays.reduce((s, d) => s + (d.teleConsults || 0), 0),
+        totalOPConsults: dietDays.reduce((s, d) => s + (d.opConsults || 0), 0),
+        overallTelePercentage: (() => {
+          const total = dietDays.reduce((s, d) => s + (d.teleConsults || 0) + (d.opConsults || 0), 0);
+          const tele = dietDays.reduce((s, d) => s + (d.teleConsults || 0), 0);
+          return total > 0 ? (tele / total) * 100 : 0;
+        })(),
+        totalBCADone: dietDays.reduce((s, d) => s + (d.bcaDone || 0), 0),
+        totalDischargesWithDiet: dietDays.reduce((s, d) => s + (d.dischargesWithDiet || 0), 0),
+        foodIssueDays: dietDays.filter(d => d.hasFoodIssue).length,
+        kitchenIssueDays: dietDays.filter(d => d.hasKitchenIssue).length,
+        delayDays: dietDays.filter(d => d.hasDelay).length,
+        clinicalAuditDays: dietDays.filter(d => d.hasClinicalAudit).length,
+        incidentFreeDays: dietDays.filter(d => !d.hasFoodIssue && !d.hasKitchenIssue && !d.hasDelay).length,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Diet & Nutrition',
+        summary,
+        months: dietMonths,
+        availableMonths: sortedMonths,
+        allDays: dietDays,
       });
     }
   } catch (err) {
