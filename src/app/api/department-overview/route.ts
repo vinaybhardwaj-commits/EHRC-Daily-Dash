@@ -1287,6 +1287,172 @@ function aggregatePharmacyMonth(month: string, days: PharmacyDayData[]): Pharmac
   };
 }
 
+// ── Nursing field extractors ─────────────────────────────────────────
+
+interface NursingDayData {
+  date: string;
+  patientCensus: number | null;
+  staffCount: number | null;
+  staffToPatientRatio: number | null;
+  hasInfectionControl: boolean;
+  infectionText: string | null;
+  hasEscalation: boolean;
+  escalationText: string | null;
+  hasBioWaste: boolean;
+  bioWasteText: string | null;
+  hasComplaint: boolean;
+  complaintText: string | null;
+  hasHAI: boolean;
+  haiText: string | null;
+  hasDialysis: boolean;
+  dialysisText: string | null;
+}
+
+function extractNursingDay(date: string, fields: Record<string, string | number>): NursingDayData {
+  // Era 1 & 2 field names:
+  // "Patient census" → "7", "6"
+  // "Staffing matrix" → "7", "10"
+  // "infection control" → "nil", "Nil"
+  // "Escalations/concerns" → "nil", "Nil"
+  // "Biomedical waste incidents" → "nil" (newer data only)
+  // "Patient complaints & satisfaction" → "nil" or complaint text
+  // "Daily HAI/IPC dashboard (CLABSI, VAP, CAUTI, SSI)" → "nil", "Nil"
+  // "dialysis" → "nil", "NIl"
+  // "cafeteria" → "nil" (newer data only)
+  // "cssd/ETO" → "Nil" (older data only)
+
+  const censusRaw = findField(fields, 'patient census');
+  const staffRaw = findField(fields, 'staffing matrix', 'staffing');
+  const infectionRaw = findField(fields, 'infection control', 'ipc');
+  const escalationRaw = findField(fields, 'escalations', 'concerns');
+  const bioWasteRaw = findField(fields, 'biomedical waste', 'bio waste');
+  const complaintRaw = findField(fields, 'patient complaints', 'satisfaction');
+  const haiRaw = findField(fields, 'daily hai', 'hai/ipc', 'clabsi', 'vap');
+  const dialysisRaw = findField(fields, 'dialysis');
+
+  // Parse patient census
+  const patientCensus = extractNumberInRange(censusRaw, 0, 300);
+
+  // Parse staffing count
+  const staffCount = extractNumberInRange(staffRaw, 0, 200);
+
+  // Calculate staff-to-patient ratio
+  let staffToPatientRatio: number | null = null;
+  if (patientCensus !== null && patientCensus > 0 && staffCount !== null) {
+    staffToPatientRatio = parseFloat((patientCensus / staffCount).toFixed(2));
+  }
+
+  // Parse infection control
+  const infectionStr = infectionRaw ? String(infectionRaw).trim() : null;
+  const hasInfectionControl = infectionStr !== null && !isNilText(infectionStr) &&
+    !/^(no|none|nil|na)$/i.test(infectionStr);
+
+  // Parse escalations
+  const escalationStr = escalationRaw ? String(escalationRaw).trim() : null;
+  const hasEscalation = escalationStr !== null && !isNilText(escalationStr) &&
+    !/^(no|none|nil|na)$/i.test(escalationStr);
+
+  // Parse biomedical waste
+  const bioWasteStr = bioWasteRaw ? String(bioWasteRaw).trim() : null;
+  const hasBioWaste = bioWasteStr !== null && !isNilText(bioWasteStr) &&
+    !/^(no|none|nil|na)$/i.test(bioWasteStr);
+
+  // Parse patient complaints
+  const complaintStr = complaintRaw ? String(complaintRaw).trim() : null;
+  const hasComplaint = complaintStr !== null && !isNilText(complaintStr) &&
+    !/^(no|none|nil|na)$/i.test(complaintStr);
+
+  // Parse HAI/IPC dashboard
+  const haiStr = haiRaw ? String(haiRaw).trim() : null;
+  const hasHAI = haiStr !== null && !isNilText(haiStr) &&
+    !/^(no|none|nil|na)$/i.test(haiStr);
+
+  // Parse dialysis
+  const dialysisStr = dialysisRaw ? String(dialysisRaw).trim() : null;
+  const hasDialysis = dialysisStr !== null && !isNilText(dialysisStr) &&
+    !/^(no|none|nil|na)$/i.test(dialysisStr);
+
+  return {
+    date,
+    patientCensus,
+    staffCount,
+    staffToPatientRatio,
+    hasInfectionControl,
+    infectionText: hasInfectionControl ? infectionStr : null,
+    hasEscalation,
+    escalationText: hasEscalation ? escalationStr : null,
+    hasBioWaste,
+    bioWasteText: hasBioWaste ? bioWasteStr : null,
+    hasComplaint,
+    complaintText: hasComplaint ? complaintStr : null,
+    hasHAI,
+    haiText: hasHAI ? haiStr : null,
+    hasDialysis,
+    dialysisText: hasDialysis ? dialysisStr : null,
+  };
+}
+
+interface NursingMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  avgCensus: number;
+  avgStaffing: number;
+  avgRatio: number;
+  complaintDays: number;
+  escalationDays: number;
+  infectionDays: number;
+  haiDays: number;
+  bioWasteDays: number;
+  incidentFreeDays: number;
+  incidentFreeRate: number;
+}
+
+function aggregateNursingMonth(month: string, days: NursingDayData[]): NursingMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const n = days.length;
+
+  // Census and staffing aggregation
+  const censusDays = days.filter(d => d.patientCensus !== null);
+  const avgCensus = censusDays.length > 0
+    ? censusDays.reduce((s, d) => s + (d.patientCensus || 0), 0) / censusDays.length
+    : 0;
+
+  const staffDays = days.filter(d => d.staffCount !== null);
+  const avgStaffing = staffDays.length > 0
+    ? staffDays.reduce((s, d) => s + (d.staffCount || 0), 0) / staffDays.length
+    : 0;
+
+  const ratioDays = days.filter(d => d.staffToPatientRatio !== null);
+  const avgRatio = ratioDays.length > 0
+    ? ratioDays.reduce((s, d) => s + (d.staffToPatientRatio || 0), 0) / ratioDays.length
+    : 0;
+
+  // Incident tracking
+  const complaintDays = days.filter(d => d.hasComplaint).length;
+  const escalationDays = days.filter(d => d.hasEscalation).length;
+  const infectionDays = days.filter(d => d.hasInfectionControl).length;
+  const haiDays = days.filter(d => d.hasHAI).length;
+  const bioWasteDays = days.filter(d => d.hasBioWaste).length;
+
+  const incidentDays = complaintDays + escalationDays + infectionDays + haiDays + bioWasteDays;
+  const incidentFreeDays = n - incidentDays;
+  const incidentFreeRate = n > 0 ? (incidentFreeDays / n) * 100 : 100;
+
+  return {
+    month, label, daysReported: n,
+    avgCensus: parseFloat(avgCensus.toFixed(1)),
+    avgStaffing: parseFloat(avgStaffing.toFixed(1)),
+    avgRatio: parseFloat(avgRatio.toFixed(2)),
+    complaintDays, escalationDays, infectionDays, haiDays, bioWasteDays,
+    incidentFreeDays, incidentFreeRate,
+  };
+}
+
 function extractClinicalLabDay(date: string, fields: Record<string, string | number>): ClinicalLabDayData {
   const outsourcedRaw = findField(fields, 'outsourced test', 'outsourced');
   const reagentRaw = findField(fields, 'reagent');
@@ -1575,8 +1741,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] | NursingDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] | NursingMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -1868,6 +2034,41 @@ export async function GET(req: NextRequest) {
 
       allDays = pharmacyDays;
       months = pharmacyMonths;
+    } else if (slug === 'nursing') {
+      const nursingDays: NursingDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+        const dayData = extractNursingDay(date, mergedFields);
+        nursingDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      const byMonth = new Map<string, NursingDayData[]>();
+      for (const d of nursingDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const nursingMonths: NursingMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        nursingMonths.push(aggregateNursingMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = nursingDays;
+      months = nursingMonths;
     }
 
     // Get sorted months list
@@ -2256,6 +2457,41 @@ export async function GET(req: NextRequest) {
         months: phMonths,
         availableMonths: sortedMonths,
         allDays: phDays,
+      });
+    } else if (slug === 'nursing') {
+      const nursingMonths = months as NursingMonthSummary[];
+      const nursingDays = allDays as NursingDayData[];
+
+      const censusDays = nursingDays.filter(d => d.patientCensus !== null);
+      const staffDays = nursingDays.filter(d => d.staffCount !== null);
+
+      const summary = {
+        totalDaysReported: nursingDays.length,
+        dateRange: nursingDays.length > 0 ? { from: nursingDays[0].date, to: nursingDays[nursingDays.length - 1].date } : null,
+        avgCensus: censusDays.length > 0 ? censusDays.reduce((s, d) => s + (d.patientCensus || 0), 0) / censusDays.length : 0,
+        avgStaffing: staffDays.length > 0 ? staffDays.reduce((s, d) => s + (d.staffCount || 0), 0) / staffDays.length : 0,
+        totalComplaintDays: nursingDays.filter(d => d.hasComplaint).length,
+        totalEscalationDays: nursingDays.filter(d => d.hasEscalation).length,
+        totalInfectionDays: nursingDays.filter(d => d.hasInfectionControl).length,
+        totalHAIDays: nursingDays.filter(d => d.hasHAI).length,
+        totalBioWasteDays: nursingDays.filter(d => d.hasBioWaste).length,
+        incidentFreeDays: nursingDays.filter(d =>
+          !d.hasComplaint && !d.hasEscalation && !d.hasInfectionControl && !d.hasHAI && !d.hasBioWaste
+        ).length,
+        incidentFreeRate: nursingDays.length > 0
+          ? (nursingDays.filter(d =>
+              !d.hasComplaint && !d.hasEscalation && !d.hasInfectionControl && !d.hasHAI && !d.hasBioWaste
+            ).length / nursingDays.length) * 100
+          : 100,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Nursing',
+        summary,
+        months: nursingMonths,
+        availableMonths: sortedMonths,
+        allDays: nursingDays,
       });
     }
   } catch (err) {
