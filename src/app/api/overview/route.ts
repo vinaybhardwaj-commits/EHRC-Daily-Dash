@@ -150,7 +150,7 @@ export function buildDeptKPIs(
   sortedDates: string[],
   prevRawData: Map<string, Map<string, Record<string, unknown>>>,
   prevSortedDates: string[],
-): ReturnType<typeof buildDeptKPIs> {
+) {
   if (sortedDates.length === 0) {
     return DEPARTMENT_KPIS.map(kpiDef => ({
       slug: kpiDef.slug,
