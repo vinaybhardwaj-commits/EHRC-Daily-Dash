@@ -2536,8 +2536,8 @@ export async function GET(req: NextRequest) {
       const financeDays: FinanceDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
-        // Merge all entries' fields (form + whatsapp)
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        // Merge all entries' fields (form + whatsapp + Google Forms key/value)
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2546,6 +2546,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
 
@@ -2575,8 +2577,8 @@ export async function GET(req: NextRequest) {
       const billingDays: BillingDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
-        // Merge all entries' fields (form + whatsapp)
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        // Merge all entries' fields (form + whatsapp + Google Forms key/value)
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2585,6 +2587,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
 
@@ -2614,7 +2618,7 @@ export async function GET(req: NextRequest) {
       const biomedicalDays: BiomedicalDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2623,6 +2627,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
 
@@ -2651,7 +2657,7 @@ export async function GET(req: NextRequest) {
       const clinicalLabDays: ClinicalLabDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2660,6 +2666,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
         const dayData = extractClinicalLabDay(date, mergedFields);
@@ -2686,7 +2694,7 @@ export async function GET(req: NextRequest) {
       const ccDays: CustomerCareDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2695,6 +2703,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
         const dayData = extractCustomerCareDay(date, mergedFields);
@@ -2721,7 +2731,7 @@ export async function GET(req: NextRequest) {
       const dietDays: DietDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2730,6 +2740,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
         const dayData = extractDietDay(date, mergedFields);
@@ -2756,7 +2768,7 @@ export async function GET(req: NextRequest) {
       const emergencyDays: EmergencyDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2765,6 +2777,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
         const dayData = extractEmergencyDay(date, mergedFields);
@@ -2791,7 +2805,7 @@ export async function GET(req: NextRequest) {
       const pharmacyDays: PharmacyDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2800,6 +2814,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
         const dayData = extractPharmacyDay(date, mergedFields);
@@ -2826,7 +2842,7 @@ export async function GET(req: NextRequest) {
       const nursingDays: NursingDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -2835,6 +2851,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
         const dayData = extractNursingDay(date, mergedFields);
@@ -3467,8 +3485,8 @@ export async function GET(req: NextRequest) {
       const radiologyDays: RadiologyDayData[] = [];
       for (const row of result.rows) {
         const date = row.date;
-        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
-        // Merge all entries' fields (form + whatsapp)
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        // Merge all entries' fields (form + whatsapp + Google Forms key/value)
         const mergedFields: Record<string, string | number> = {};
         for (const entry of entries) {
           if (entry.fields) {
@@ -3477,6 +3495,8 @@ export async function GET(req: NextRequest) {
                 mergedFields[k] = v;
               }
             }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
           }
         }
 
