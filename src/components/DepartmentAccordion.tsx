@@ -11,6 +11,7 @@ import DietNutritionOverview from './DietNutritionOverview';
 import EmergencyOverview from './EmergencyOverview';
 import PharmacyOverview from './PharmacyOverview';
 import NursingOverview from './NursingOverview';
+import RadiologyOverview from './RadiologyOverview';
 
 // ── Config ────────────────────────────────────────────────────────────
 
@@ -63,12 +64,13 @@ const DEPT_ACCENT: Record<string, { bg: string; border: string; text: string; ri
   'nursing': { bg: 'bg-pink-50', border: 'border-pink-200', text: 'text-pink-700', ring: 'ring-pink-200' },
   'ot': { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', ring: 'ring-purple-200' },
   'hr-manpower': { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-700', ring: 'ring-teal-200' },
+  'radiology': { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', ring: 'ring-indigo-200' },
 };
 
 const DEFAULT_ACCENT = { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', ring: 'ring-slate-200' };
 
 // Departments with full overview pages
-const AVAILABLE_OVERVIEWS = new Set(['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing']);
+const AVAILABLE_OVERVIEWS = new Set(['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing', 'radiology']);
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -302,6 +304,14 @@ const DepartmentAccordion: React.FC<Props> = ({ departments, onNavigateToDashboa
                   ) : dept.slug === 'nursing' ? (
                     <div className="px-4 py-4">
                       <NursingOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'radiology' ? (
+                    <div className="px-4 py-4">
+                      <RadiologyOverview
                         embedded
                         onBack={() => setExpandedSlug(null)}
                         onNavigateToDashboard={onNavigateToDashboard}

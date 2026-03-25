@@ -1692,6 +1692,184 @@ function aggregateBillingMonth(month: string, days: BillingDayData[]): BillingMo
   };
 }
 
+// ── Radiology field extractors ──────────────────────────────────────
+
+interface RadiologyDayData {
+  date: string;
+  xrayCases: number | null;
+  usgCases: number | null;
+  ctCases: number | null;
+  totalCases: number | null;
+  reportsInHouse: number | null;
+  hasEquipmentIssue: boolean;
+  equipmentText: string | null;
+  hasPendingReports: boolean;
+  pendingText: string | null;
+  hasCriticalEscalation: boolean;
+  criticalText: string | null;
+  hasStockIssue: boolean;
+  stockText: string | null;
+  radiationSafetyOk: boolean;
+}
+
+function extractRadiologyModalities(raw: string | number | null): { xray: number | null; usg: number | null; ct: number | null } {
+  if (raw === null || raw === undefined) return { xray: null, usg: null, ct: null };
+  if (typeof raw === 'number') return { xray: raw, usg: null, ct: null };
+
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return { xray: null, usg: null, ct: null };
+
+  let xray: number | null = null;
+  let usg: number | null = null;
+  let ct: number | null = null;
+
+  // Pattern: "X Ray  07   CT  00   USG  07" or "X-ray: 10, USG: 5, CT: 0"
+  const xrayMatch = s.match(/(?:X[\s-]?Ray|Xray|x[\s-]?ray)[:\s]*(\d+)/i);
+  if (xrayMatch) xray = parseInt(xrayMatch[1], 10);
+
+  const usgMatch = s.match(/(?:USG|Ultrasound)[:\s]*(\d+)/i);
+  if (usgMatch) usg = parseInt(usgMatch[1], 10);
+
+  const ctMatch = s.match(/(?:CT|CTScan)[:\s]*(\d+)/i);
+  if (ctMatch) ct = parseInt(ctMatch[1], 10);
+
+  return { xray, usg, ct };
+}
+
+function extractRadiologyDay(date: string, fields: Record<string, string | number>): RadiologyDayData {
+  // Era 1 (historical text): "Number of Radiology cases done yesterday (modality-wise: X-ray / USG / CT / MRI)"
+  // Era 2 (Google Forms, Mar 2026+): "# of X-Ray cases (yesterday)", "# of USG cases (yesterday)", "# of CT cases (yesterday)"
+
+  // Try Era 2 fields first (individual modality counts)
+  const xrayRaw = findField(fields, '# of x-ray', 'x-ray cases', 'x ray cases') || findField(fields, 'number of radiology cases');
+  const usgRaw = findField(fields, '# of usg', 'usg cases', 'ultrasound');
+  const ctRaw = findField(fields, '# of ct', 'ct cases');
+  const reportsRaw = findField(fields, '# of reports', 'reports done', 'reports in-house');
+
+  let xrayCases: number | null = null;
+  let usgCases: number | null = null;
+  let ctCases: number | null = null;
+  let reportsInHouse: number | null = null;
+
+  // If xrayRaw contains modality mix pattern (Era 1), parse all three
+  if (xrayRaw && typeof xrayRaw === 'string' && /X\s*Ray|CT|USG/i.test(xrayRaw)) {
+    const parsed = extractRadiologyModalities(xrayRaw);
+    xrayCases = parsed.xray;
+    usgCases = parsed.usg;
+    ctCases = parsed.ct;
+  } else {
+    // Era 2: individual fields
+    xrayCases = extractNumberInRange(xrayRaw, 0, 100);
+    usgCases = extractNumberInRange(usgRaw, 0, 100);
+    ctCases = extractNumberInRange(ctRaw, 0, 100);
+  }
+
+  reportsInHouse = extractNumberInRange(reportsRaw, 0, 100);
+
+  // Calculate total cases
+  let totalCases: number | null = null;
+  if (xrayCases !== null || usgCases !== null || ctCases !== null) {
+    totalCases = (xrayCases || 0) + (usgCases || 0) + (ctCases || 0);
+  }
+
+  // Equipment status
+  const equipmentRaw = findField(fields, 'equipment status');
+  const equipmentText = equipmentRaw ? String(equipmentRaw).trim() : null;
+  const equipClass = equipmentText ? classifyText(equipmentText) : { hasIssue: false, isResolved: false, equipmentCategories: [] };
+
+  // Pending reports
+  const pendingRaw = findField(fields, 'pending reports');
+  const pendingText = pendingRaw ? String(pendingRaw).trim() : null;
+  const hasPendingReports = pendingText !== null && !isNilText(pendingText);
+
+  // Critical results escalation
+  const criticalRaw = findField(fields, 'critical results', 'escalated');
+  const criticalText = criticalRaw ? String(criticalRaw).trim() : null;
+  const hasCriticalEscalation = criticalText !== null && !isNilText(criticalText) && !/^(no|none|nil|na)$/i.test(criticalText);
+
+  // Film/contrast stock
+  const stockRaw = findField(fields, 'film', 'contrast stock', 'stock status');
+  const stockText = stockRaw ? String(stockRaw).trim() : null;
+  const hasStockIssue = stockText !== null && !isNilText(stockText) &&
+    !/^(adequate|available|good|sufficient|ok|all ok)$/i.test(stockText);
+
+  // Radiation safety
+  const radiationRaw = findField(fields, 'radiation safety', 'tld badges', 'safety log');
+  const radiationText = radiationRaw ? String(radiationRaw).trim() : null;
+  const radiationSafetyOk = radiationText === null || isNilText(radiationText) ||
+    /^(updated|done|ok|compliant|good|maintained)$/i.test(radiationText);
+
+  return {
+    date,
+    xrayCases,
+    usgCases,
+    ctCases,
+    totalCases,
+    reportsInHouse,
+    hasEquipmentIssue: equipClass.hasIssue,
+    equipmentText: equipClass.hasIssue ? equipmentText : null,
+    hasPendingReports,
+    pendingText: hasPendingReports ? pendingText : null,
+    hasCriticalEscalation,
+    criticalText: hasCriticalEscalation ? criticalText : null,
+    hasStockIssue,
+    stockText: hasStockIssue ? stockText : null,
+    radiationSafetyOk,
+  };
+}
+
+interface RadiologyMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalXray: number;
+  totalUSG: number;
+  totalCT: number;
+  totalCases: number;
+  avgCasesPerDay: number;
+  modalityMix: { xray: number; usg: number; ct: number };
+  equipmentIssueDays: number;
+  pendingReportDays: number;
+  equipmentUptimeRate: number;
+}
+
+function aggregateRadiologyMonth(month: string, days: RadiologyDayData[]): RadiologyMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const totalXray = days.filter(d => d.xrayCases !== null).reduce((s, d) => s + (d.xrayCases || 0), 0);
+  const totalUSG = days.filter(d => d.usgCases !== null).reduce((s, d) => s + (d.usgCases || 0), 0);
+  const totalCT = days.filter(d => d.ctCases !== null).reduce((s, d) => s + (d.ctCases || 0), 0);
+  const totalCases = totalXray + totalUSG + totalCT;
+  const avgCasesPerDay = days.length > 0 ? totalCases / days.length : 0;
+
+  const totalWithModalities = days.filter(d => d.totalCases !== null).length;
+  const xrayPct = totalCases > 0 ? (totalXray / totalCases) * 100 : 0;
+  const usgPct = totalCases > 0 ? (totalUSG / totalCases) * 100 : 0;
+  const ctPct = totalCases > 0 ? (totalCT / totalCases) * 100 : 0;
+
+  const equipmentIssueDays = days.filter(d => d.hasEquipmentIssue).length;
+  const pendingReportDays = days.filter(d => d.hasPendingReports).length;
+  const equipmentUptimeRate = days.length > 0 ? ((days.length - equipmentIssueDays) / days.length) * 100 : 100;
+
+  return {
+    month,
+    label,
+    daysReported: days.length,
+    totalXray,
+    totalUSG,
+    totalCT,
+    totalCases,
+    avgCasesPerDay,
+    modalityMix: { xray: xrayPct, usg: usgPct, ct: ctPct },
+    equipmentIssueDays,
+    pendingReportDays,
+    equipmentUptimeRate,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const slug = searchParams.get('slug');
@@ -1703,7 +1881,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Currently finance, billing, and biomedical are supported
-  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet'].includes(slug)) {
+  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing', 'radiology'].includes(slug)) {
     return NextResponse.json({ error: 'Department overview not yet available for this department' }, { status: 400 });
   }
 
@@ -1741,8 +1919,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] | NursingDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] | NursingMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] | NursingDayData[] | RadiologyDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] | NursingMonthSummary[] | RadiologyMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -2492,6 +2670,69 @@ export async function GET(req: NextRequest) {
         months: nursingMonths,
         availableMonths: sortedMonths,
         allDays: nursingDays,
+      });
+    } else if (slug === 'radiology') {
+      const radiologyDays: RadiologyDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        // Merge all entries' fields (form + whatsapp)
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+
+        const dayData = extractRadiologyDay(date, mergedFields);
+        radiologyDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      // Group by month
+      const byMonth = new Map<string, RadiologyDayData[]>();
+      for (const d of radiologyDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      // Aggregate each month
+      const radiologyMonths: RadiologyMonthSummary[] = [];
+      const sortedMonths = [...availableMonths].sort();
+      for (const m of sortedMonths) {
+        radiologyMonths.push(aggregateRadiologyMonth(m, byMonth.get(m) || []));
+      }
+
+      const radiologyMonthsData = radiologyMonths as RadiologyMonthSummary[];
+      const currentMonth = radiologyMonthsData.length > 0 ? radiologyMonthsData[radiologyMonthsData.length - 1] : null;
+
+      const summary = {
+        totalDaysReported: radiologyDays.length,
+        dateRange: radiologyDays.length > 0 ? { from: radiologyDays[0].date, to: radiologyDays[radiologyDays.length - 1].date } : null,
+        totalCases: radiologyDays.filter(d => d.totalCases !== null).reduce((s, d) => s + (d.totalCases || 0), 0),
+        totalXrayCases: radiologyDays.filter(d => d.xrayCases !== null).reduce((s, d) => s + (d.xrayCases || 0), 0),
+        totalUSGCases: radiologyDays.filter(d => d.usgCases !== null).reduce((s, d) => s + (d.usgCases || 0), 0),
+        totalCTCases: radiologyDays.filter(d => d.ctCases !== null).reduce((s, d) => s + (d.ctCases || 0), 0),
+        avgCasesPerDay: radiologyDays.length > 0 ? radiologyDays.filter(d => d.totalCases !== null).reduce((s, d) => s + (d.totalCases || 0), 0) / radiologyDays.filter(d => d.totalCases !== null).length : 0,
+        equipmentUptimeDays: radiologyDays.filter(d => !d.hasEquipmentIssue).length,
+        equipmentUptime: radiologyDays.length > 0 ? ((radiologyDays.filter(d => !d.hasEquipmentIssue).length / radiologyDays.length) * 100) : 100,
+        daysWithPendingReports: radiologyDays.filter(d => d.hasPendingReports).length,
+        daysWithCriticalEscalations: radiologyDays.filter(d => d.hasCriticalEscalation).length,
+        incidentFreeDays: radiologyDays.filter(d => !d.hasEquipmentIssue && !d.hasPendingReports && !d.hasCriticalEscalation && d.radiationSafetyOk).length,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Radiology',
+        summary,
+        months: radiologyMonthsData,
+        availableMonths: sortedMonths,
+        allDays: radiologyDays,
       });
     }
   } catch (err) {
