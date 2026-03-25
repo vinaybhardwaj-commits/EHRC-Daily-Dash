@@ -736,8 +736,8 @@ const [loading, setLoading] = useState(true);
         const latestResp = await fetch('/api/kx-upload');
         if (latestResp.ok) {
           const latestData = await latestResp.json();
-          if (latestData.snapshots && latestData.snapshots.length > 0) {
-            const latest = latestData.snapshots[0];
+          if (latestData.data && latestData.data.length > 0) {
+            const latest = latestData.data[0];
             setUnbilledData({
               totalPatients: latest.total_patients,
               totalBillAmt: Number(latest.total_bill_amt),
@@ -749,7 +749,7 @@ const [loading, setLoading] = useState(true);
               patientDetails: latest.patient_details || [],
             });
             // Build trend from all snapshots
-            setUnbilledTrend(latestData.snapshots.map((s: Record<string, unknown>) => ({
+            setUnbilledTrend(latestData.data.map((s: Record<string, unknown>) => ({
               date: s.snapshot_date as string,
               billAmt: Number(s.total_bill_amt),
               dueAmt: Number(s.total_due_amt),
