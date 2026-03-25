@@ -39,7 +39,7 @@ export default function UnitHeadUploadPage() {
         throw new Error(data.error || 'Upload failed');
       }
 
-      setResult(data);
+      setResult({ ...(data.summary || data), snapshotDate: data.date });
       setStatus('success');
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
@@ -50,11 +50,11 @@ export default function UnitHeadUploadPage() {
   };
 
   const formatINR = (n: number) => {
-    if (n >= 10000000) return "`\u20B9${(n / 10000000).toFixed(2)} Cr`";
-    if (n >= 100000) return "`\u20B9${(n / 100000).toFixed(2)} L`";
-    if (n >= 1000) return "`\u20B9${(n / 1000).toFixed(1)} K`";
-    return "`\u20B9${n.toFixed(0)}`";
-  };
+    if (n >= 10000000) return "\u20B9" + (n / 10000000).toFixed(2) + " Cr";
+    if (n >= 100000) return "\u20B9" + (n / 100000).toFixed(2) + " L";
+    if (n >= 1000) return "\u20B9" + (n / 1000).toFixed(1) + " K";
+    return "\u20B9" + n.toFixed(0);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
