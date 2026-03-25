@@ -76,7 +76,7 @@ function fmtDate(dateStr: string | null): string {
 }
 
 function TrendArrow({ trend, invert }: { trend: 'up' | 'down' | 'flat'; invert: boolean }) {
-  if (trend === 'flat') return <span className="text-slate-400 text-xs">→</span>;
+  if (trend === 'flat') return <span className="text-slate-400 text-xs">{'→'}</span>;
   const isUp = trend === 'up';
   const isGood = invert ? !isUp : isUp;
   return (
@@ -95,7 +95,6 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
   };
   const statusLabel: Record<string, string> = { good: 'OK', warning: 'Partial', bad: 'Issue' };
 
-  // Stale styling: grey out values
   const valueColor = isStale ? 'text-slate-400' : 'text-slate-900';
   const staleStatusColor = isStale ? 'text-slate-400' : '';
 
@@ -113,7 +112,7 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
             {statusLabel[status] || textValue || '—'}
           </span>
         ) : (
-          <span className="text-xs text-slate-400">—</span>
+          <span className="text-xs text-slate-400">{'—'}</span>
         )}
       </div>
     </div>
@@ -155,14 +154,9 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
           const staleDate = dept.staleDate || null;
           const staleTooOld = dept.staleTooOld || false;
 
-          const healthDot: Record<string, string> = {
-            green: 'bg-emerald-500', amber: 'bg-amber-400', red: 'bg-red-400',
-          };
-          const healthBorder: Record<string, string> = {
-            green: 'border-slate-200', amber: 'border-amber-200', red: 'border-red-200',
-          };
+          const healthDot: Record<string, string> = { green: 'bg-emerald-500', amber: 'bg-amber-400', red: 'bg-red-400' };
+          const healthBorder: Record<string, string> = { green: 'border-slate-200', amber: 'border-amber-200', red: 'border-red-200' };
 
-          // Progress bar: 5-tier color for visual variety
           let barColor = 'bg-slate-200';
           if (submPct >= 90) barColor = 'bg-emerald-500';
           else if (submPct >= 75) barColor = 'bg-emerald-400';
@@ -170,14 +164,12 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
           else if (submPct >= 40) barColor = 'bg-orange-400';
           else if (submPct > 0) barColor = 'bg-red-400';
 
-          // Submission badge color
           let badgeColor = 'bg-red-100 text-red-700';
           if (submPct >= 90) badgeColor = 'bg-emerald-100 text-emerald-700';
           else if (submPct >= 75) badgeColor = 'bg-emerald-100 text-emerald-600';
           else if (submPct >= 60) badgeColor = 'bg-amber-100 text-amber-700';
           else if (submPct >= 40) badgeColor = 'bg-orange-100 text-orange-700';
 
-          // Determine what to show in KPI area
           const hasKPIValues = dept.value !== null || dept.textValue !== null || (dept.status !== null && dept.type === 'text-status');
           const showStaleData = isStale && hasKPIValues;
           const showNoRecentData = staleTooOld || (!hasAnyData);
@@ -236,7 +228,6 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                   </div>
                 ) : (
                   <div>
-                    {/* Stale data banner */}
                     {showStaleData && staleDate && (
                       <div className="mb-1.5 px-2 py-1 bg-slate-50 rounded text-[10px] text-slate-400 border border-slate-100">
                         as of {fmtDate(staleDate)} — no submission today
