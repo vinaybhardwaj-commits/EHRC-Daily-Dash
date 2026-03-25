@@ -594,7 +594,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
       {/* ===== SECTION 2: GLOBAL ISSUES ===== */}
       {data.globalIssues && data.globalIssues.length > 0 && (
         <div className="mb-6">
-          <GlobalIssuesPanel issues={data.globalIssues} currentMonth={data.currentMonth} previousMonth={data.previousMonth} />
+          <GlobalIssuesPanel issues={data.globalIssues} currentMonth={data.currentMonth} previousMonth={data.previousMonth} onNavigateToDashboard={onNavigateToDashboardWithDate} />
         </div>
       )}
 
@@ -605,6 +605,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
             departments={data.departmentKPIs}
             deptAlerts={data.deptAlerts}
             onNavigateToDept={(slug) => onNavigateToDashboard(slug)}
+            onNavigateToDashboard={onNavigateToDashboardWithDate}
             currentMonth={data.currentMonth}
             previousMonth={data.previousMonth}
           />
