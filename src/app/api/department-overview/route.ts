@@ -1870,6 +1870,616 @@ function aggregateRadiologyMonth(month: string, days: RadiologyDayData[]): Radio
   };
 }
 
+// ── OT field extractors ──────────────────────────────────────────────
+
+interface OTDayData {
+  date: string;
+  otCases: number | null;
+  casePostponed: boolean;
+  firstCaseDelayMinutes: number | null;
+  firstCaseDelayReason: string | null;
+  escalationsBySurgeon: number | null;
+  timesLeftForConsumables: number | null;
+  surgeriesPlannedNextDay: number | null;
+}
+
+function extractOTDay(date: string, fields: Record<string, string | number>): OTDayData {
+  const casesRaw = findField(fields, '# of ot cases', 'ot cases done');
+  let otCases: number | null = null;
+  let casePostponed = false;
+  if (casesRaw !== null) {
+    const s = String(casesRaw).toLowerCase().trim();
+    if (s.includes('postpone') || s.includes('cancel')) {
+      casePostponed = true;
+      otCases = 0;
+    } else {
+      otCases = extractNumberInRange(casesRaw, 0, 50);
+    }
+  }
+
+  const delayMinRaw = findField(fields, 'delay — time in minutes', 'delay — time', 'time in min');
+  let firstCaseDelayMinutes: number | null = null;
+  if (delayMinRaw !== null) {
+    firstCaseDelayMinutes = extractNumberInRange(delayMinRaw, 0, 600);
+  }
+
+  const delayReasonRaw = findField(fields, 'delay — reason', 'delayed by (time', 'delay reason');
+  let firstCaseDelayReason: string | null = null;
+  if (delayReasonRaw !== null) {
+    const s = String(delayReasonRaw).trim();
+    if (!isNilText(s)) firstCaseDelayReason = s;
+  }
+  // Historical combined field: "First case delayed by (Time in min) with reason"
+  if (firstCaseDelayMinutes === null && firstCaseDelayReason === null) {
+    const combinedRaw = findField(fields, 'first case delayed');
+    if (combinedRaw !== null) {
+      const s = String(combinedRaw).trim();
+      if (!isNilText(s)) {
+        firstCaseDelayMinutes = extractNumber(s);
+        firstCaseDelayReason = s;
+      }
+    }
+  }
+
+  const escalationsRaw = findField(fields, 'escalations by surgeon', 'escalation');
+  const escalationsBySurgeon = extractNumberInRange(escalationsRaw, 0, 50);
+
+  const consumablesRaw = findField(fields, 'times team left', 'time team left', 'left ot for consumables', 'left the ot');
+  let timesLeftForConsumables: number | null = null;
+  if (consumablesRaw !== null) {
+    const s = String(consumablesRaw).toLowerCase().trim();
+    if (s.includes('pending') || s.includes('flag')) {
+      timesLeftForConsumables = null; // text status, not a count
+    } else {
+      timesLeftForConsumables = extractNumberInRange(consumablesRaw, 0, 50);
+    }
+  }
+
+  const plannedRaw = findField(fields, 'surgeries planned', 'planned for next');
+  const surgeriesPlannedNextDay = extractNumberInRange(plannedRaw, 0, 50);
+
+  return {
+    date,
+    otCases,
+    casePostponed,
+    firstCaseDelayMinutes,
+    firstCaseDelayReason,
+    escalationsBySurgeon,
+    timesLeftForConsumables,
+    surgeriesPlannedNextDay,
+  };
+}
+
+interface OTMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalCases: number;
+  avgCasesPerDay: number;
+  postponedDays: number;
+  avgDelayMinutes: number;
+  totalEscalations: number;
+  totalConsumableTrips: number;
+  avgPlannedSurgeries: number;
+  delayDays: number;
+}
+
+function aggregateOTMonth(month: string, days: OTDayData[]): OTMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const caseDays = days.filter(d => d.otCases !== null);
+  const totalCases = caseDays.reduce((s, d) => s + (d.otCases || 0), 0);
+  const avgCasesPerDay = caseDays.length > 0 ? totalCases / caseDays.length : 0;
+  const postponedDays = days.filter(d => d.casePostponed).length;
+
+  const delayDays = days.filter(d => d.firstCaseDelayMinutes !== null && d.firstCaseDelayMinutes > 0);
+  const avgDelayMinutes = delayDays.length > 0 ? delayDays.reduce((s, d) => s + (d.firstCaseDelayMinutes || 0), 0) / delayDays.length : 0;
+
+  const totalEscalations = days.filter(d => d.escalationsBySurgeon !== null).reduce((s, d) => s + (d.escalationsBySurgeon || 0), 0);
+  const totalConsumableTrips = days.filter(d => d.timesLeftForConsumables !== null).reduce((s, d) => s + (d.timesLeftForConsumables || 0), 0);
+
+  const plannedDays = days.filter(d => d.surgeriesPlannedNextDay !== null);
+  const avgPlannedSurgeries = plannedDays.length > 0 ? plannedDays.reduce((s, d) => s + (d.surgeriesPlannedNextDay || 0), 0) / plannedDays.length : 0;
+
+  return {
+    month, label, daysReported: days.length,
+    totalCases, avgCasesPerDay, postponedDays,
+    avgDelayMinutes, totalEscalations, totalConsumableTrips,
+    avgPlannedSurgeries, delayDays: delayDays.length,
+  };
+}
+
+// ── HR & Manpower field extractors ──────────────────────────────────
+
+interface HRDayData {
+  date: string;
+  newJoiners: string[];
+  resignations: string[];
+  joinerCount: number;
+  exitCount: number;
+  replacementStatus: string | null;
+  trainingStatus: string | null;
+  doctorProfileStatus: string | null;
+  otherNotes: string | null;
+}
+
+function extractHRDay(date: string, fields: Record<string, string | number>): HRDayData {
+  const joinersRaw = findField(fields, 'new joiners', 'joiner');
+  let newJoiners: string[] = [];
+  let joinerCount = 0;
+  if (joinersRaw !== null) {
+    const s = String(joinersRaw).trim();
+    if (!isNilText(s)) {
+      newJoiners = s.split(/[\/,\n]+/).map(n => n.trim()).filter(n => n.length > 1);
+      joinerCount = newJoiners.length;
+    }
+  }
+
+  const resignRaw = findField(fields, 'resignations', 'exits today');
+  let resignations: string[] = [];
+  let exitCount = 0;
+  if (resignRaw !== null) {
+    const s = String(resignRaw).trim();
+    if (!isNilText(s)) {
+      resignations = s.split(/[\/,\n]+/).map(n => n.trim()).filter(n => n.length > 1);
+      exitCount = resignations.length;
+    }
+  }
+
+  const replacementRaw = findField(fields, 'replacement status');
+  const replacementStatus = replacementRaw && !isNilText(String(replacementRaw).trim()) ? String(replacementRaw).trim() : null;
+
+  const trainingRaw = findField(fields, 'mandatory training', 'induction status');
+  const trainingStatus = trainingRaw && !isNilText(String(trainingRaw).trim()) ? String(trainingRaw).trim() : null;
+
+  const profileRaw = findField(fields, 'doctor profile', 'profile creation');
+  const doctorProfileStatus = profileRaw && !isNilText(String(profileRaw).trim()) ? String(profileRaw).trim() : null;
+
+  const notesRaw = findField(fields, 'other notes');
+  const otherNotes = notesRaw && !isNilText(String(notesRaw).trim()) ? String(notesRaw).trim() : null;
+
+  return { date, newJoiners, resignations, joinerCount, exitCount, replacementStatus, trainingStatus, doctorProfileStatus, otherNotes };
+}
+
+interface HRMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalJoiners: number;
+  totalExits: number;
+  netChange: number;
+  joinerDays: number;
+  exitDays: number;
+}
+
+function aggregateHRMonth(month: string, days: HRDayData[]): HRMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const totalJoiners = days.reduce((s, d) => s + d.joinerCount, 0);
+  const totalExits = days.reduce((s, d) => s + d.exitCount, 0);
+
+  return {
+    month, label, daysReported: days.length,
+    totalJoiners, totalExits, netChange: totalJoiners - totalExits,
+    joinerDays: days.filter(d => d.joinerCount > 0).length,
+    exitDays: days.filter(d => d.exitCount > 0).length,
+  };
+}
+
+// ── Supply Chain field extractors ──────────────────────────────────
+
+interface SupplyChainDayData {
+  date: string;
+  poIssued: number | null;
+  grnPrepared: number | null;
+  shortages: number | null;
+  hasShortage: boolean;
+  emergencyProcurements: number | null;
+  hasProcurementEscalation: boolean;
+  escalationText: string | null;
+  hasHighValueAlert: boolean;
+  highValueText: string | null;
+  criticalStockStatus: number | null;
+  pendingConsumptionText: string | null;
+}
+
+function extractSupplyChainDay(date: string, fields: Record<string, string | number>): SupplyChainDayData {
+  const poRaw = findField(fields, '# of po issued', 'po issued');
+  const poIssued = extractNumberInRange(poRaw, 0, 500);
+
+  const grnRaw = findField(fields, '# of grn', 'grn prepared');
+  const grnPrepared = extractNumberInRange(grnRaw, 0, 500);
+
+  const shortagesRaw = findField(fields, 'shortages', 'backorders');
+  let shortages: number | null = null;
+  let hasShortage = false;
+  if (shortagesRaw !== null) {
+    const s = String(shortagesRaw).trim();
+    if (isNilText(s)) {
+      shortages = 0;
+    } else {
+      shortages = extractNumber(shortagesRaw);
+      hasShortage = shortages !== null && shortages > 0;
+    }
+  }
+
+  const emergencyRaw = findField(fields, 'items procured in emergency', 'after 5pm', 'emergency');
+  const emergencyProcurements = extractNumberInRange(emergencyRaw, 0, 100);
+
+  const escalationRaw = findField(fields, 'procurement escalation');
+  const escalationText = escalationRaw ? String(escalationRaw).trim() : null;
+  const hasProcurementEscalation = escalationText !== null && !isNilText(escalationText);
+
+  const highValueRaw = findField(fields, 'high-value', 'high value');
+  const highValueText = highValueRaw ? String(highValueRaw).trim() : null;
+  const hasHighValueAlert = highValueText !== null && !isNilText(highValueText);
+
+  const criticalRaw = findField(fields, 'critical stock');
+  const criticalStockStatus = extractNumber(criticalRaw);
+
+  const pendingRaw = findField(fields, 'pending consumption', 'consumption reporting');
+  const pendingConsumptionText = pendingRaw && !isNilText(String(pendingRaw).trim()) ? String(pendingRaw).trim() : null;
+
+  return {
+    date, poIssued, grnPrepared, shortages, hasShortage,
+    emergencyProcurements, hasProcurementEscalation, escalationText: hasProcurementEscalation ? escalationText : null,
+    hasHighValueAlert, highValueText: hasHighValueAlert ? highValueText : null,
+    criticalStockStatus, pendingConsumptionText,
+  };
+}
+
+interface SupplyChainMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalPO: number;
+  totalGRN: number;
+  avgPOPerDay: number;
+  avgGRNPerDay: number;
+  shortageDays: number;
+  totalEmergencyProcurements: number;
+  escalationDays: number;
+  highValueAlertDays: number;
+}
+
+function aggregateSupplyChainMonth(month: string, days: SupplyChainDayData[]): SupplyChainMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const poDays = days.filter(d => d.poIssued !== null);
+  const grnDays = days.filter(d => d.grnPrepared !== null);
+  const totalPO = poDays.reduce((s, d) => s + (d.poIssued || 0), 0);
+  const totalGRN = grnDays.reduce((s, d) => s + (d.grnPrepared || 0), 0);
+
+  return {
+    month, label, daysReported: days.length,
+    totalPO, totalGRN,
+    avgPOPerDay: poDays.length > 0 ? totalPO / poDays.length : 0,
+    avgGRNPerDay: grnDays.length > 0 ? totalGRN / grnDays.length : 0,
+    shortageDays: days.filter(d => d.hasShortage).length,
+    totalEmergencyProcurements: days.reduce((s, d) => s + (d.emergencyProcurements || 0), 0),
+    escalationDays: days.filter(d => d.hasProcurementEscalation).length,
+    highValueAlertDays: days.filter(d => d.hasHighValueAlert).length,
+  };
+}
+
+// ── Facility field extractors ──────────────────────────────────────
+
+interface FacilityDayData {
+  date: string;
+  hasSafetyIssue: boolean;
+  safetyText: string | null;
+  housekeepingText: string | null;
+  facilityReadinessText: string | null;
+  hasInfraIssue: boolean;
+  otherNotes: string | null;
+}
+
+function extractFacilityDay(date: string, fields: Record<string, string | number>): FacilityDayData {
+  const safetyRaw = findField(fields, 'safety issues', 'safety issue');
+  const safetyText = safetyRaw ? String(safetyRaw).trim() : null;
+  const hasSafetyIssue = safetyText !== null && !isNilText(safetyText);
+
+  const hkRaw = findField(fields, 'housekeeping', 'room readiness');
+  const housekeepingText = hkRaw ? String(hkRaw).trim() : null;
+
+  const readinessRaw = findField(fields, 'facility readiness', 'power / water', 'power/water');
+  const facilityReadinessText = readinessRaw ? String(readinessRaw).trim() : null;
+  const hasInfraIssue = facilityReadinessText !== null && !isNilText(facilityReadinessText) &&
+    !/^(every\s*thing\s*(is\s*)?(working\s*)?fine|all ok|ok|good|no issue|nil|normal)$/i.test(facilityReadinessText);
+
+  const notesRaw = findField(fields, 'other notes');
+  const otherNotes = notesRaw && !isNilText(String(notesRaw).trim()) ? String(notesRaw).trim() : null;
+
+  return { date, hasSafetyIssue, safetyText: hasSafetyIssue ? safetyText : null, housekeepingText, facilityReadinessText, hasInfraIssue, otherNotes };
+}
+
+interface FacilityMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  safetyIssueDays: number;
+  infraIssueDays: number;
+  issueFreeRate: number;
+}
+
+function aggregateFacilityMonth(month: string, days: FacilityDayData[]): FacilityMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const safetyIssueDays = days.filter(d => d.hasSafetyIssue).length;
+  const infraIssueDays = days.filter(d => d.hasInfraIssue).length;
+  const issueFree = days.filter(d => !d.hasSafetyIssue && !d.hasInfraIssue).length;
+
+  return {
+    month, label, daysReported: days.length,
+    safetyIssueDays, infraIssueDays,
+    issueFreeRate: days.length > 0 ? (issueFree / days.length) * 100 : 100,
+  };
+}
+
+// ── Training field extractors ──────────────────────────────────────
+
+interface TrainingDayData {
+  date: string;
+  trainingTopic: string | null;
+  participants: number | null;
+  mtdCompletedVsPlanned: string | null;
+  mtdCompleted: number | null;
+  mtdPlanned: number | null;
+  hasTraining: boolean;
+}
+
+function extractTrainingDay(date: string, fields: Record<string, string | number>): TrainingDayData {
+  const topicRaw = findField(fields, 'training conducted', 'training topic', 'topic');
+  const trainingTopic = topicRaw && !isNilText(String(topicRaw).trim()) ? String(topicRaw).trim() : null;
+  const hasTraining = trainingTopic !== null && !/^no training/i.test(trainingTopic);
+
+  const participantsRaw = findField(fields, '# of participants', 'participants');
+  const participants = extractNumberInRange(participantsRaw, 0, 500);
+
+  const mtdRaw = findField(fields, 'mtd trainings', 'completed vs planned');
+  let mtdCompletedVsPlanned: string | null = null;
+  let mtdCompleted: number | null = null;
+  let mtdPlanned: number | null = null;
+  if (mtdRaw !== null) {
+    const s = String(mtdRaw).trim();
+    mtdCompletedVsPlanned = s;
+    // Parse "15 out of 17" or "15/17"
+    const match = s.match(/(\d+)\s*(?:out of|of|\/)\s*(\d+)/i);
+    if (match) {
+      mtdCompleted = parseInt(match[1], 10);
+      mtdPlanned = parseInt(match[2], 10);
+    }
+  }
+
+  return { date, trainingTopic, participants, mtdCompletedVsPlanned, mtdCompleted, mtdPlanned, hasTraining };
+}
+
+interface TrainingMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  trainingDays: number;
+  totalParticipants: number;
+  avgParticipants: number;
+  latestCompleted: number | null;
+  latestPlanned: number | null;
+  completionRate: number;
+}
+
+function aggregateTrainingMonth(month: string, days: TrainingDayData[]): TrainingMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const trainingDays = days.filter(d => d.hasTraining).length;
+  const withParticipants = days.filter(d => d.participants !== null && d.participants > 0);
+  const totalParticipants = withParticipants.reduce((s, d) => s + (d.participants || 0), 0);
+
+  // Get latest MTD data
+  const withMTD = days.filter(d => d.mtdCompleted !== null).sort((a, b) => a.date.localeCompare(b.date));
+  const latest = withMTD.length > 0 ? withMTD[withMTD.length - 1] : null;
+
+  return {
+    month, label, daysReported: days.length,
+    trainingDays, totalParticipants,
+    avgParticipants: withParticipants.length > 0 ? totalParticipants / withParticipants.length : 0,
+    latestCompleted: latest?.mtdCompleted || null,
+    latestPlanned: latest?.mtdPlanned || null,
+    completionRate: latest && latest.mtdPlanned && latest.mtdPlanned > 0 ? (latest.mtdCompleted || 0) / latest.mtdPlanned * 100 : 0,
+  };
+}
+
+// ── IT field extractors ────────────────────────────────────────────
+
+interface ITDayData {
+  date: string;
+  hasIntegrationIssue: boolean;
+  integrationText: string | null;
+}
+
+function extractITDay(date: string, fields: Record<string, string | number>): ITDayData {
+  const integrationRaw = findField(fields, 'integration issue', 'system issue');
+  const integrationText = integrationRaw ? String(integrationRaw).trim() : null;
+  const hasIntegrationIssue = integrationText !== null && !isNilText(integrationText);
+
+  return { date, hasIntegrationIssue, integrationText: hasIntegrationIssue ? integrationText : null };
+}
+
+interface ITMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  issueDays: number;
+  issueFreeDays: number;
+  issueFreeRate: number;
+}
+
+function aggregateITMonth(month: string, days: ITDayData[]): ITMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const issueDays = days.filter(d => d.hasIntegrationIssue).length;
+
+  return {
+    month, label, daysReported: days.length,
+    issueDays, issueFreeDays: days.length - issueDays,
+    issueFreeRate: days.length > 0 ? ((days.length - issueDays) / days.length) * 100 : 100,
+  };
+}
+
+// ── Patient Safety field extractors ─────────────────────────────────
+
+interface PatientSafetyDayData {
+  date: string;
+  patientFalls: number | null;
+  medicationErrors: number | null;
+  adverseEvents: number | null;
+  sentinelEvents: number | null;
+  nearMissIncidents: number | null;
+  correctiveActionsClosed: number | null;
+  nabhNonCompliancesClosed: number | null;
+  newNabhNonCompliances: number | null;
+  openRCAs: number | null;
+  totalOpenNabh: number | null;
+  staffSafetyBriefed: number | null;
+  clinicalAuditStatus: string | null;
+  nonClinicalAuditStatus: string | null;
+  vapCompliance: boolean;
+  clabsiCompliance: boolean;
+  ssiCompliance: boolean;
+  cautiCompliance: boolean;
+  safetyTopic: string | null;
+  rcaSummary: string | null;
+  underReportingFlag: string | null;
+  otherNotes: string | null;
+  hasIncident: boolean;
+}
+
+function extractPatientSafetyDay(date: string, fields: Record<string, string | number>): PatientSafetyDayData {
+  const patientFalls = extractNumberInRange(findField(fields, 'patient falls'), 0, 100);
+  const medicationErrors = extractNumberInRange(findField(fields, 'medication error'), 0, 100);
+  const adverseEvents = extractNumberInRange(findField(fields, 'adverse event'), 0, 100);
+  const sentinelEvents = extractNumberInRange(findField(fields, 'sentinel event'), 0, 100);
+  const nearMissIncidents = extractNumberInRange(findField(fields, 'near-miss', 'near miss incident'), 0, 100);
+  const correctiveActionsClosed = extractNumberInRange(findField(fields, 'corrective actions closed'), 0, 100);
+  const nabhNonCompliancesClosed = extractNumberInRange(findField(fields, 'nabh non-compliances closed', 'non-compliances closed'), 0, 100);
+  const newNabhNonCompliances = extractNumberInRange(findField(fields, 'new nabh non-compliance', 'new non-compliance'), 0, 100);
+  const openRCAs = extractNumberInRange(findField(fields, 'open rcas', 'rcas currently in progress'), 0, 100);
+  const totalOpenNabh = extractNumberInRange(findField(fields, 'total open nabh', 'running total'), 0, 500);
+  const staffSafetyBriefed = extractNumberInRange(findField(fields, 'staff who received a safety', 'safety briefing'), 0, 1000);
+
+  const clinicalAuditRaw = findField(fields, 'clinical audit status');
+  const clinicalAuditStatus = clinicalAuditRaw && !isNilText(String(clinicalAuditRaw).trim()) ? String(clinicalAuditRaw).trim() : null;
+
+  const nonClinicalAuditRaw = findField(fields, 'non-clinical audit', 'non clinical audit');
+  const nonClinicalAuditStatus = nonClinicalAuditRaw && !isNilText(String(nonClinicalAuditRaw).trim()) ? String(nonClinicalAuditRaw).trim() : null;
+
+  const vapRaw = findField(fields, 'ventilator bundle', 'vap prevention');
+  const vapCompliance = vapRaw ? /yes|full compliance|compliant/i.test(String(vapRaw)) : false;
+
+  const clabsiRaw = findField(fields, 'central line bundle', 'clabsi');
+  const clabsiCompliance = clabsiRaw ? /yes|full compliance|compliant/i.test(String(clabsiRaw)) : false;
+
+  const ssiRaw = findField(fields, 'surgical site', 'ssi prevention');
+  const ssiCompliance = ssiRaw ? /yes|full compliance|compliant/i.test(String(ssiRaw)) : false;
+
+  const cautiRaw = findField(fields, 'urinary catheter', 'cauti');
+  const cautiCompliance = cautiRaw ? /yes|full compliance|compliant/i.test(String(cautiRaw)) : false;
+
+  const topicRaw = findField(fields, 'topic of safety communication', 'safety communication');
+  const safetyTopic = topicRaw && !isNilText(String(topicRaw).trim()) && String(topicRaw).trim() !== '0' ? String(topicRaw).trim() : null;
+
+  const rcaRaw = findField(fields, 'rca summary', 'new rca initiated');
+  const rcaSummary = rcaRaw && !isNilText(String(rcaRaw).trim()) ? String(rcaRaw).trim() : null;
+
+  const underReportRaw = findField(fields, 'under-reporting', 'under reporting');
+  const underReportingFlag = underReportRaw && !isNilText(String(underReportRaw).trim()) ? String(underReportRaw).trim() : null;
+
+  const notesRaw = findField(fields, 'other quality', 'safety notes');
+  const otherNotes = notesRaw && !isNilText(String(notesRaw).trim()) ? String(notesRaw).trim() : null;
+
+  const hasIncident = (patientFalls || 0) > 0 || (medicationErrors || 0) > 0 || (adverseEvents || 0) > 0 ||
+    (sentinelEvents || 0) > 0 || (nearMissIncidents || 0) > 0;
+
+  return {
+    date, patientFalls, medicationErrors, adverseEvents, sentinelEvents, nearMissIncidents,
+    correctiveActionsClosed, nabhNonCompliancesClosed, newNabhNonCompliances, openRCAs, totalOpenNabh,
+    staffSafetyBriefed, clinicalAuditStatus, nonClinicalAuditStatus,
+    vapCompliance, clabsiCompliance, ssiCompliance, cautiCompliance,
+    safetyTopic, rcaSummary, underReportingFlag, otherNotes, hasIncident,
+  };
+}
+
+interface PatientSafetyMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalFalls: number;
+  totalMedErrors: number;
+  totalAdverseEvents: number;
+  totalSentinelEvents: number;
+  totalNearMiss: number;
+  totalCorrectivesClosed: number;
+  incidentDays: number;
+  incidentFreeRate: number;
+  avgBundleCompliance: number;
+  latestOpenRCAs: number | null;
+  latestOpenNabh: number | null;
+}
+
+function aggregatePatientSafetyMonth(month: string, days: PatientSafetyDayData[]): PatientSafetyMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const totalFalls = days.reduce((s, d) => s + (d.patientFalls || 0), 0);
+  const totalMedErrors = days.reduce((s, d) => s + (d.medicationErrors || 0), 0);
+  const totalAdverseEvents = days.reduce((s, d) => s + (d.adverseEvents || 0), 0);
+  const totalSentinelEvents = days.reduce((s, d) => s + (d.sentinelEvents || 0), 0);
+  const totalNearMiss = days.reduce((s, d) => s + (d.nearMissIncidents || 0), 0);
+  const totalCorrectivesClosed = days.reduce((s, d) => s + (d.correctiveActionsClosed || 0), 0);
+  const incidentDays = days.filter(d => d.hasIncident).length;
+
+  // Bundle compliance average across 4 bundles
+  const bundleDays = days.length;
+  const vapComp = bundleDays > 0 ? days.filter(d => d.vapCompliance).length / bundleDays * 100 : 0;
+  const clabsiComp = bundleDays > 0 ? days.filter(d => d.clabsiCompliance).length / bundleDays * 100 : 0;
+  const ssiComp = bundleDays > 0 ? days.filter(d => d.ssiCompliance).length / bundleDays * 100 : 0;
+  const cautiComp = bundleDays > 0 ? days.filter(d => d.cautiCompliance).length / bundleDays * 100 : 0;
+  const avgBundleCompliance = (vapComp + clabsiComp + ssiComp + cautiComp) / 4;
+
+  // Latest open RCAs/NABH from last reported day
+  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  const latestWithRCA = sorted.filter(d => d.openRCAs !== null);
+  const latestWithNabh = sorted.filter(d => d.totalOpenNabh !== null);
+
+  return {
+    month, label, daysReported: days.length,
+    totalFalls, totalMedErrors, totalAdverseEvents, totalSentinelEvents, totalNearMiss,
+    totalCorrectivesClosed, incidentDays,
+    incidentFreeRate: days.length > 0 ? ((days.length - incidentDays) / days.length) * 100 : 100,
+    avgBundleCompliance,
+    latestOpenRCAs: latestWithRCA.length > 0 ? latestWithRCA[latestWithRCA.length - 1].openRCAs : null,
+    latestOpenNabh: latestWithNabh.length > 0 ? latestWithNabh[latestWithNabh.length - 1].totalOpenNabh : null,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const slug = searchParams.get('slug');
@@ -1881,7 +2491,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Currently finance, billing, and biomedical are supported
-  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing', 'radiology'].includes(slug)) {
+  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing', 'radiology', 'ot', 'hr-manpower', 'supply-chain', 'facility', 'training', 'it', 'patient-safety'].includes(slug)) {
     return NextResponse.json({ error: 'Department overview not yet available for this department' }, { status: 400 });
   }
 
@@ -1919,8 +2529,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] | NursingDayData[] | RadiologyDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] | NursingMonthSummary[] | RadiologyMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] | NursingDayData[] | RadiologyDayData[] | OTDayData[] | HRDayData[] | SupplyChainDayData[] | FacilityDayData[] | TrainingDayData[] | ITDayData[] | PatientSafetyDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] | NursingMonthSummary[] | RadiologyMonthSummary[] | OTMonthSummary[] | HRMonthSummary[] | SupplyChainMonthSummary[] | FacilityMonthSummary[] | TrainingMonthSummary[] | ITMonthSummary[] | PatientSafetyMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -2247,6 +2857,188 @@ export async function GET(req: NextRequest) {
 
       allDays = nursingDays;
       months = nursingMonths;
+    } else if (slug === 'ot') {
+      const otDays: OTDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractOTDay(date, mergedFields);
+        otDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, OTDayData[]>();
+      for (const d of otDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const otMonths: OTMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) otMonths.push(aggregateOTMonth(m, byMonth.get(m) || []));
+      allDays = otDays;
+      months = otMonths;
+    } else if (slug === 'hr-manpower') {
+      const hrDays: HRDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractHRDay(date, mergedFields);
+        hrDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, HRDayData[]>();
+      for (const d of hrDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const hrMonths: HRMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) hrMonths.push(aggregateHRMonth(m, byMonth.get(m) || []));
+      allDays = hrDays;
+      months = hrMonths;
+    } else if (slug === 'supply-chain') {
+      const scDays: SupplyChainDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractSupplyChainDay(date, mergedFields);
+        scDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, SupplyChainDayData[]>();
+      for (const d of scDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const scMonths: SupplyChainMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) scMonths.push(aggregateSupplyChainMonth(m, byMonth.get(m) || []));
+      allDays = scDays;
+      months = scMonths;
+    } else if (slug === 'facility') {
+      const facDays: FacilityDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractFacilityDay(date, mergedFields);
+        facDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, FacilityDayData[]>();
+      for (const d of facDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const facMonths: FacilityMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) facMonths.push(aggregateFacilityMonth(m, byMonth.get(m) || []));
+      allDays = facDays;
+      months = facMonths;
+    } else if (slug === 'training') {
+      const trainDays: TrainingDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractTrainingDay(date, mergedFields);
+        trainDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, TrainingDayData[]>();
+      for (const d of trainDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const trainMonths: TrainingMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) trainMonths.push(aggregateTrainingMonth(m, byMonth.get(m) || []));
+      allDays = trainDays;
+      months = trainMonths;
+    } else if (slug === 'it') {
+      const itDays: ITDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractITDay(date, mergedFields);
+        itDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, ITDayData[]>();
+      for (const d of itDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const itMonths: ITMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) itMonths.push(aggregateITMonth(m, byMonth.get(m) || []));
+      allDays = itDays;
+      months = itMonths;
+    } else if (slug === 'patient-safety') {
+      const psDays: PatientSafetyDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) mergedFields[k] = v;
+            }
+          } else if (entry.key && !entry.key.startsWith('_')) {
+            if (!mergedFields[entry.key]) mergedFields[entry.key] = entry.value as string | number;
+          }
+        }
+        const dayData = extractPatientSafetyDay(date, mergedFields);
+        psDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+      const byMonth = new Map<string, PatientSafetyDayData[]>();
+      for (const d of psDays) { const m = d.date.substring(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(d); }
+      const psMonths: PatientSafetyMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) psMonths.push(aggregatePatientSafetyMonth(m, byMonth.get(m) || []));
+      allDays = psDays;
+      months = psMonths;
     }
 
     // Get sorted months list
@@ -2733,6 +3525,165 @@ export async function GET(req: NextRequest) {
         months: radiologyMonthsData,
         availableMonths: sortedMonths,
         allDays: radiologyDays,
+      });
+    } else if (slug === 'ot') {
+      const otDays = allDays as OTDayData[];
+      const otMonths = months as OTMonthSummary[];
+      const caseDays = otDays.filter(d => d.otCases !== null);
+      const summary = {
+        totalDaysReported: otDays.length,
+        dateRange: otDays.length > 0 ? { from: otDays[0].date, to: otDays[otDays.length - 1].date } : null,
+        totalCases: caseDays.reduce((s, d) => s + (d.otCases || 0), 0),
+        avgCasesPerDay: caseDays.length > 0 ? caseDays.reduce((s, d) => s + (d.otCases || 0), 0) / caseDays.length : 0,
+        postponedDays: otDays.filter(d => d.casePostponed).length,
+        totalEscalations: otDays.reduce((s, d) => s + (d.escalationsBySurgeon || 0), 0),
+        delayDays: otDays.filter(d => d.firstCaseDelayMinutes !== null && d.firstCaseDelayMinutes > 0).length,
+        avgDelayMinutes: (() => {
+          const dd = otDays.filter(d => d.firstCaseDelayMinutes !== null && d.firstCaseDelayMinutes > 0);
+          return dd.length > 0 ? dd.reduce((s, d) => s + (d.firstCaseDelayMinutes || 0), 0) / dd.length : 0;
+        })(),
+        totalConsumableTrips: otDays.reduce((s, d) => s + (d.timesLeftForConsumables || 0), 0),
+        avgPlannedSurgeries: (() => {
+          const pd = otDays.filter(d => d.surgeriesPlannedNextDay !== null);
+          return pd.length > 0 ? pd.reduce((s, d) => s + (d.surgeriesPlannedNextDay || 0), 0) / pd.length : 0;
+        })(),
+      };
+      return NextResponse.json({
+        slug, department: 'OT', summary,
+        months: otMonths, availableMonths: sortedMonths, allDays: otDays,
+      });
+    } else if (slug === 'hr-manpower') {
+      const hrDays = allDays as HRDayData[];
+      const hrMonths = months as HRMonthSummary[];
+      const allJoiners: Record<string, number> = {};
+      const allExits: Record<string, number> = {};
+      for (const d of hrDays) {
+        for (const j of d.newJoiners) { allJoiners[j] = (allJoiners[j] || 0) + 1; }
+        for (const r of d.resignations) { allExits[r] = (allExits[r] || 0) + 1; }
+      }
+      const summary = {
+        totalDaysReported: hrDays.length,
+        dateRange: hrDays.length > 0 ? { from: hrDays[0].date, to: hrDays[hrDays.length - 1].date } : null,
+        totalJoiners: hrDays.reduce((s, d) => s + d.joinerCount, 0),
+        totalExits: hrDays.reduce((s, d) => s + d.exitCount, 0),
+        netChange: hrDays.reduce((s, d) => s + d.joinerCount, 0) - hrDays.reduce((s, d) => s + d.exitCount, 0),
+        joinerDays: hrDays.filter(d => d.joinerCount > 0).length,
+        exitDays: hrDays.filter(d => d.exitCount > 0).length,
+        joinerFrequency: allJoiners,
+        exitFrequency: allExits,
+      };
+      return NextResponse.json({
+        slug, department: 'HR & Manpower', summary,
+        months: hrMonths, availableMonths: sortedMonths, allDays: hrDays,
+      });
+    } else if (slug === 'supply-chain') {
+      const scDays = allDays as SupplyChainDayData[];
+      const scMonths = months as SupplyChainMonthSummary[];
+      const poDays = scDays.filter(d => d.poIssued !== null);
+      const summary = {
+        totalDaysReported: scDays.length,
+        dateRange: scDays.length > 0 ? { from: scDays[0].date, to: scDays[scDays.length - 1].date } : null,
+        totalPO: poDays.reduce((s, d) => s + (d.poIssued || 0), 0),
+        totalGRN: scDays.filter(d => d.grnPrepared !== null).reduce((s, d) => s + (d.grnPrepared || 0), 0),
+        avgPOPerDay: poDays.length > 0 ? poDays.reduce((s, d) => s + (d.poIssued || 0), 0) / poDays.length : 0,
+        shortageDays: scDays.filter(d => d.hasShortage).length,
+        escalationDays: scDays.filter(d => d.hasProcurementEscalation).length,
+        highValueAlertDays: scDays.filter(d => d.hasHighValueAlert).length,
+        totalEmergencyProcurements: scDays.reduce((s, d) => s + (d.emergencyProcurements || 0), 0),
+        shortageFreeRate: scDays.length > 0 ? ((scDays.length - scDays.filter(d => d.hasShortage).length) / scDays.length) * 100 : 100,
+      };
+      return NextResponse.json({
+        slug, department: 'Supply Chain', summary,
+        months: scMonths, availableMonths: sortedMonths, allDays: scDays,
+      });
+    } else if (slug === 'facility') {
+      const facDays = allDays as FacilityDayData[];
+      const facMonths = months as FacilityMonthSummary[];
+      const summary = {
+        totalDaysReported: facDays.length,
+        dateRange: facDays.length > 0 ? { from: facDays[0].date, to: facDays[facDays.length - 1].date } : null,
+        safetyIssueDays: facDays.filter(d => d.hasSafetyIssue).length,
+        infraIssueDays: facDays.filter(d => d.hasInfraIssue).length,
+        issueFreeRate: facDays.length > 0
+          ? (facDays.filter(d => !d.hasSafetyIssue && !d.hasInfraIssue).length / facDays.length) * 100 : 100,
+        incidentFreeDays: facDays.filter(d => !d.hasSafetyIssue && !d.hasInfraIssue).length,
+      };
+      return NextResponse.json({
+        slug, department: 'Facility', summary,
+        months: facMonths, availableMonths: sortedMonths, allDays: facDays,
+      });
+    } else if (slug === 'training') {
+      const trainDays = allDays as TrainingDayData[];
+      const trainMonths = months as TrainingMonthSummary[];
+      const withParticipants = trainDays.filter(d => d.participants !== null && d.participants > 0);
+      const summary = {
+        totalDaysReported: trainDays.length,
+        dateRange: trainDays.length > 0 ? { from: trainDays[0].date, to: trainDays[trainDays.length - 1].date } : null,
+        trainingDays: trainDays.filter(d => d.hasTraining).length,
+        totalParticipants: withParticipants.reduce((s, d) => s + (d.participants || 0), 0),
+        avgParticipantsPerSession: withParticipants.length > 0 ? withParticipants.reduce((s, d) => s + (d.participants || 0), 0) / withParticipants.length : 0,
+        latestCompleted: (() => {
+          const withMTD = trainDays.filter(d => d.mtdCompleted !== null).sort((a, b) => a.date.localeCompare(b.date));
+          return withMTD.length > 0 ? withMTD[withMTD.length - 1].mtdCompleted : null;
+        })(),
+        latestPlanned: (() => {
+          const withMTD = trainDays.filter(d => d.mtdPlanned !== null).sort((a, b) => a.date.localeCompare(b.date));
+          return withMTD.length > 0 ? withMTD[withMTD.length - 1].mtdPlanned : null;
+        })(),
+        uniqueTopics: [...new Set(trainDays.filter(d => d.trainingTopic).map(d => d.trainingTopic!))],
+      };
+      return NextResponse.json({
+        slug, department: 'Training', summary,
+        months: trainMonths, availableMonths: sortedMonths, allDays: trainDays,
+      });
+    } else if (slug === 'it') {
+      const itDays = allDays as ITDayData[];
+      const itMonths = months as ITMonthSummary[];
+      const summary = {
+        totalDaysReported: itDays.length,
+        dateRange: itDays.length > 0 ? { from: itDays[0].date, to: itDays[itDays.length - 1].date } : null,
+        issueDays: itDays.filter(d => d.hasIntegrationIssue).length,
+        issueFreeDays: itDays.filter(d => !d.hasIntegrationIssue).length,
+        issueFreeRate: itDays.length > 0 ? ((itDays.filter(d => !d.hasIntegrationIssue).length) / itDays.length) * 100 : 100,
+      };
+      return NextResponse.json({
+        slug, department: 'IT', summary,
+        months: itMonths, availableMonths: sortedMonths, allDays: itDays,
+      });
+    } else if (slug === 'patient-safety') {
+      const psDays = allDays as PatientSafetyDayData[];
+      const psMonths = months as PatientSafetyMonthSummary[];
+      const summary = {
+        totalDaysReported: psDays.length,
+        dateRange: psDays.length > 0 ? { from: psDays[0].date, to: psDays[psDays.length - 1].date } : null,
+        totalFalls: psDays.reduce((s, d) => s + (d.patientFalls || 0), 0),
+        totalMedErrors: psDays.reduce((s, d) => s + (d.medicationErrors || 0), 0),
+        totalAdverseEvents: psDays.reduce((s, d) => s + (d.adverseEvents || 0), 0),
+        totalSentinelEvents: psDays.reduce((s, d) => s + (d.sentinelEvents || 0), 0),
+        totalNearMiss: psDays.reduce((s, d) => s + (d.nearMissIncidents || 0), 0),
+        totalCorrectivesClosed: psDays.reduce((s, d) => s + (d.correctiveActionsClosed || 0), 0),
+        incidentDays: psDays.filter(d => d.hasIncident).length,
+        incidentFreeRate: psDays.length > 0 ? ((psDays.length - psDays.filter(d => d.hasIncident).length) / psDays.length) * 100 : 100,
+        avgBundleCompliance: (() => {
+          if (psDays.length === 0) return 100;
+          const vap = psDays.filter(d => d.vapCompliance).length / psDays.length * 100;
+          const clabsi = psDays.filter(d => d.clabsiCompliance).length / psDays.length * 100;
+          const ssi = psDays.filter(d => d.ssiCompliance).length / psDays.length * 100;
+          const cauti = psDays.filter(d => d.cautiCompliance).length / psDays.length * 100;
+          return (vap + clabsi + ssi + cauti) / 4;
+        })(),
+        latestOpenRCAs: (() => {
+          const sorted = psDays.filter(d => d.openRCAs !== null).sort((a, b) => a.date.localeCompare(b.date));
+          return sorted.length > 0 ? sorted[sorted.length - 1].openRCAs : null;
+        })(),
+        latestOpenNabh: (() => {
+          const sorted = psDays.filter(d => d.totalOpenNabh !== null).sort((a, b) => a.date.localeCompare(b.date));
+          return sorted.length > 0 ? sorted[sorted.length - 1].totalOpenNabh : null;
+        })(),
+      };
+      return NextResponse.json({
+        slug, department: 'Patient Safety', summary,
+        months: psMonths, availableMonths: sortedMonths, allDays: psDays,
       });
     }
   } catch (err) {

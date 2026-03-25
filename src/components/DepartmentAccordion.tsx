@@ -12,6 +12,13 @@ import EmergencyOverview from './EmergencyOverview';
 import PharmacyOverview from './PharmacyOverview';
 import NursingOverview from './NursingOverview';
 import RadiologyOverview from './RadiologyOverview';
+import OTOverview from './OTOverview';
+import HROverview from './HROverview';
+import SupplyChainOverview from './SupplyChainOverview';
+import FacilityOverview from './FacilityOverview';
+import TrainingOverview from './TrainingOverview';
+import ITOverview from './ITOverview';
+import PatientSafetyOverview from './PatientSafetyOverview';
 
 // ── Config ────────────────────────────────────────────────────────────
 
@@ -70,7 +77,7 @@ const DEPT_ACCENT: Record<string, { bg: string; border: string; text: string; ri
 const DEFAULT_ACCENT = { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', ring: 'ring-slate-200' };
 
 // Departments with full overview pages
-const AVAILABLE_OVERVIEWS = new Set(['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing', 'radiology']);
+const AVAILABLE_OVERVIEWS = new Set(['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care', 'diet', 'emergency', 'pharmacy', 'nursing', 'radiology', 'ot', 'hr-manpower', 'supply-chain', 'facility', 'training', 'it', 'patient-safety']);
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -312,6 +319,62 @@ const DepartmentAccordion: React.FC<Props> = ({ departments, onNavigateToDashboa
                   ) : dept.slug === 'radiology' ? (
                     <div className="px-4 py-4">
                       <RadiologyOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'ot' ? (
+                    <div className="px-4 py-4">
+                      <OTOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'hr-manpower' ? (
+                    <div className="px-4 py-4">
+                      <HROverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'supply-chain' ? (
+                    <div className="px-4 py-4">
+                      <SupplyChainOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'facility' ? (
+                    <div className="px-4 py-4">
+                      <FacilityOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'training' ? (
+                    <div className="px-4 py-4">
+                      <TrainingOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'it' ? (
+                    <div className="px-4 py-4">
+                      <ITOverview
+                        embedded
+                        onBack={() => setExpandedSlug(null)}
+                        onNavigateToDashboard={onNavigateToDashboard}
+                      />
+                    </div>
+                  ) : dept.slug === 'patient-safety' ? (
+                    <div className="px-4 py-4">
+                      <PatientSafetyOverview
                         embedded
                         onBack={() => setExpandedSlug(null)}
                         onNavigateToDashboard={onNavigateToDashboard}
