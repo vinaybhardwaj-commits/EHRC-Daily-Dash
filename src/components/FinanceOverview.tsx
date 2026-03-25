@@ -691,7 +691,17 @@ function DataTable({ days, expanded, onToggle }: {
 
 const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard, embedded = false }) => {
   const [data, setData] = useState<ApiResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  
+  // Unbilled IP Revenue state
+  const [unbilledData, setUnbilledData] = useState<{
+    totalPatients: number; totalBillAmt: number; totalDepositAmt: number;
+    totalDueAmt: number; totalPayerPayable: number; snapshotDate: string;
+    wardBreakdown: Record<string, { patients: number; billAmt: number; depositAmt: number; dueAmt: number }>;
+    patientDetails: Array<{ name: string; ward: string; bed: string; billAmt: number; deposit: number; due: number; los: number; status: string }>;
+  } | null>(null);
+  const [unbilledTrend, setUnbilledTrend] = useState<Array<{ date: string; billAmt: number; dueAmt: number; patients: number }>>([]);
+
+const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<{ from: string; to: string } | null>(null);
   const [showDataTable, setShowDataTable] = useState(false);
@@ -717,6 +727,42 @@ const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard, embed
   }, [selectedRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch unbilled IP revenue data
+  useEffect(() => {
+    (async () => {
+      try {
+        // Get latest snapshot
+        const latestResp = await fetch('/api/kx-upload');
+        if (latestResp.ok) {
+          const latestData = await latestResp.json();
+          if (latestData.snapshots && latestData.snapshots.length > 0) {
+            const latest = latestData.snapshots[0];
+            setUnbilledData({
+              totalPatients: latest.total_patients,
+              totalBillAmt: Number(latest.total_bill_amt),
+              totalDepositAmt: Number(latest.total_deposit_amt),
+              totalDueAmt: Number(latest.total_due_amt),
+              totalPayerPayable: Number(latest.total_payer_payable),
+              snapshotDate: latest.snapshot_date,
+              wardBreakdown: latest.ward_breakdown || {},
+              patientDetails: latest.patient_details || [],
+            });
+            // Build trend from all snapshots
+            setUnbilledTrend(latestData.snapshots.map((s: Record<string, unknown>) => ({
+              date: s.snapshot_date as string,
+              billAmt: Number(s.total_bill_amt),
+              dueAmt: Number(s.total_due_amt),
+              patients: s.total_patients as number,
+            })).reverse());
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch unbilled data:', e);
+      }
+    })();
+  }, []);
+
 
   if (loading) {
     return (
@@ -975,6 +1021,101 @@ const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard, embed
 
             <DataTable days={allDays} expanded={showDataTable} onToggle={() => setShowDataTable(!showDataTable)} />
           </div>
+
+          {/* IP Unbilled Revenue Section */}
+          {unbilledData && (
+            <div className="bg-white rounded-xl border border-purple-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  IP Unbilled Revenue
+                </h2>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  Snapshot: {unbilledData.snapshotDate}
+                </span>
+              </div>
+
+              {/* Hero Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                  <div className="text-xs text-purple-600 font-medium">Running Bill</div>
+                  <div className="text-xl font-bold text-purple-900">{formatLakhs(unbilledData.totalBillAmt)}</div>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                  <div className="text-xs text-emerald-600 font-medium">Deposits Collected</div>
+                  <div className="text-xl font-bold text-emerald-900">{formatLakhs(unbilledData.totalDepositAmt)}</div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-center">
+                  <div className="text-xs text-red-600 font-medium">Net Due</div>
+                  <div className="text-xl font-bold text-red-900">{formatLakhs(unbilledData.totalDueAmt)}</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 text-center">
+                  <div className="text-xs text-slate-600 font-medium">IP Count / Dep. Cover</div>
+                  <div className="text-xl font-bold text-slate-900">
+                    {unbilledData.totalPatients}
+                    <span className="text-sm font-normal text-slate-500"> / {unbilledData.totalBillAmt > 0 ? ((unbilledData.totalDepositAmt / unbilledData.totalBillAmt) * 100).toFixed(0) : 0}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ward Breakdown */}
+              {Object.keys(unbilledData.wardBreakdown).length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Ward-wise Breakdown</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200">
+                          <th className="text-left py-1.5 px-2 text-slate-500 font-medium">Ward</th>
+                          <th className="text-right py-1.5 px-2 text-slate-500 font-medium">Patients</th>
+                          <th className="text-right py-1.5 px-2 text-slate-500 font-medium">Bill Amt</th>
+                          <th className="text-right py-1.5 px-2 text-slate-500 font-medium">Deposits</th>
+                          <th className="text-right py-1.5 px-2 text-slate-500 font-medium">Due</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(unbilledData.wardBreakdown).map(([ward, data]) => (
+                          <tr key={ward} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="py-1.5 px-2 font-medium text-slate-800">{ward}</td>
+                            <td className="py-1.5 px-2 text-right text-slate-600">{(data as Record<string, number>).patients}</td>
+                            <td className="py-1.5 px-2 text-right text-slate-600">{formatLakhs((data as Record<string, number>).billAmt)}</td>
+                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatLakhs((data as Record<string, number>).depositAmt)}</td>
+                            <td className="py-1.5 px-2 text-right text-red-600">{formatLakhs((data as Record<string, number>).dueAmt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* High-alert patients */}
+              {unbilledData.patientDetails.filter(p => p.billAmt > 200000 || p.los > 5).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                    <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    Flagged Patients (Bill &gt; 2L or LOS &gt; 5 days)
+                  </h3>
+                  <div className="space-y-1">
+                    {unbilledData.patientDetails
+                      .filter(p => p.billAmt > 200000 || p.los > 5)
+                      .map((p, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs bg-amber-50 rounded px-3 py-1.5 border border-amber-100">
+                          <span className="font-medium text-slate-800">{p.name}</span>
+                          <span className="text-slate-500">{p.ward} / {p.bed}</span>
+                          <span className="text-slate-600">LOS: {p.los}d</span>
+                          <span className="font-medium text-red-700">{formatLakhs(p.billAmt)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Revenue Leakage Log */}
           {allLeakages.length > 0 && (
