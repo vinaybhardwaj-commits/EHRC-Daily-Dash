@@ -647,7 +647,7 @@ function buildDeptAlerts(rawData: Map<string, Map<string, Record<string, string 
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   return DEPT_ALERT_DEFS.map(def => {
-    const alerts: { message: string; severity: 'red' | 'amber' | 'info' }[] = [];
+    const alerts: { message: string; severity: 'red' | 'amber' | 'info'; sourceDate?: string | null; sourceSlug?: string }[] = [];
 
     // Check for missed submissions in last 5 days
     const missedDates = recentDates.filter(d => !rawData.get(d)?.has(def.slug) && d <= todayStr);
