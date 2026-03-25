@@ -46,12 +46,41 @@ export async function loadDaySnapshot(date: string): Promise<DaySnapshot | null>
   const deptRows = await sql`
     SELECT slug, name, tab, entries FROM department_data WHERE date = ${date} ORDER BY name;
   `;
-  const departments: DepartmentData[] = deptRows.rows.map(r => ({
-    name: r.name,
-    slug: r.slug,
-    tab: r.tab,
-    entries: r.entries as DepartmentData['entries'],
-  }));
+  const departments: DepartmentData[] = deptRows.rows.map(r => {
+    // Normalize entries: some come as [{key, value}] from Google Forms,
+    // others as [{fields: {...}}] from sheets sync. Ensure all have .fields.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawEntries = r.entries as any[];
+    const normalizedEntries: DepartmentData['entries'] = [];
+
+    if (Array.isArray(rawEntries)) {
+      // Check if entries are in {key, value} format (Google Forms)
+      const hasKeyValueFormat = rawEntries.some(e => 'key' in e && !('fields' in e));
+
+      if (hasKeyValueFormat) {
+        // Convert [{key, value}, ...] into a single entry with .fields
+        const fields: Record<string, string | number> = {};
+        for (const e of rawEntries) {
+          const k = e.key as string;
+          if (k && !k.startsWith('_')) {
+            fields[k] = e.value as string | number;
+          }
+        }
+        normalizedEntries.push({ timestamp: '', date: date || '', fields });
+      } else {
+        // Already in [{fields: {...}}] format — pass through, ensuring .fields exists
+        for (const e of rawEntries) {
+          normalizedEntries.push({
+            timestamp: e.timestamp || '',
+            date: e.date || '',
+            fields: e.fields || {},
+          });
+        }
+      }
+    }
+
+    return { name: r.name, slug: r.slug, tab: r.tab, entries: normalizedEntries };
+  });
 
   // Fetch huddle summaries
   const hsRows = await sql`
