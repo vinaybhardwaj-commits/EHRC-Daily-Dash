@@ -102,7 +102,7 @@ function findField(fields: Record<string, string | number>, ...patterns: string[
 }
 
 function formatNumberShort(num: number | null): string {
-  if (num === null) return '—';
+  if (num === null) return 'â';
   if (Math.abs(num) >= 10000000) return (num / 10000000).toFixed(2) + ' Cr';
   if (Math.abs(num) >= 100000) return (num / 100000).toFixed(2) + ' L';
   if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'K';
@@ -190,7 +190,7 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
     const revenueRaw = findField(finance, 'revenue for the day', 'revnue for the day', 'Revenue for the day');
     const revenueMTDRaw = findField(finance, 'total revenue', 'Total revenue MTD');
     const arpobRaw = findField(finance, 'arpob', 'ARPOB');
-    const censusRaw = findField(finance, 'midnight census', 'mid night census', 'census — total IP');
+    const censusRaw = findField(finance, 'midnight census', 'mid night census', 'census â total IP');
     const surgeriesRaw = findField(finance, 'surgeries', 'Surgeries MTD');
 
     // Emergency metrics
@@ -659,6 +659,8 @@ function buildDeptAlerts(rawData: Map<string, Map<string, Record<string, string 
       alerts.push({
         message: `Missed submission: ${dateLabels.join(', ')}`,
         severity: 'amber',
+        sourceDate: missedDates[0],
+        sourceSlug: def.slug,
       });
     }
 
@@ -684,6 +686,8 @@ function buildDeptAlerts(rawData: Map<string, Map<string, Record<string, string 
             alerts.push({
               message: `${check.label}: ${count}`,
               severity: 'red',
+              sourceDate: latestDeptDate,
+              sourceSlug: def.slug,
             });
           }
         }
@@ -700,6 +704,8 @@ function buildDeptAlerts(rawData: Map<string, Map<string, Record<string, string 
             alerts.push({
               message: `${check.label}: ${truncated}`,
               severity: 'amber',
+              sourceDate: latestDeptDate,
+              sourceSlug: def.slug,
             });
           }
         }
@@ -826,7 +832,7 @@ export async function GET(req: NextRequest) {
     let highlight = '';
     if (r.slug === 'finance') {
       const rev = findField(fields, 'revenue for the day', 'revnue for the day');
-      if (rev) highlight = `Rev: ₹${formatNumberShort(extractNumber(rev))}`;
+      if (rev) highlight = `Rev: â¹${formatNumberShort(extractNumber(rev))}`;
     } else if (r.slug === 'emergency') {
       const er = findField(fields, 'er cases', '# of ER cases', 'walk-in');
       if (er) highlight = `ER Cases: ${extractCount(er)}`;
@@ -840,7 +846,7 @@ export async function GET(req: NextRequest) {
     return { slug: r.slug, highlight };
   });
 
-  // Fetch this week's submissions (Mon–today), grouped by date and slug
+  // Fetch this week's submissions (Monâtoday), grouped by date and slug
   const weekResult = await sql`
     SELECT date, slug FROM department_data
     WHERE date >= ${weekStartStr} AND date <= ${todayStr}
