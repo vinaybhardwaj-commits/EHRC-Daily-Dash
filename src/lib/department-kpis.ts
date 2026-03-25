@@ -49,7 +49,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
   {
     slug: 'finance',
     label: 'Revenue MTD',
-    unit: 'â¹',
+    unit: 'Ã¢ÂÂ¹',
     type: 'number',
     // Actual DB: "Total revenue MTD (Rs.)"
     fieldPatterns: ['total revenue mtd', 'revenue mtd'],
@@ -75,7 +75,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     slug: 'facility',
     label: 'Readiness',
     type: 'text-status',
-    // Actual DB: "Facility readiness â power / water / gases"
+    // Actual DB: "Facility readiness Ã¢ÂÂ power / water / gases"
     fieldPatterns: ['facility readiness', 'readiness', 'power'],
     statusKeywords: {
       good: ['all ok', 'ok', 'ready', 'normal', 'all systems', 'no issue', 'functional', 'running', 'all running', 'available'],
@@ -86,7 +86,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
   {
     slug: 'pharmacy',
     label: 'Pharmacy Rev MTD',
-    unit: 'â¹',
+    unit: 'Ã¢ÂÂ¹',
     type: 'number',
     // Actual DB: "Pharmacy revenue MTD (Rs.)"
     fieldPatterns: ['pharmacy revenue mtd', 'revenue mtd'],
@@ -151,7 +151,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     slug: 'biomedical',
     label: 'Equipment Status',
     type: 'text-status',
-    // Actual DB: "Equipment readiness â OT, ICU, etc."
+    // Actual DB: "Equipment readiness Ã¢ÂÂ OT, ICU, etc."
     fieldPatterns: ['equipment readiness', 'equipment'],
     statusKeywords: {
       good: ['all ok', 'functional', 'ready', 'operational', 'no issue', 'running', 'all equipment', 'working fine'],
@@ -183,7 +183,73 @@ export const DEPARTMENT_KPI_MAP = new Map(
 );
 
 /**
- * Global issue definitions â things that get surfaced in the hospital-wide
+ * Secondary KPI definitions - up to 2 extra metrics per department
+ * shown alongside the primary KPI in the redesigned Department Progress cards.
+ */
+export interface SecondaryKPI {
+  label: string;
+  unit?: string;
+  type: 'number' | 'text-status';
+  fieldPatterns: string[];
+  invertTrend?: boolean;
+  statusKeywords?: { good: string[]; warning: string[]; bad: string[] };
+}
+
+export const DEPARTMENT_SECONDARY_KPIS: Record<string, SecondaryKPI[]> = {
+  'emergency': [
+    { label: 'Deaths', unit: 'cases', type: 'number', fieldPatterns: ['death', '# of Deaths'], invertTrend: true },
+    { label: 'LAMA/DAMA', unit: 'cases', type: 'number', fieldPatterns: ['lama', 'dama', '# of LAMA'], invertTrend: true },
+  ],
+  'customer-care': [
+    { label: 'Delay Impact', unit: 'patients', type: 'number', fieldPatterns: ['affected by doctor delays', 'patients affected'] },
+    { label: 'Escalations', unit: 'cases', type: 'number', fieldPatterns: ['escalation'] },
+  ],
+  'patient-safety': [
+    { label: 'Sentinel Events', unit: 'events', type: 'number', fieldPatterns: ['sentinel', '# of Sentinel'], invertTrend: true },
+    { label: 'Med Errors', unit: 'errors', type: 'number', fieldPatterns: ['medication error', '# of Medication'], invertTrend: true },
+  ],
+  'finance': [
+    { label: 'ARPOB', unit: '\u20b9', type: 'number', fieldPatterns: ['arpob', 'ARPOB'] },
+    { label: 'IP Census', unit: 'patients', type: 'number', fieldPatterns: ['midnight census', 'mid night census', 'census \u2014 total IP'] },
+  ],
+  'billing': [
+    { label: 'DAMA/LAMA', unit: 'cases', type: 'number', fieldPatterns: ['dama', 'lama', '# of DAMA'], invertTrend: true },
+  ],
+  'supply-chain': [
+    { label: 'Shortages', type: 'text-status', fieldPatterns: ['shortage', 'stockout', 'shortages'], statusKeywords: { good: ['nil', 'none', 'no', 'adequate', 'no stock'], warning: ['low', 'partial'], bad: ['shortage', 'stockout', 'critical', 'out of stock', 'unavailable', 'backorder'] } },
+  ],
+  'facility': [],
+  'pharmacy': [
+    { label: 'Stockouts', type: 'text-status', fieldPatterns: ['stockout', 'shortage'], statusKeywords: { good: ['nil', 'none', 'no', 'na'], warning: ['low', 'partial'], bad: ['out', 'stock', 'shortage', 'unavailable', 'yes'] } },
+  ],
+  'training': [],
+  'clinical-lab': [
+    { label: 'Sample Errors', type: 'text-status', fieldPatterns: ['recollection', 'reporting error'], statusKeywords: { good: ['nil', 'none', 'no', 'na', 'nill'], warning: ['minor'], bad: ['error', 'recollection', 'rejected', 'contaminated'] } },
+  ],
+  'radiology': [
+    { label: 'Equipment', type: 'text-status', fieldPatterns: ['equipment status', 'ct / mri', 'uptime'], statusKeywords: { good: ['ok', 'up', 'running', 'operational', 'functional', 'normal'], warning: ['maintenance', 'scheduled'], bad: ['down', 'repair', 'not working', 'issue'] } },
+  ],
+  'ot': [
+    { label: '1st Case Delay', unit: 'min', type: 'number', fieldPatterns: ['first case delay', 'time in minutes'], invertTrend: true },
+  ],
+  'hr-manpower': [
+    { label: 'Resignations', type: 'text-status', fieldPatterns: ['resignation', 'exit'], statusKeywords: { good: ['nil', 'none', 'no', 'na', 'nill', 'n/a', 'no resignations'], warning: ['in process', 'pending'], bad: ['resign', 'exit', 'left', 'quit', 'multiple'] } },
+  ],
+  'diet': [],
+  'biomedical': [
+    { label: 'Breakdowns', type: 'text-status', fieldPatterns: ['breakdown'], statusKeywords: { good: ['nil', 'none', 'no', 'na', 'nill', 'no breakdown'], warning: ['minor', 'under repair'], bad: ['down', 'breakdown', 'failure', 'critical', 'not working', 'multiple'] } },
+  ],
+  'nursing': [
+    { label: 'HAI/IPC', type: 'text-status', fieldPatterns: ['hai', 'ipc', 'clabsi', 'vap', 'cauti'], statusKeywords: { good: ['nil', 'none', 'no', 'na', 'nill', 'zero', '0'], warning: ['suspected', 'monitoring'], bad: ['positive', 'case', 'infection', 'yes'] } },
+  ],
+  'it': [
+    { label: 'HIS Uptime', type: 'text-status', fieldPatterns: ['his uptime', 'downtime'], statusKeywords: { good: ['up', 'ok', 'running', 'operational', 'normal', 'nil', 'none'], warning: ['intermittent', 'slow'], bad: ['down', 'outage', 'issue'] } },
+  ],
+};
+
+
+/**
+ * Global issue definitions Ã¢ÂÂ things that get surfaced in the hospital-wide
  * issues panel. Each issue pulls from a specific department + field.
  */
 export interface GlobalIssue {
@@ -220,7 +286,7 @@ export const GLOBAL_ISSUES: GlobalIssue[] = [
 ];
 
 /**
- * Per-department alert definitions â what to check when building the
+ * Per-department alert definitions Ã¢ÂÂ what to check when building the
  * expandable detail view for each department card.
  */
 export interface DeptAlertDef {

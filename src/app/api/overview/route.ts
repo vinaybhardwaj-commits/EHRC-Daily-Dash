@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { DEPARTMENT_KPIS, GLOBAL_ISSUES, DEPT_ALERT_DEFS, type GlobalIssue } from '@/lib/department-kpis';
+import { DEPARTMENT_KPIS, GLOBAL_ISSUES, DEPT_ALERT_DEFS, DEPARTMENT_SECONDARY_KPIS, type GlobalIssue, type SecondaryKPI } from '@/lib/department-kpis';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +102,7 @@ function findField(fields: Record<string, string | number>, ...patterns: string[
 }
 
 function formatNumberShort(num: number | null): string {
-  if (num === null) return 'â';
+  if (num === null) return 'Ã¢ÂÂ';
   if (Math.abs(num) >= 10000000) return (num / 10000000).toFixed(2) + ' Cr';
   if (Math.abs(num) >= 100000) return (num / 100000).toFixed(2) + ' L';
   if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'K';
@@ -190,7 +190,7 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
     const revenueRaw = findField(finance, 'revenue for the day', 'revnue for the day', 'Revenue for the day');
     const revenueMTDRaw = findField(finance, 'total revenue', 'Total revenue MTD');
     const arpobRaw = findField(finance, 'arpob', 'ARPOB');
-    const censusRaw = findField(finance, 'midnight census', 'mid night census', 'census â total IP');
+    const censusRaw = findField(finance, 'midnight census', 'mid night census', 'census Ã¢ÂÂ total IP');
     const surgeriesRaw = findField(finance, 'surgeries', 'Surgeries MTD');
 
     // Emergency metrics
@@ -501,6 +501,31 @@ function buildGlobalIssues(
 /**
  * Build per-department signature KPI data with trend + previous month comparison.
  */
+
+/**
+ * Extract a secondary KPI value from department fields.
+ */
+function extractSecondaryKPI(secKpi: SecondaryKPI, fields: Record<string, string | number>): { value: number | null; textValue: string | null; status: 'good' | 'warning' | 'bad' | null } {
+  if (secKpi.type === 'number') {
+    const raw = findField(fields, ...secKpi.fieldPatterns);
+    const val = extractNumber(raw);
+    return { value: val, textValue: null, status: null };
+  }
+  if (secKpi.type === 'text-status') {
+    const raw = findField(fields, ...secKpi.fieldPatterns);
+    const text = raw ? String(raw).trim() : '';
+    if (!text) return { value: null, textValue: null, status: null };
+    const lower = text.toLowerCase();
+    const kw = secKpi.statusKeywords!;
+    let status: 'good' | 'warning' | 'bad' = 'warning';
+    if (kw.bad.some(w => lower.includes(w))) status = 'bad';
+    else if (kw.good.some(w => lower.includes(w))) status = 'good';
+    else if (kw.warning.some(w => lower.includes(w))) status = 'warning';
+    return { value: null, textValue: text.substring(0, 40), status };
+  }
+  return { value: null, textValue: null, status: null };
+}
+
 function buildDeptKPIs(
   rawData: Map<string, Map<string, Record<string, string | number>>>,
   prevRawData: Map<string, Map<string, Record<string, string | number>>>
@@ -595,6 +620,62 @@ function buildDeptKPIs(
       if (pct > 5) monthTrend = diff > 0 ? 'up' : 'down';
     }
 
+    // Extract secondary KPIs for this department
+    const secDefs = DEPARTMENT_SECONDARY_KPIS[kpiDef.slug] || [];
+    const secondaryKpis = secDefs.map(secDef => {
+      const latestFields2 = rawData.get(latestDate)?.get(kpiDef.slug) || {};
+      const extracted = extractSecondaryKPI(secDef, latestFields2);
+      // Compute trend for numeric secondary KPIs
+      let secTrend: 'up' | 'down' | 'flat' = 'flat';
+      if (secDef.type === 'number' && extracted.value !== null) {
+        const recentVals: number[] = [];
+        for (const date of recentDates) {
+          const f = rawData.get(date)?.get(kpiDef.slug);
+          if (f) {
+            const r = extractSecondaryKPI(secDef, f);
+            if (r.value !== null) recentVals.push(r.value);
+          }
+        }
+        if (recentVals.length >= 2) {
+          const avg = recentVals.reduce((s, v) => s + v, 0) / recentVals.length;
+          const diff = extracted.value - avg;
+          const pct = avg !== 0 ? Math.abs(diff / avg) * 100 : 0;
+          if (pct > 5) secTrend = diff > 0 ? 'up' : 'down';
+        }
+      }
+      return {
+        label: secDef.label,
+        value: extracted.value,
+        textValue: extracted.textValue,
+        status: extracted.status,
+        unit: secDef.unit || null,
+        type: secDef.type,
+        trend: secTrend,
+        invertTrend: secDef.invertTrend || false,
+      };
+    });
+
+    // Compute health score: green/amber/red
+    const submissionRate = sortedDates.length > 0 ? submissionCount / sortedDates.length : 0;
+    // Count alerts from deptAlerts (we'll merge them in the response builder)
+    let health: 'green' | 'amber' | 'red' = 'green';
+    if (submissionRate < 0.5) health = 'red';
+    else if (submissionRate < 0.8) health = 'amber';
+    // Downgrade if primary KPI trend is bad
+    if (health === 'green' && trend !== 'flat') {
+      const isBadTrend = (trend === 'down' && !kpiDef.invertTrend) || (trend === 'up' && kpiDef.invertTrend);
+      if (isBadTrend) health = 'amber';
+    }
+
+    // Find last submission date for this department
+    let lastSubmissionDate: string | null = null;
+    for (let i = sortedDates.length - 1; i >= 0; i--) {
+      if (rawData.get(sortedDates[i])?.has(kpiDef.slug)) {
+        lastSubmissionDate = sortedDates[i];
+        break;
+      }
+    }
+
     return {
       slug: kpiDef.slug,
       label: kpiDef.label,
@@ -617,6 +698,10 @@ function buildDeptKPIs(
       prevSubmissionCount,
       prevTotalDays: prevSortedDates.length,
       monthTrend,
+      // NEW: secondary KPIs, health, last submission
+      secondaryKpis,
+      health,
+      lastSubmissionDate,
     };
   });
 }
@@ -783,7 +868,7 @@ export async function GET(req: NextRequest) {
   // New: global issues, department KPIs, heatmap data, and per-dept alerts
   const globalIssues = buildGlobalIssues(currentRawData, prevRawData);
 
-  // ── IP Unbilled Revenue alert for global issues ──
+  // ââ IP Unbilled Revenue alert for global issues ââ
   try {
     const unbilledResult = await sql`
       SELECT snapshot_date, total_bill_amt, total_deposit_amt, total_due_amt, total_patients
@@ -832,6 +917,16 @@ export async function GET(req: NextRequest) {
   const heatmapData = buildHeatmapData(currentRawData);
   const deptAlerts = buildDeptAlerts(currentRawData);
 
+  // Merge alerts into departmentKPIs and refine health scores
+  const alertMap = new Map(deptAlerts.map(a => [a.slug, a]));
+  for (const dept of departmentKPIs) {
+    const alertData = alertMap.get(dept.slug);
+    const redAlerts = (alertData?.alerts || []).filter(a => a.severity === 'red');
+    // Downgrade health if there are red alerts
+    if (redAlerts.length > 0 && dept.health === 'green') dept.health = 'amber';
+    if (redAlerts.length >= 3) dept.health = 'red';
+  }
+
   // Get total available months for the month selector
   const monthsResult = await sql`
     SELECT DISTINCT LEFT(date, 7) as month FROM day_snapshots ORDER BY month DESC;
@@ -878,7 +973,7 @@ export async function GET(req: NextRequest) {
     let highlight = '';
     if (r.slug === 'finance') {
       const rev = findField(fields, 'revenue for the day', 'revnue for the day');
-      if (rev) highlight = `Rev: â¹${formatNumberShort(extractNumber(rev))}`;
+      if (rev) highlight = `Rev: Ã¢ÂÂ¹${formatNumberShort(extractNumber(rev))}`;
     } else if (r.slug === 'emergency') {
       const er = findField(fields, 'er cases', '# of ER cases', 'walk-in');
       if (er) highlight = `ER Cases: ${extractCount(er)}`;
@@ -892,7 +987,7 @@ export async function GET(req: NextRequest) {
     return { slug: r.slug, highlight };
   });
 
-  // Fetch this week's submissions (Monâtoday), grouped by date and slug
+  // Fetch this week's submissions (MonÃ¢ÂÂtoday), grouped by date and slug
   const weekResult = await sql`
     SELECT date, slug FROM department_data
     WHERE date >= ${weekStartStr} AND date <= ${todayStr}
