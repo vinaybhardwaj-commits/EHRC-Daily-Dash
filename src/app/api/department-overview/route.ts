@@ -1100,6 +1100,193 @@ function aggregateEmergencyMonth(month: string, days: EmergencyDayData[]): Emerg
   };
 }
 
+// ── Pharmacy field extractors ────────────────────────────────────────
+
+interface PharmacyDayData {
+  date: string;
+  ipRevenueToday: number | null;
+  opRevenueToday: number | null;
+  totalRevenueToday: number | null;
+  revenueMTD: number | null;
+  ipStockValue: number | null;
+  opStockValue: number | null;
+  totalStockValue: number | null;
+  hasStockout: boolean;
+  stockoutText: string | null;
+  hasExpiry: boolean;
+  expiryText: string | null;
+}
+
+function extractPharmacyRevenue(raw: string | number | null): { ip: number | null; op: number | null; total: number | null } {
+  if (raw === null || raw === undefined) return { ip: null, op: null, total: null };
+  if (typeof raw === 'number') return { ip: raw, op: null, total: raw };
+
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return { ip: null, op: null, total: null };
+
+  let ip: number | null = null;
+  let op: number | null = null;
+  let total: number | null = null;
+
+  // Pattern: "IP ; Rs.118861  Op ;Rs.4874" or "Ip:Rs.247357     Op ;Rs.15270"
+  const ipMatch = s.match(/(?:IP|Ip|ip)[:\s;]*Rs\.?\s*([0-9,]+)/i);
+  if (ipMatch) ip = extractNumber(ipMatch[1]);
+
+  const opMatch = s.match(/(?:OP|Op|op)[:\s;]*Rs\.?\s*([0-9,]+)/i);
+  if (opMatch) op = extractNumber(opMatch[1]);
+
+  // If both IP and OP found, sum them
+  if (ip !== null && op !== null) {
+    total = ip + op;
+  } else {
+    // Try to extract single value as total
+    total = extractNumber(s);
+    if (ip === null && op === null) {
+      ip = null;
+      op = null;
+    }
+  }
+
+  return { ip, op, total };
+}
+
+function extractPharmacyDay(date: string, fields: Record<string, string | number>): PharmacyDayData {
+  // Era 2+ field names (Google Forms):
+  // "Pharmacy revenue — IP today (Rs.)", "Pharmacy revenue — OP today (Rs.)",
+  // "Pharmacy revenue MTD (Rs.)", "Medicine stock value — IP (Rs.)", etc.
+  // Historical (Era 1): "Pharmacy revenue of the day", "Pharmacy revenue month till date"
+
+  const ipTodayRaw = findField(fields, 'pharmacy revenue', 'ip today') ||
+                      findField(fields, 'pharmacy revenue of the day');
+  const opTodayRaw = findField(fields, 'pharmacy revenue', 'op today');
+  const revenueMTDRaw = findField(fields, 'pharmacy revenue mtd', 'revenue month till date', 'total revenue till date');
+
+  const ipStockRaw = findField(fields, 'medicine stock value', 'ip', 'stock value ip');
+  const opStockRaw = findField(fields, 'medicine stock value', 'op', 'stock value op');
+  const totalStockRaw = findField(fields, 'medicine stock', 'stock status');
+
+  const stockoutRaw = findField(fields, 'stockout', 'shortage');
+  const expiryRaw = findField(fields, 'expiry', 'near expiry', 'expiry management');
+
+  // Parse revenues
+  let ipRevenueToday: number | null = null;
+  let opRevenueToday: number | null = null;
+  let totalRevenueToday: number | null = null;
+
+  // If Era 2 with separate IP/OP fields
+  if (ipTodayRaw && opTodayRaw) {
+    ipRevenueToday = extractNumber(ipTodayRaw);
+    opRevenueToday = extractNumber(opTodayRaw);
+    if (ipRevenueToday !== null && opRevenueToday !== null) {
+      totalRevenueToday = ipRevenueToday + opRevenueToday;
+    }
+  } else if (ipTodayRaw) {
+    // Era 1: mixed format like "IP ; Rs.118861  Op ;Rs.4874"
+    const parsed = extractPharmacyRevenue(ipTodayRaw);
+    ipRevenueToday = parsed.ip;
+    opRevenueToday = parsed.op;
+    totalRevenueToday = parsed.total;
+  }
+
+  // Parse stock value
+  let ipStockValue: number | null = null;
+  let opStockValue: number | null = null;
+  let totalStockValue: number | null = null;
+
+  if (ipStockRaw && opStockRaw) {
+    ipStockValue = extractNumber(ipStockRaw);
+    opStockValue = extractNumber(opStockRaw);
+    if (ipStockValue !== null && opStockValue !== null) {
+      totalStockValue = ipStockValue + opStockValue;
+    }
+  } else if (totalStockRaw) {
+    // Try to parse combined format like "IP: Rs.4799480   OP:Rs.866034  TOTAL: Rs.5665514"
+    const parsed = extractPharmacyRevenue(totalStockRaw);
+    ipStockValue = parsed.ip;
+    opStockValue = parsed.op;
+    totalStockValue = parsed.total;
+  }
+
+  // Parse stockout/shortage
+  const stockoutStr = stockoutRaw ? String(stockoutRaw).trim() : null;
+  const hasStockout = stockoutStr !== null && !isNilText(stockoutStr) &&
+    !/^(no|none|nil|na|no stock out|no stock outs)$/i.test(stockoutStr);
+
+  // Parse expiry
+  const expiryStr = expiryRaw ? String(expiryRaw).trim() : null;
+  const hasExpiry = expiryStr !== null && !isNilText(expiryStr) &&
+    !/^(no|none|nil|na|no near expiry|no near expiry items)$/i.test(expiryStr);
+
+  return {
+    date,
+    ipRevenueToday,
+    opRevenueToday,
+    totalRevenueToday,
+    revenueMTD: extractNumber(revenueMTDRaw),
+    ipStockValue,
+    opStockValue,
+    totalStockValue,
+    hasStockout,
+    stockoutText: hasStockout ? stockoutStr : null,
+    hasExpiry,
+    expiryText: hasExpiry ? expiryStr : null,
+  };
+}
+
+interface PharmacyMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalIPRevenue: number;
+  totalOPRevenue: number;
+  totalRevenue: number;
+  avgRevenuePerDay: number;
+  latestMTD: number | null;
+  avgStockValue: number;
+  stockoutDays: number;
+  expiryAlertDays: number;
+  stockoutFreeRate: number;
+}
+
+function aggregatePharmacyMonth(month: string, days: PharmacyDayData[]): PharmacyMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+
+  const n = days.length;
+
+  // Revenue aggregation
+  const totalIPRevenue = days.reduce((s, d) => s + (d.ipRevenueToday || 0), 0);
+  const totalOPRevenue = days.reduce((s, d) => s + (d.opRevenueToday || 0), 0);
+  const totalRevenue = totalIPRevenue + totalOPRevenue;
+  const avgRevenuePerDay = n > 0 ? totalRevenue / n : 0;
+
+  // Latest MTD
+  let latestMTD: number | null = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (days[i].revenueMTD !== null) {
+      latestMTD = days[i].revenueMTD;
+      break;
+    }
+  }
+
+  // Stock value aggregation
+  const stockValues = days.filter(d => d.totalStockValue !== null).map(d => d.totalStockValue || 0);
+  const avgStockValue = stockValues.length > 0 ? stockValues.reduce((a, b) => a + b, 0) / stockValues.length : 0;
+
+  // Issues tracking
+  const stockoutDays = days.filter(d => d.hasStockout).length;
+  const expiryAlertDays = days.filter(d => d.hasExpiry).length;
+  const stockoutFreeRate = n > 0 ? ((n - stockoutDays) / n) * 100 : 100;
+
+  return {
+    month, label, daysReported: n,
+    totalIPRevenue, totalOPRevenue, totalRevenue, avgRevenuePerDay,
+    latestMTD, avgStockValue, stockoutDays, expiryAlertDays, stockoutFreeRate,
+  };
+}
+
 function extractClinicalLabDay(date: string, fields: Record<string, string | number>): ClinicalLabDayData {
   const outsourcedRaw = findField(fields, 'outsourced test', 'outsourced');
   const reagentRaw = findField(fields, 'reagent');
@@ -1388,8 +1575,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] | PharmacyDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] | PharmacyMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -1646,6 +1833,41 @@ export async function GET(req: NextRequest) {
 
       allDays = emergencyDays;
       months = emergencyMonths;
+    } else if (slug === 'pharmacy') {
+      const pharmacyDays: PharmacyDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+        const dayData = extractPharmacyDay(date, mergedFields);
+        pharmacyDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      const byMonth = new Map<string, PharmacyDayData[]>();
+      for (const d of pharmacyDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const pharmacyMonths: PharmacyMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        pharmacyMonths.push(aggregatePharmacyMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = pharmacyDays;
+      months = pharmacyMonths;
     }
 
     // Get sorted months list
@@ -2005,6 +2227,35 @@ export async function GET(req: NextRequest) {
         months: emMonths,
         availableMonths: sortedMonths,
         allDays: emDays,
+      });
+    } else if (slug === 'pharmacy') {
+      const phMonths = months as PharmacyMonthSummary[];
+      const phDays = allDays as PharmacyDayData[];
+
+      const revenueDays = phDays.filter(d => d.totalRevenueToday !== null);
+      const stockDays = phDays.filter(d => d.totalStockValue !== null);
+
+      const summary = {
+        totalDaysReported: phDays.length,
+        dateRange: phDays.length > 0 ? { from: phDays[0].date, to: phDays[phDays.length - 1].date } : null,
+        totalRevenue: revenueDays.reduce((s, d) => s + (d.totalRevenueToday || 0), 0),
+        avgRevenuePerDay: revenueDays.length > 0 ? revenueDays.reduce((s, d) => s + (d.totalRevenueToday || 0), 0) / revenueDays.length : 0,
+        latestMTD: phMonths.length > 0 ? phMonths[phMonths.length - 1].latestMTD : null,
+        totalIPRevenue: revenueDays.reduce((s, d) => s + (d.ipRevenueToday || 0), 0),
+        totalOPRevenue: revenueDays.reduce((s, d) => s + (d.opRevenueToday || 0), 0),
+        avgStockValue: stockDays.length > 0 ? stockDays.reduce((s, d) => s + (d.totalStockValue || 0), 0) / stockDays.length : 0,
+        stockoutDays: phDays.filter(d => d.hasStockout).length,
+        expiryAlertDays: phDays.filter(d => d.hasExpiry).length,
+        stockoutFreeRate: phDays.length > 0 ? ((phDays.length - phDays.filter(d => d.hasStockout).length) / phDays.length) * 100 : 100,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Pharmacy',
+        summary,
+        months: phMonths,
+        availableMonths: sortedMonths,
+        allDays: phDays,
       });
     }
   } catch (err) {
