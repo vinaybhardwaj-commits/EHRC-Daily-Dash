@@ -877,6 +877,229 @@ function isNilText(text: string | null): boolean {
   return t === '' || /^(none|nil|na|no|0|not done|not received\.?)$/i.test(t);
 }
 
+// ── Emergency field extractors ──────────────────────────────────────
+
+interface EmergencyDayData {
+  date: string;
+  erCases: number | null;
+  admissions: number;
+  discharges: number;
+  transfers: number;
+  deaths: number | null;
+  mlcCases: number | null;
+  criticalAlerts: number | null;
+  lamaCount: number;
+  lamaText: string | null;
+  incidentReports: number;
+  incidentText: string | null;
+  hasChallenges: boolean;
+  challengeText: string | null;
+  othersText: string | null;
+  hasOthers: boolean;
+}
+
+function extractAdmissionsDischarges(raw: string | number | null): { admissions: number; discharges: number; transfers: number; lama: number } {
+  if (raw === null || raw === undefined) return { admissions: 0, discharges: 0, transfers: 0, lama: 0 };
+  if (typeof raw === 'number') return { admissions: raw, discharges: 0, transfers: 0, lama: 0 };
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return { admissions: 0, discharges: 0, transfers: 0, lama: 0 };
+
+  let admissions = 0, discharges = 0, transfers = 0, lama = 0;
+
+  // Pattern: "2 admissions, 2 discharges" or "1 ICU admission" or "3 discharges, 1 admission"
+  const admMatch = s.match(/(\d+)\s*(?:icu\s*)?admission/gi);
+  if (admMatch) {
+    for (const m of admMatch) {
+      const n = m.match(/(\d+)/);
+      if (n) admissions += parseInt(n[1], 10);
+    }
+  }
+
+  const disMatch = s.match(/(\d+)\s*discharge/gi);
+  if (disMatch) {
+    for (const m of disMatch) {
+      const n = m.match(/(\d+)/);
+      if (n) discharges += parseInt(n[1], 10);
+    }
+  }
+
+  const transMatch = s.match(/(\d+)\s*transfer/gi);
+  if (transMatch) {
+    for (const m of transMatch) {
+      const n = m.match(/(\d+)/);
+      if (n) transfers += parseInt(n[1], 10);
+    }
+  }
+
+  const lamaMatch = s.match(/(\d+)\s*lama/gi);
+  if (lamaMatch) {
+    for (const m of lamaMatch) {
+      const n = m.match(/(\d+)/);
+      if (n) lama += parseInt(n[1], 10);
+    }
+  }
+
+  // Historical format: "1,0" (admissions, discharges as CSV-like)
+  if (admissions === 0 && discharges === 0 && /^\d+\s*,\s*\d+$/.test(s)) {
+    const parts = s.split(',').map(p => parseInt(p.trim(), 10));
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      admissions = parts[0];
+      discharges = parts[1];
+    }
+  }
+
+  // Narrative fallback: "Seen by OBG team and discharged" → 0 admissions, 1 discharge
+  if (admissions === 0 && discharges === 0 && /discharg/i.test(s) && !/no/i.test(s.substring(0, 5))) {
+    discharges = 1;
+  }
+  if (admissions === 0 && /transferred/i.test(s) && !/no/i.test(s.substring(0, 5))) {
+    transfers = 1;
+  }
+
+  return { admissions, discharges, transfers, lama };
+}
+
+function extractEmergencyCount(raw: string | number | null): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number') return raw;
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|n\/a|no|0|no cases)$/i.test(s)) return 0;
+  const m = s.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function extractEmergencyDay(date: string, fields: Record<string, string | number>): EmergencyDayData {
+  const erRaw = findField(fields, 'er cases', 'number of er', '# of er cases');
+  const admRaw = findField(fields, 'admission', 'transfer');
+  const deathsRaw = findField(fields, 'death');
+  const mlcRaw = findField(fields, 'mlc');
+  const alertsRaw = findField(fields, 'critical alert', 'code blue', 'code red');
+  const lamaRaw = findField(fields, 'lama');
+  const incidentRaw = findField(fields, 'incident report', 'er incident');
+  const challengeRaw = findField(fields, 'challenge', 'anticipated');
+  const othersRaw = findField(fields, 'other');
+
+  const erCases = extractEmergencyCount(erRaw);
+  const adm = extractAdmissionsDischarges(admRaw);
+  const deaths = extractEmergencyCount(deathsRaw);
+  const mlcCases = extractEmergencyCount(mlcRaw);
+  const criticalAlerts = extractEmergencyCount(alertsRaw);
+
+  let lamaCount = 0;
+  let lamaText: string | null = null;
+  if (lamaRaw) {
+    const ls = String(lamaRaw).trim();
+    if (!isNilText(ls)) {
+      const lm = ls.match(/(\d+)/);
+      lamaCount = lm ? parseInt(lm[1], 10) : 1;
+      lamaText = ls;
+    }
+  }
+  // Also count LAMA from admissions field
+  lamaCount += adm.lama;
+
+  let incidentReports = 0;
+  let incidentText: string | null = null;
+  if (incidentRaw) {
+    const is = String(incidentRaw).trim();
+    if (!isNilText(is)) {
+      const im = is.match(/(\d+)/);
+      incidentReports = im ? parseInt(im[1], 10) : 1;
+      incidentText = is;
+    }
+  }
+
+  const challengeStr = challengeRaw ? String(challengeRaw).trim() : null;
+  const hasChallenges = challengeStr !== null && !isNilText(challengeStr);
+
+  const othersStr = othersRaw ? String(othersRaw).trim() : null;
+  const hasOthers = othersStr !== null && !isNilText(othersStr);
+
+  return {
+    date,
+    erCases,
+    admissions: adm.admissions,
+    discharges: adm.discharges,
+    transfers: adm.transfers,
+    deaths,
+    mlcCases,
+    criticalAlerts,
+    lamaCount,
+    lamaText,
+    incidentReports,
+    incidentText,
+    hasChallenges,
+    challengeText: hasChallenges ? challengeStr : null,
+    othersText: hasOthers ? othersStr : null,
+    hasOthers,
+  };
+}
+
+interface EmergencyMonthSummary {
+  month: string;
+  label: string;
+  daysReported: number;
+  totalERCases: number;
+  avgERCasesPerDay: number;
+  totalAdmissions: number;
+  totalDischarges: number;
+  totalTransfers: number;
+  totalDeaths: number;
+  totalMLC: number;
+  totalCriticalAlerts: number;
+  totalLAMA: number;
+  totalIncidents: number;
+  challengeDays: number;
+  zeroERDays: number;
+  deathDays: number;
+  mlcDays: number;
+  alertDays: number;
+  incidentFreeDays: number;
+  incidentFreeRate: number;
+}
+
+function aggregateEmergencyMonth(month: string, days: EmergencyDayData[]): EmergencyMonthSummary {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [y, m] = month.split('-');
+  const label = `${monthNames[parseInt(m) - 1]} ${y}`;
+  const n = days.length;
+
+  const erDays = days.filter(d => d.erCases !== null);
+  const totalER = erDays.reduce((s, d) => s + (d.erCases || 0), 0);
+  const avgER = erDays.length > 0 ? totalER / erDays.length : 0;
+  const totalAdm = days.reduce((s, d) => s + d.admissions, 0);
+  const totalDis = days.reduce((s, d) => s + d.discharges, 0);
+  const totalTrans = days.reduce((s, d) => s + d.transfers, 0);
+  const totalDeaths = days.reduce((s, d) => s + (d.deaths || 0), 0);
+  const totalMLC = days.reduce((s, d) => s + (d.mlcCases || 0), 0);
+  const totalAlerts = days.reduce((s, d) => s + (d.criticalAlerts || 0), 0);
+  const totalLAMA = days.reduce((s, d) => s + d.lamaCount, 0);
+  const totalIncidents = days.reduce((s, d) => s + d.incidentReports, 0);
+  const challengeDays = days.filter(d => d.hasChallenges).length;
+  const zeroERDays = days.filter(d => d.erCases === 0).length;
+  const deathDays = days.filter(d => (d.deaths || 0) > 0).length;
+  const mlcDays = days.filter(d => (d.mlcCases || 0) > 0).length;
+  const alertDays = days.filter(d => (d.criticalAlerts || 0) > 0).length;
+
+  // Incident-free = no deaths, no critical alerts, no incidents, no LAMA
+  const incidentFreeDays = days.filter(d =>
+    (d.deaths || 0) === 0 && (d.criticalAlerts || 0) === 0 &&
+    d.incidentReports === 0 && d.lamaCount === 0
+  ).length;
+  const incidentFreeRate = n > 0 ? (incidentFreeDays / n) * 100 : 100;
+
+  return {
+    month, label, daysReported: n,
+    totalERCases: totalER, avgERCasesPerDay: avgER,
+    totalAdmissions: totalAdm, totalDischarges: totalDis, totalTransfers: totalTrans,
+    totalDeaths, totalMLC, totalCriticalAlerts: totalAlerts, totalLAMA,
+    totalIncidents, challengeDays, zeroERDays,
+    deathDays, mlcDays, alertDays,
+    incidentFreeDays, incidentFreeRate,
+  };
+}
+
 function extractClinicalLabDay(date: string, fields: Record<string, string | number>): ClinicalLabDayData {
   const outsourcedRaw = findField(fields, 'outsourced test', 'outsourced');
   const reagentRaw = findField(fields, 'reagent');
@@ -1165,8 +1388,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] | DietDayData[] | EmergencyDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] | DietMonthSummary[] | EmergencyMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -1388,6 +1611,41 @@ export async function GET(req: NextRequest) {
 
       allDays = dietDays;
       months = dietMonths;
+    } else if (slug === 'emergency') {
+      const emergencyDays: EmergencyDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+        const dayData = extractEmergencyDay(date, mergedFields);
+        emergencyDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      const byMonth = new Map<string, EmergencyDayData[]>();
+      for (const d of emergencyDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const emergencyMonths: EmergencyMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        emergencyMonths.push(aggregateEmergencyMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = emergencyDays;
+      months = emergencyMonths;
     }
 
     // Get sorted months list
@@ -1714,6 +1972,39 @@ export async function GET(req: NextRequest) {
         months: dietMonths,
         availableMonths: sortedMonths,
         allDays: dietDays,
+      });
+    } else if (slug === 'emergency') {
+      const emMonths = months as EmergencyMonthSummary[];
+      const emDays = allDays as EmergencyDayData[];
+
+      const erDays = emDays.filter(d => d.erCases !== null);
+      const summary = {
+        totalDaysReported: emDays.length,
+        dateRange: emDays.length > 0 ? { from: emDays[0].date, to: emDays[emDays.length - 1].date } : null,
+        totalERCases: erDays.reduce((s, d) => s + (d.erCases || 0), 0),
+        avgERPerDay: erDays.length > 0 ? erDays.reduce((s, d) => s + (d.erCases || 0), 0) / erDays.length : 0,
+        totalAdmissions: emDays.reduce((s, d) => s + d.admissions, 0),
+        totalDischarges: emDays.reduce((s, d) => s + d.discharges, 0),
+        totalDeaths: emDays.reduce((s, d) => s + (d.deaths || 0), 0),
+        totalMLC: emDays.reduce((s, d) => s + (d.mlcCases || 0), 0),
+        totalCriticalAlerts: emDays.reduce((s, d) => s + (d.criticalAlerts || 0), 0),
+        totalLAMA: emDays.reduce((s, d) => s + d.lamaCount, 0),
+        totalIncidents: emDays.reduce((s, d) => s + d.incidentReports, 0),
+        deathDays: emDays.filter(d => (d.deaths || 0) > 0).length,
+        zeroERDays: emDays.filter(d => d.erCases === 0).length,
+        incidentFreeDays: emDays.filter(d =>
+          (d.deaths || 0) === 0 && (d.criticalAlerts || 0) === 0 &&
+          d.incidentReports === 0 && d.lamaCount === 0
+        ).length,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Emergency',
+        summary,
+        months: emMonths,
+        availableMonths: sortedMonths,
+        allDays: emDays,
       });
     }
   } catch (err) {
