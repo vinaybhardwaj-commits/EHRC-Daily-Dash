@@ -20,6 +20,32 @@ export default function FormIndexPage() {
 
       {/* Main Content */}
       <div className="max-w-4xl mx-auto px-4 py-12">
+
+        {/* Unit Head Upload Section */}
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Unit Head Uploads</h2>
+          <Link
+            href="/form/unit-head"
+            className="group bg-white rounded-lg border-2 border-purple-200 p-6 hover:border-purple-400 hover:shadow-lg transition-all block"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-purple-500"></span>
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-purple-600 transition-colors">
+                    KX Daily Uploads
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mt-1">
+                  Upload In-Patient Status CSV from KX for unbilled revenue tracking
+                </p>
+              </div>
+              <ArrowRight className="w-5 h-5 text-purple-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all flex-shrink-0 ml-3 mt-1" />
+            </div>
+          </Link>
+        </div>
+
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Department Forms</h2>
         {/* Department Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {DEPARTMENT_FORMS.map(form => (
