@@ -655,14 +655,13 @@ function buildDeptKPIs(
       };
     });
 
-    // Compute health score: green/amber/red
+    // Compute health score: green/amber/red based on submission consistency
     const submissionRate = sortedDates.length > 0 ? submissionCount / sortedDates.length : 0;
-    // Count alerts from deptAlerts (we'll merge them in the response builder)
     let health: 'green' | 'amber' | 'red' = 'green';
-    if (submissionRate < 0.5) health = 'red';
-    else if (submissionRate < 0.8) health = 'amber';
-    // Downgrade if primary KPI trend is bad
-    if (health === 'green' && trend !== 'flat') {
+    if (submissionRate < 0.4) health = 'red';
+    else if (submissionRate < 0.7) health = 'amber';
+    // Downgrade if primary KPI trend is bad AND submission is borderline
+    if (health === 'green' && trend !== 'flat' && submissionRate < 0.85) {
       const isBadTrend = (trend === 'down' && !kpiDef.invertTrend) || (trend === 'up' && kpiDef.invertTrend);
       if (isBadTrend) health = 'amber';
     }
@@ -921,10 +920,11 @@ export async function GET(req: NextRequest) {
   const alertMap = new Map(deptAlerts.map(a => [a.slug, a]));
   for (const dept of departmentKPIs) {
     const alertData = alertMap.get(dept.slug);
-    const redAlerts = (alertData?.alerts || []).filter(a => a.severity === 'red');
-    // Downgrade health if there are red alerts
-    if (redAlerts.length > 0 && dept.health === 'green') dept.health = 'amber';
-    if (redAlerts.length >= 3) dept.health = 'red';
+    const allAlerts = alertData?.alerts || [];
+    const redAlerts = allAlerts.filter(a => a.severity === 'red');
+    // Only downgrade for genuinely critical issues (2+ red alerts)
+    if (redAlerts.length >= 2 && dept.health === 'green') dept.health = 'amber';
+    if (redAlerts.length >= 4) dept.health = 'red';
   }
 
   // Get total available months for the month selector

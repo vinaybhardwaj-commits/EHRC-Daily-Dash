@@ -34,7 +34,6 @@ export interface DeptKPIData {
   prevSubmissionCount?: number;
   prevTotalDays?: number;
   monthTrend?: 'up' | 'down' | 'flat';
-  // New fields
   secondaryKpis?: SecondaryKPIData[];
   health?: 'green' | 'amber' | 'red';
   lastSubmissionDate?: string | null;
@@ -56,12 +55,12 @@ const DEPT_NAMES: Record<string, string> = {
 };
 
 function fmtVal(value: number | null, unit?: string | null): string {
-  if (value === null) return '\u2014';
-  if (unit === '\u20b9') {
-    if (Math.abs(value) >= 10000000) return '\u20b9' + (value / 10000000).toFixed(2) + ' Cr';
-    if (Math.abs(value) >= 100000) return '\u20b9' + (value / 100000).toFixed(2) + ' L';
-    if (Math.abs(value) >= 1000) return '\u20b9' + (value / 1000).toFixed(1) + 'K';
-    return '\u20b9' + value.toFixed(0);
+  if (value === null) return '—';
+  if (unit === '₹') {
+    if (Math.abs(value) >= 10000000) return '₹' + (value / 10000000).toFixed(2) + ' Cr';
+    if (Math.abs(value) >= 100000) return '₹' + (value / 100000).toFixed(2) + ' L';
+    if (Math.abs(value) >= 1000) return '₹' + (value / 1000).toFixed(1) + 'K';
+    return '₹' + value.toFixed(0);
   }
   if (value >= 1000) return (value / 1000).toFixed(1) + 'K';
   return value.toFixed(0);
@@ -74,12 +73,12 @@ function fmtDate(dateStr: string | null): string {
 }
 
 function TrendArrow({ trend, invert }: { trend: 'up' | 'down' | 'flat'; invert: boolean }) {
-  if (trend === 'flat') return <span className="text-slate-400 text-xs">\u2192</span>;
+  if (trend === 'flat') return <span className="text-slate-400 text-xs">→</span>;
   const isUp = trend === 'up';
   const isGood = invert ? !isUp : isUp;
   return (
     <span className={"text-xs font-bold " + (isGood ? 'text-emerald-500' : 'text-red-500')}>
-      {isUp ? '\u2191' : '\u2193'}
+      {isUp ? '↑' : '↓'}
     </span>
   );
 }
@@ -104,10 +103,10 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
           </>
         ) : type === 'text-status' && status ? (
           <span className={"text-xs font-semibold " + (statusBg[status] || 'text-slate-500')}>
-            {statusLabel[status] || textValue || '\u2014'}
+            {statusLabel[status] || textValue || '—'}
           </span>
         ) : (
-          <span className="text-xs text-slate-400">\u2014</span>
+          <span className="text-xs text-slate-400">—</span>
         )}
       </div>
     </div>
@@ -153,6 +152,21 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
             green: 'border-slate-200', amber: 'border-amber-200', red: 'border-red-200',
           };
 
+          // Progress bar: 5-tier color for visual variety
+          let barColor = 'bg-slate-200';
+          if (submPct >= 90) barColor = 'bg-emerald-500';
+          else if (submPct >= 75) barColor = 'bg-emerald-400';
+          else if (submPct >= 60) barColor = 'bg-amber-400';
+          else if (submPct >= 40) barColor = 'bg-orange-400';
+          else if (submPct > 0) barColor = 'bg-red-400';
+
+          // Submission badge color
+          let badgeColor = 'bg-red-100 text-red-700';
+          if (submPct >= 90) badgeColor = 'bg-emerald-100 text-emerald-700';
+          else if (submPct >= 75) badgeColor = 'bg-emerald-100 text-emerald-600';
+          else if (submPct >= 60) badgeColor = 'bg-amber-100 text-amber-700';
+          else if (submPct >= 40) badgeColor = 'bg-orange-100 text-orange-700';
+
           return (
             <div
               key={dept.slug}
@@ -162,7 +176,7 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                 onClick={() => setExpandedSlug(isExpanded ? null : dept.slug)}
                 className="w-full text-left p-4"
               >
-                {/* Header: health dot + name + badges */}
+                {/* Header */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={"w-2.5 h-2.5 rounded-full flex-shrink-0 " + (healthDot[health] || 'bg-slate-300')} />
@@ -174,7 +188,7 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                         {alerts.length}
                       </span>
                     )}
-                    <span className={"text-[10px] font-medium px-1.5 py-0.5 rounded " + (submPct >= 80 ? 'bg-emerald-100 text-emerald-700' : submPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}>
+                    <span className={"text-[10px] font-medium px-1.5 py-0.5 rounded " + badgeColor}>
                       {dept.submissionCount}/{dept.totalDays}d
                     </span>
                     <svg className={"w-3.5 h-3.5 text-slate-400 transition-transform " + (isExpanded ? 'rotate-180' : '')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,11 +197,11 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                   </div>
                 </div>
 
-                {/* Submission progress bar */}
+                {/* Progress bar */}
                 <div className="mb-3">
                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div
-                      className={"h-full rounded-full transition-all " + (submPct >= 80 ? 'bg-emerald-400' : submPct >= 50 ? 'bg-amber-400' : submPct > 0 ? 'bg-red-300' : 'bg-slate-200')}
+                      className={"h-full rounded-full transition-all " + barColor}
                       style={{ width: Math.max(submPct, 2) + '%' }}
                     />
                   </div>
@@ -216,7 +230,7 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                   </div>
                 )}
 
-                {/* Footer: last submission */}
+                {/* Footer */}
                 {lastDate && (
                   <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400">
                     Last: {fmtDate(lastDate)}
@@ -227,7 +241,6 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
               {/* Expanded detail */}
               {isExpanded && (
                 <div className="border-t border-slate-200 px-4 py-3 bg-slate-50/50 rounded-b-xl">
-                  {/* Alerts */}
                   {alerts.length > 0 ? (
                     <div className="space-y-1.5 mb-3">
                       <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-1">Active Alerts</div>
@@ -245,7 +258,6 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                     </div>
                   )}
 
-                  {/* Month comparison for primary KPI */}
                   {dept.type === 'number' && (dept.prevValue !== null && dept.prevValue !== undefined) && (
                     <div className="mb-3 p-2.5 rounded-lg bg-white border border-slate-200">
                       <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-2">vs Last Month</div>
@@ -267,13 +279,12 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                     </div>
                   )}
 
-                  {/* Navigate button */}
                   {onNavigateToDept && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onNavigateToDept(dept.slug); }}
                       className="w-full text-center text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg py-2 transition-colors"
                     >
-                      View in Daily Dashboard \u2192
+                      View in Daily Dashboard →
                     </button>
                   )}
                 </div>
