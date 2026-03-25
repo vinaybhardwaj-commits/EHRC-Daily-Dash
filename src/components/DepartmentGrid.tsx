@@ -118,11 +118,12 @@ interface Props {
   departments: DeptKPIData[];
   deptAlerts?: DeptAlertData[];
   onNavigateToDept?: (slug: string) => void;
+  onNavigateToDashboard?: (date: string, slug: string) => void;
   currentMonth?: string;
   previousMonth?: string;
 }
 
-export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, currentMonth, previousMonth }: Props) {
+export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth }: Props) {
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const alertsBySlug = new Map((deptAlerts || []).map(a => [a.slug, a]));
 
