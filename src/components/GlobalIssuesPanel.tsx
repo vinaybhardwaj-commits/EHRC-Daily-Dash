@@ -48,6 +48,7 @@ interface Props {
   issues: GlobalIssueData[];
   currentMonth?: string; // e.g. '2026-03'
   previousMonth?: string; // e.g. '2026-02'
+  onNavigateToDashboard?: (date: string, slug: string) => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -71,7 +72,7 @@ function pctChange(current: number, prev: number): string {
   return 'No change';
 }
 
-export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth }: Props) {
+export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth, onNavigateToDashboard }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const redFlags = issues.filter(i => i.severity === 'red');
@@ -86,10 +87,11 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
     return <span className="text-emerald-500 text-xs font-bold">{'\u2193'} better</span>;
   };
 
-  const DetailList = ({ details, color, emptyMsg }: {
+  const DetailList = ({ details, color, emptyMsg, deptSlug }: {
     details: { date: string; text: string; count: number }[];
     color: 'red' | 'amber' | 'emerald';
     emptyMsg: string;
+    deptSlug?: string;
   }) => {
     if (details.length === 0) {
       return <div className="text-xs text-slate-400 italic py-1">{emptyMsg}</div>;
@@ -100,14 +102,21 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
     return (
       <div className="space-y-1">
         {shown.map((d, idx) => (
-          <div key={idx} className="flex items-start gap-2 text-xs">
-            <span className="text-slate-500 font-medium whitespace-nowrap min-w-[80px]">
+          <button
+            key={idx}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onNavigateToDashboard && deptSlug) onNavigateToDashboard(d.date, deptSlug);
+            }}
+            className="flex items-start gap-2 text-xs text-left w-full rounded px-1 -mx-1 hover:bg-white/60 group cursor-pointer transition-colors"
+          >
+            <span className="text-slate-500 font-medium whitespace-nowrap min-w-[80px] group-hover:text-blue-600">
               {formatDate(d.date)}
             </span>
-            <span className={`font-medium ${
-              color === 'red' ? 'text-red-700' :
-              color === 'amber' ? 'text-amber-700' :
-              'text-emerald-700'
+            <span className={`font-medium flex-1 ${
+              color === 'red' ? 'text-red-700 group-hover:text-blue-700' :
+              color === 'amber' ? 'text-amber-700 group-hover:text-blue-700' :
+              'text-emerald-700 group-hover:text-blue-700'
             }`}>
               {d.count > 0 && d.text !== String(d.count) ? (
                 <>{d.count} &mdash; {d.text}</>
@@ -117,7 +126,8 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
                 `Count: ${d.count}`
               )}
             </span>
-          </div>
+            <span className="text-blue-400 opacity-0 group-hover:opacity-100 text-[10px] mt-0.5 flex-shrink-0">{String.fromCharCode(8594)}</span>
+          </button>
         ))}
         {remaining > 0 && (
           <div className="text-[10px] text-slate-400">...and {remaining} more day{remaining !== 1 ? 's' : ''}</div>
@@ -131,7 +141,7 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
     const isRed = issue.severity === 'red';
     const isExpanded = expandedId === issue.id;
 
-    // ALL rows are clickable now — the comparison data is always available
+    // ALL rows are clickable now â the comparison data is always available
     const hasTrendData = issue.trend !== 'flat' || isActive ||
       (issue.prevMonthTotal !== undefined && issue.prevMonthTotal > 0) ||
       (issue.currentMonthTotal !== undefined && issue.currentMonthTotal > 0);
@@ -166,7 +176,7 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
                 ? isRed ? 'bg-red-500' : 'bg-amber-500'
                 : 'bg-slate-300'
             }`} />
-            <span className={`text-sm font-medium truncate ${
+            <span className={`text-sm font-medium leading-tight ${
               isActive ? 'text-slate-900' : 'text-slate-500'
             }`}>
               {issue.label}
@@ -252,6 +262,7 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
                   details={currentDetails}
                   color={curTotal > 0 ? (isRed ? 'red' : 'amber') : 'emerald'}
                   emptyMsg="No occurrences this month"
+                  deptSlug={issue.deptSlug}
                 />
               </div>
 
@@ -268,6 +279,7 @@ export default function GlobalIssuesPanel({ issues, currentMonth, previousMonth 
                   details={prevDetails}
                   color={prevTotal > 0 ? (isRed ? 'red' : 'amber') : 'emerald'}
                   emptyMsg="No occurrences last month"
+                  deptSlug={issue.deptSlug}
                 />
               </div>
             </div>
