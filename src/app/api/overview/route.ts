@@ -817,6 +817,9 @@ export async function GET(req: NextRequest) {
           prevMonthTotal: 0,
           prevMonthActiveDays: 0,
           prevMonthDaysReported: 0,
+          weekTotal: 1,
+          trend: 'flat' as 'flat' | 'down' | 'up',
+          changeSummary: 'IP unbilled revenue: net due from KX snapshot',
         });
       }
     }
