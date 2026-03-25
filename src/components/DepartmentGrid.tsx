@@ -28,7 +28,7 @@ export interface DeptKPIData {
 
 export interface DeptAlertData {
   slug: string;
-  alerts: { message: string; severity: 'red' | 'amber' | 'info' }[];
+  alerts: { message: string; severity: 'red' | 'amber' | 'info'; sourceDate?: string | null; sourceSlug?: string }[];
   lastSubmissionDate: string | null;
 }
 
@@ -56,6 +56,7 @@ interface Props {
   departments: DeptKPIData[];
   deptAlerts?: DeptAlertData[];
   onNavigateToDept?: (slug: string) => void;
+  onNavigateToDashboard?: (date: string, slug: string) => void;
   currentMonth?: string;
   previousMonth?: string;
 }
@@ -85,7 +86,7 @@ function formatMonthLabel(ym: string | undefined): string {
   return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 }
 
-export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, currentMonth, previousMonth }: Props) {
+export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth }: Props) {
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
 
   const alertsBySlug = new Map(
@@ -347,17 +348,28 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                   {alerts.length > 0 ? (
                     <div className="space-y-1.5 mb-3">
                       {alerts.map((alert, idx) => (
-                        <div
+                        <button
                           key={idx}
-                          className={`flex items-start gap-2 text-xs ${
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (alert.sourceDate && alert.sourceSlug && onNavigateToDashboard) {
+                              onNavigateToDashboard(alert.sourceDate, alert.sourceSlug);
+                            }
+                          }}
+                          className={`flex items-start gap-2 text-xs w-full text-left rounded px-1 -mx-1 group transition-colors ${
+                            alert.sourceDate && onNavigateToDashboard ? 'cursor-pointer hover:bg-white/80' : 'cursor-default'
+                          } ${
                             alert.severity === 'red' ? 'text-red-700' : 'text-amber-700'
                           }`}
                         >
                           <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                             alert.severity === 'red' ? 'bg-red-500' : 'bg-amber-500'
                           }`} />
-                          <span>{alert.message}</span>
-                        </div>
+                          <span className="flex-1 group-hover:text-blue-700">{alert.message}</span>
+                          {alert.sourceDate && onNavigateToDashboard && (
+                            <span className="text-blue-400 opacity-0 group-hover:opacity-100 text-[10px] mt-0.5 flex-shrink-0">{String.fromCharCode(8594)}</span>
+                          )}
+                        </button>
                       ))}
                     </div>
                   ) : (
