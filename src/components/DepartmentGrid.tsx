@@ -37,6 +37,9 @@ export interface DeptKPIData {
   secondaryKpis?: SecondaryKPIData[];
   health?: 'green' | 'amber' | 'red';
   lastSubmissionDate?: string | null;
+  isStale?: boolean;
+  staleDate?: string | null;
+  staleTooOld?: boolean;
 }
 
 export interface DeptAlertData {
@@ -83,14 +86,18 @@ function TrendArrow({ trend, invert }: { trend: 'up' | 'down' | 'flat'; invert: 
   );
 }
 
-function KPIRow({ label, value, textValue, status, unit, type, trend, invertTrend }: {
+function KPIRow({ label, value, textValue, status, unit, type, trend, invertTrend, isStale }: {
   label: string; value: number | null; textValue: string | null; status: 'good' | 'warning' | 'bad' | null;
-  unit: string | null; type: string; trend: 'up' | 'down' | 'flat'; invertTrend: boolean;
+  unit: string | null; type: string; trend: 'up' | 'down' | 'flat'; invertTrend: boolean; isStale?: boolean;
 }) {
   const statusBg: Record<string, string> = {
     good: 'text-emerald-700', warning: 'text-amber-700', bad: 'text-red-700',
   };
   const statusLabel: Record<string, string> = { good: 'OK', warning: 'Partial', bad: 'Issue' };
+
+  // Stale styling: grey out values
+  const valueColor = isStale ? 'text-slate-400' : 'text-slate-900';
+  const staleStatusColor = isStale ? 'text-slate-400' : '';
 
   return (
     <div className="flex items-center justify-between py-1">
@@ -98,11 +105,11 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {type === 'number' ? (
           <>
-            <span className="text-sm font-semibold text-slate-900">{fmtVal(value, unit)}</span>
-            <TrendArrow trend={trend} invert={invertTrend} />
+            <span className={"text-sm font-semibold " + valueColor}>{fmtVal(value, unit)}</span>
+            {!isStale && <TrendArrow trend={trend} invert={invertTrend} />}
           </>
         ) : type === 'text-status' && status ? (
-          <span className={"text-xs font-semibold " + (statusBg[status] || 'text-slate-500')}>
+          <span className={"text-xs font-semibold " + (staleStatusColor || statusBg[status] || 'text-slate-500')}>
             {statusLabel[status] || textValue || '—'}
           </span>
         ) : (
@@ -144,6 +151,9 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
           const lastDate = dept.lastSubmissionDate || alertData?.lastSubmissionDate || null;
           const secKpis = dept.secondaryKpis || [];
           const hasAnyData = dept.submissionCount > 0;
+          const isStale = dept.isStale || false;
+          const staleDate = dept.staleDate || null;
+          const staleTooOld = dept.staleTooOld || false;
 
           const healthDot: Record<string, string> = {
             green: 'bg-emerald-500', amber: 'bg-amber-400', red: 'bg-red-400',
@@ -166,6 +176,11 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
           else if (submPct >= 75) badgeColor = 'bg-emerald-100 text-emerald-600';
           else if (submPct >= 60) badgeColor = 'bg-amber-100 text-amber-700';
           else if (submPct >= 40) badgeColor = 'bg-orange-100 text-orange-700';
+
+          // Determine what to show in KPI area
+          const hasKPIValues = dept.value !== null || dept.textValue !== null || (dept.status !== null && dept.type === 'text-status');
+          const showStaleData = isStale && hasKPIValues;
+          const showNoRecentData = staleTooOld || (!hasAnyData);
 
           return (
             <div
@@ -208,30 +223,44 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                 </div>
 
                 {/* KPI metrics */}
-                {hasAnyData ? (
-                  <div className="space-y-0.5">
-                    <KPIRow
-                      label={dept.label} value={dept.value} textValue={dept.textValue}
-                      status={dept.status} unit={dept.unit} type={dept.type}
-                      trend={dept.trend} invertTrend={dept.invertTrend}
-                    />
-                    {secKpis.map((sk, i) => (
-                      <KPIRow
-                        key={i} label={sk.label} value={sk.value} textValue={sk.textValue}
-                        status={sk.status} unit={sk.unit} type={sk.type}
-                        trend={sk.trend} invertTrend={sk.invertTrend}
-                      />
-                    ))}
+                {showNoRecentData ? (
+                  <div className="py-2 text-center">
+                    <div className="text-xs text-slate-400 font-medium">
+                      {staleTooOld ? 'No recent data' : 'No data yet this month'}
+                    </div>
+                    <div className="text-[10px] text-slate-300 mt-0.5">
+                      {staleTooOld
+                        ? 'Last submission over 7 days ago'
+                        : '0 of ' + dept.totalDays + ' days reported'}
+                    </div>
                   </div>
                 ) : (
-                  <div className="py-2 text-center">
-                    <div className="text-xs text-slate-400 font-medium">No data yet this month</div>
-                    <div className="text-[10px] text-slate-300 mt-0.5">0 of {dept.totalDays} days reported</div>
+                  <div>
+                    {/* Stale data banner */}
+                    {showStaleData && staleDate && (
+                      <div className="mb-1.5 px-2 py-1 bg-slate-50 rounded text-[10px] text-slate-400 border border-slate-100">
+                        as of {fmtDate(staleDate)} — no submission today
+                      </div>
+                    )}
+                    <div className="space-y-0.5">
+                      <KPIRow
+                        label={dept.label} value={dept.value} textValue={dept.textValue}
+                        status={dept.status} unit={dept.unit} type={dept.type}
+                        trend={dept.trend} invertTrend={dept.invertTrend} isStale={isStale}
+                      />
+                      {secKpis.map((sk, i) => (
+                        <KPIRow
+                          key={i} label={sk.label} value={sk.value} textValue={sk.textValue}
+                          status={sk.status} unit={sk.unit} type={sk.type}
+                          trend={sk.trend} invertTrend={sk.invertTrend} isStale={isStale}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 {/* Footer */}
-                {lastDate && (
+                {lastDate && !showNoRecentData && !showStaleData && (
                   <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400">
                     Last: {fmtDate(lastDate)}
                   </div>
