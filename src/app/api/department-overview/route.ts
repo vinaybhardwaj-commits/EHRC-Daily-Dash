@@ -309,6 +309,316 @@ function aggregateBiomedicalMonth(month: string, days: BiomedicalDayData[]): Bio
   };
 }
 
+// ── Customer Care field extractors ───────────────────────────────────
+
+interface CustomerCareDayData {
+  date: string;
+  opdTotal: number | null;
+  opdInPerson: number | null;
+  opdTele: number | null;
+  googleReviews: number | null;
+  customerFeedback: number | null;
+  videoTestimonials: number | null;
+  healthChecks: number | null;
+  hasComplaint: boolean;
+  complaintText: string | null;
+  hasEscalation: boolean;
+  escalationText: string | null;
+  hasVIP: boolean;
+  doctorsOnLeave: string[];
+  doctorsLate: string[];
+  patientWaitIncidents: number;
+  patientWaitText: string | null;
+  dischargeTATHours: number | null;
+  dischargeTATText: string | null;
+  callCentreIssue: boolean;
+  newDoctorScheduling: string | null;
+}
+
+function extractOPDBreakdown(raw: string | number | null): { total: number | null; inPerson: number | null; tele: number | null } {
+  if (raw === null || raw === undefined) return { total: null, inPerson: null, tele: null };
+  if (typeof raw === 'number') return { total: raw, inPerson: raw, tele: 0 };
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|error|0)$/i.test(s)) return { total: null, inPerson: null, tele: null };
+
+  let inPerson: number | null = null;
+  let tele: number | null = null;
+  let total: number | null = null;
+
+  // Pattern: "24 (17 tele & 7physical)" or "42 (10physical - 32tele)"
+  const parenMatch = s.match(/(\d+)\s*\(([^)]+)\)/);
+  if (parenMatch) {
+    total = parseInt(parenMatch[1], 10);
+    const inner = parenMatch[2];
+    const teleMatch = inner.match(/(\d+)\s*tele/i);
+    const physMatch = inner.match(/(\d+)\s*(?:physical|direct|walk\s*in|in[\s-]*person)/i);
+    if (teleMatch) tele = parseInt(teleMatch[1], 10);
+    if (physMatch) inPerson = parseInt(physMatch[1], 10);
+    if (tele !== null && inPerson === null && total !== null) inPerson = total - tele;
+    if (inPerson !== null && tele === null && total !== null) tele = total - inPerson;
+    return { total, inPerson, tele };
+  }
+
+  // Pattern: "22 in-person & 37 tele" or "14 IN-PERSON & 30 TELE" or "22 inperson & 37 tele"
+  const splitMatch = s.match(/(\d+)\s*(?:in[\s-]*person|physical|direct)\s*[&,]\s*(\d+)\s*tele/i);
+  if (splitMatch) {
+    inPerson = parseInt(splitMatch[1], 10);
+    tele = parseInt(splitMatch[2], 10);
+    total = inPerson + tele;
+    return { total, inPerson, tele };
+  }
+
+  // Pattern: "22 tele & 7 physical"
+  const revSplitMatch = s.match(/(\d+)\s*tele\s*[&,]\s*(\d+)\s*(?:in[\s-]*person|physical|direct)/i);
+  if (revSplitMatch) {
+    tele = parseInt(revSplitMatch[1], 10);
+    inPerson = parseInt(revSplitMatch[2], 10);
+    total = inPerson + tele;
+    return { total, inPerson, tele };
+  }
+
+  // Pattern: "31 Appointments ( 07 Direct 24 Tele Consultation)"
+  const apptMatch = s.match(/(\d+)\s*(?:appointment|consultation|appt)/i);
+  if (apptMatch) {
+    total = parseInt(apptMatch[1], 10);
+    const teleM = s.match(/(\d+)\s*tele/i);
+    const directM = s.match(/(\d+)\s*(?:direct|physical|walk)/i);
+    if (teleM) tele = parseInt(teleM[1], 10);
+    if (directM) inPerson = parseInt(directM[1], 10);
+    if (tele !== null && inPerson === null && total !== null) inPerson = total - tele;
+    if (inPerson !== null && tele === null && total !== null) tele = total - inPerson;
+    return { total, inPerson, tele };
+  }
+
+  // Fallback: just extract first number
+  const numMatch = s.match(/(\d+)/);
+  if (numMatch) {
+    total = parseInt(numMatch[1], 10);
+    return { total, inPerson: null, tele: null };
+  }
+
+  return { total: null, inPerson: null, tele: null };
+}
+
+function extractCollectionCount(raw: string | number | null): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number') return raw;
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return 0;
+  // "5 collected" or "3 Collected" or just "5"
+  const m = s.match(/(\d+)\s*(?:collected|fb collected)?/i);
+  if (m) return parseInt(m[1], 10);
+  // "Collected" without number — treat as 1 if no number but not nil
+  if (/collect/i.test(s)) return 1;
+  return 0;
+}
+
+function extractDoctorNames(raw: string | number | null): string[] {
+  if (raw === null || raw === undefined) return [];
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return [];
+  // Extract "Dr. Something" patterns
+  const names = s.match(/Dr\.?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/gi) || [];
+  return [...new Set(names.map(n => n.trim()))];
+}
+
+function extractWaitIncidents(raw: string | number | null): { count: number; text: string | null } {
+  if (raw === null || raw === undefined) return { count: 0, text: null };
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return { count: 0, text: null };
+  // Count "X patient(s)" mentions
+  const patientMatch = s.match(/(\d+)\s*patient/gi);
+  let count = 0;
+  if (patientMatch) {
+    for (const pm of patientMatch) {
+      const n = pm.match(/(\d+)/);
+      if (n) count += parseInt(n[1], 10);
+    }
+  }
+  if (count === 0) count = 1; // If text exists but no count, at least 1 incident
+  return { count, text: s };
+}
+
+function extractDischargeTAT(raw: string | number | null): { hours: number | null; text: string | null } {
+  if (raw === null || raw === undefined) return { hours: null, text: null };
+  const s = String(raw).trim();
+  if (!s || /^(nil|none|na|no|0)$/i.test(s)) return { hours: null, text: null };
+  if (/no discharg|no delay|not applicable/i.test(s)) return { hours: null, text: s };
+  // "03 to 04 Hours" → take max, "05 Hours" → 5, "07 Hours" → 7
+  const nums = s.match(/(\d+)\s*(?:hour|hr|hrs)/gi);
+  if (nums) {
+    const values = nums.map(n => parseInt(n.match(/(\d+)/)![1], 10));
+    return { hours: Math.max(...values), text: s };
+  }
+  const plain = s.match(/(\d+)/);
+  if (plain) return { hours: parseInt(plain[1], 10), text: s };
+  return { hours: null, text: s };
+}
+
+function extractCustomerCareDay(date: string, fields: Record<string, string | number>): CustomerCareDayData {
+  const opdRaw = findField(fields, 'opd appointment');
+  const reviewRaw = findField(fields, 'google review');
+  const feedbackRaw = findField(fields, 'customer feedback');
+  const videoRaw = findField(fields, 'video testimonial');
+  const healthRaw = findField(fields, 'health check');
+  const complaintRaw = findField(fields, 'complaint');
+  const escalationRaw = findField(fields, 'escalation');
+  const vipRaw = findField(fields, 'vip', 'international');
+  const leaveRaw = findField(fields, 'leave');
+  const lateRaw = findField(fields, 'late');
+  const waitRaw = findField(fields, 'waiting', 'wait');
+  const tatRaw = findField(fields, 'tat', 'discharge');
+  const callRaw = findField(fields, 'call centre', 'front office');
+  const schedRaw = findField(fields, 'scheduling', 'new doctor');
+
+  const opd = extractOPDBreakdown(opdRaw);
+  const googleReviews = extractCollectionCount(reviewRaw);
+  const customerFeedback = extractCollectionCount(feedbackRaw);
+  const videoTestimonials = extractCollectionCount(videoRaw);
+  const healthChecks = extractCollectionCount(healthRaw);
+
+  const complaintStr = complaintRaw ? String(complaintRaw).trim() : null;
+  const hasComplaint = complaintStr !== null && !isNilText(complaintStr);
+
+  const escalationStr = escalationRaw ? String(escalationRaw).trim() : null;
+  const hasEscalation = escalationStr !== null && !isNilText(escalationStr);
+
+  const vipStr = vipRaw ? String(vipRaw).trim() : null;
+  const hasVIP = vipStr !== null && !isNilText(vipStr);
+
+  const doctorsOnLeave = extractDoctorNames(leaveRaw);
+  const doctorsLate = extractDoctorNames(lateRaw);
+
+  const wait = extractWaitIncidents(waitRaw);
+  const tat = extractDischargeTAT(tatRaw);
+
+  const callStr = callRaw ? String(callRaw).trim() : null;
+  const callCentreIssue = callStr !== null && !isNilText(callStr) && !/no issue/i.test(callStr);
+
+  const schedStr = schedRaw ? String(schedRaw).trim() : null;
+
+  return {
+    date,
+    opdTotal: opd.total,
+    opdInPerson: opd.inPerson,
+    opdTele: opd.tele,
+    googleReviews,
+    customerFeedback,
+    videoTestimonials,
+    healthChecks,
+    hasComplaint,
+    complaintText: hasComplaint ? complaintStr : null,
+    hasEscalation,
+    escalationText: hasEscalation ? escalationStr : null,
+    hasVIP,
+    doctorsOnLeave,
+    doctorsLate,
+    patientWaitIncidents: wait.count,
+    patientWaitText: wait.text,
+    dischargeTATHours: tat.hours,
+    dischargeTATText: tat.text,
+    callCentreIssue,
+    newDoctorScheduling: isNilText(schedStr) ? null : schedStr,
+  };
+}
+
+interface CustomerCareMonthSummary {
+  month: string;
+  daysReported: number;
+  opdTotalSum: number;
+  opdInPersonSum: number;
+  opdTeleSum: number;
+  opdAvgPerDay: number;
+  telePercentage: number;
+  googleReviewsSum: number;
+  customerFeedbackSum: number;
+  videoTestimonialsSum: number;
+  healthChecksSum: number;
+  complaintDays: number;
+  escalationDays: number;
+  vipDays: number;
+  doctorLateDays: number;
+  patientWaitDays: number;
+  patientWaitIncidentsSum: number;
+  avgDischargeTAT: number | null;
+  callCentreIssueDays: number;
+  feedbackCollectionRate: number;
+  doctorLateFrequency: Record<string, number>;
+  doctorLeaveFrequency: Record<string, number>;
+}
+
+function aggregateCustomerCareMonth(month: string, days: CustomerCareDayData[]): CustomerCareMonthSummary {
+  const n = days.length;
+  const opdDays = days.filter(d => d.opdTotal !== null);
+  const opdTotalSum = opdDays.reduce((s, d) => s + (d.opdTotal || 0), 0);
+  const opdInPersonSum = opdDays.reduce((s, d) => s + (d.opdInPerson || 0), 0);
+  const opdTeleSum = opdDays.reduce((s, d) => s + (d.opdTele || 0), 0);
+  const opdAvgPerDay = opdDays.length > 0 ? opdTotalSum / opdDays.length : 0;
+  const telePercentage = opdTotalSum > 0 ? (opdTeleSum / opdTotalSum) * 100 : 0;
+
+  const googleReviewsSum = days.reduce((s, d) => s + (d.googleReviews || 0), 0);
+  const customerFeedbackSum = days.reduce((s, d) => s + (d.customerFeedback || 0), 0);
+  const videoTestimonialsSum = days.reduce((s, d) => s + (d.videoTestimonials || 0), 0);
+  const healthChecksSum = days.reduce((s, d) => s + (d.healthChecks || 0), 0);
+
+  const complaintDays = days.filter(d => d.hasComplaint).length;
+  const escalationDays = days.filter(d => d.hasEscalation).length;
+  const vipDays = days.filter(d => d.hasVIP).length;
+  const doctorLateDays = days.filter(d => d.doctorsLate.length > 0).length;
+  const patientWaitDays = days.filter(d => d.patientWaitIncidents > 0).length;
+  const patientWaitIncidentsSum = days.reduce((s, d) => s + d.patientWaitIncidents, 0);
+
+  const tatDays = days.filter(d => d.dischargeTATHours !== null);
+  const avgDischargeTAT = tatDays.length > 0
+    ? tatDays.reduce((s, d) => s + d.dischargeTATHours!, 0) / tatDays.length
+    : null;
+
+  const callCentreIssueDays = days.filter(d => d.callCentreIssue).length;
+
+  // Feedback collection rate: days with feedback > 0 / days reported
+  const feedbackDays = days.filter(d => (d.customerFeedback || 0) > 0).length;
+  const feedbackCollectionRate = n > 0 ? (feedbackDays / n) * 100 : 0;
+
+  // Aggregate doctor-level frequencies
+  const doctorLateFrequency: Record<string, number> = {};
+  const doctorLeaveFrequency: Record<string, number> = {};
+  for (const d of days) {
+    for (const dr of d.doctorsLate) {
+      const name = dr.replace(/^Dr\.?\s*/i, 'Dr. ').trim();
+      doctorLateFrequency[name] = (doctorLateFrequency[name] || 0) + 1;
+    }
+    for (const dr of d.doctorsOnLeave) {
+      const name = dr.replace(/^Dr\.?\s*/i, 'Dr. ').trim();
+      doctorLeaveFrequency[name] = (doctorLeaveFrequency[name] || 0) + 1;
+    }
+  }
+
+  return {
+    month,
+    daysReported: n,
+    opdTotalSum,
+    opdInPersonSum,
+    opdTeleSum,
+    opdAvgPerDay,
+    telePercentage,
+    googleReviewsSum,
+    customerFeedbackSum,
+    videoTestimonialsSum,
+    healthChecksSum,
+    complaintDays,
+    escalationDays,
+    vipDays,
+    doctorLateDays,
+    patientWaitDays,
+    patientWaitIncidentsSum,
+    avgDischargeTAT,
+    callCentreIssueDays,
+    feedbackCollectionRate,
+    doctorLateFrequency,
+    doctorLeaveFrequency,
+  };
+}
+
 // ── Clinical Lab field extractors ────────────────────────────────────
 
 interface ClinicalLabDayData {
@@ -601,7 +911,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Currently finance, billing, and biomedical are supported
-  if (!['finance', 'billing', 'biomedical', 'clinical-lab'].includes(slug)) {
+  if (!['finance', 'billing', 'biomedical', 'clinical-lab', 'customer-care'].includes(slug)) {
     return NextResponse.json({ error: 'Department overview not yet available for this department' }, { status: 400 });
   }
 
@@ -639,8 +949,8 @@ export async function GET(req: NextRequest) {
     // Extract day-level data based on department type
     const availableMonths = new Set<string>();
 
-    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] = [];
-    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] = [];
+    let allDays: FinanceDayData[] | BillingDayData[] | BiomedicalDayData[] | ClinicalLabDayData[] | CustomerCareDayData[] = [];
+    let months: MonthSummary[] | BillingMonthSummary[] | BiomedicalMonthSummary[] | ClinicalLabMonthSummary[] | CustomerCareMonthSummary[] = [];
 
     if (slug === 'finance') {
       const financeDays: FinanceDayData[] = [];
@@ -792,6 +1102,41 @@ export async function GET(req: NextRequest) {
 
       allDays = clinicalLabDays;
       months = clinicalLabMonths;
+    } else if (slug === 'customer-care') {
+      const ccDays: CustomerCareDayData[] = [];
+      for (const row of result.rows) {
+        const date = row.date;
+        const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
+        const mergedFields: Record<string, string | number> = {};
+        for (const entry of entries) {
+          if (entry.fields) {
+            for (const [k, v] of Object.entries(entry.fields)) {
+              if (!k.startsWith('_') && !mergedFields[k]) {
+                mergedFields[k] = v;
+              }
+            }
+          }
+        }
+        const dayData = extractCustomerCareDay(date, mergedFields);
+        ccDays.push(dayData);
+        availableMonths.add(date.substring(0, 7));
+      }
+
+      const byMonth = new Map<string, CustomerCareDayData[]>();
+      for (const d of ccDays) {
+        const m = d.date.substring(0, 7);
+        if (!byMonth.has(m)) byMonth.set(m, []);
+        byMonth.get(m)!.push(d);
+      }
+
+      const ccMonths: CustomerCareMonthSummary[] = [];
+      const sortedMs = [...availableMonths].sort();
+      for (const m of sortedMs) {
+        ccMonths.push(aggregateCustomerCareMonth(m, byMonth.get(m) || []));
+      }
+
+      allDays = ccDays;
+      months = ccMonths;
     }
 
     // Get sorted months list
@@ -1032,6 +1377,54 @@ export async function GET(req: NextRequest) {
         months: clMonths,
         availableMonths: sortedMonths,
         allDays: clDays,
+      });
+    } else if (slug === 'customer-care') {
+      // ── Customer Care summary ──────────────────────────────────────
+      const ccMonths = months as CustomerCareMonthSummary[];
+      const ccDays = allDays as CustomerCareDayData[];
+
+      // Aggregate doctor-level frequencies across ALL time
+      const allTimeDoctorLate: Record<string, number> = {};
+      const allTimeDoctorLeave: Record<string, number> = {};
+      for (const d of ccDays) {
+        for (const dr of d.doctorsLate) {
+          const name = dr.replace(/^Dr\.?\s*/i, 'Dr. ').trim();
+          allTimeDoctorLate[name] = (allTimeDoctorLate[name] || 0) + 1;
+        }
+        for (const dr of d.doctorsOnLeave) {
+          const name = dr.replace(/^Dr\.?\s*/i, 'Dr. ').trim();
+          allTimeDoctorLeave[name] = (allTimeDoctorLeave[name] || 0) + 1;
+        }
+      }
+
+      const opdDays = ccDays.filter(d => d.opdTotal !== null);
+      const summary = {
+        totalDaysReported: ccDays.length,
+        dateRange: ccDays.length > 0 ? { from: ccDays[0].date, to: ccDays[ccDays.length - 1].date } : null,
+        totalOPDAppointments: opdDays.reduce((s, d) => s + (d.opdTotal || 0), 0),
+        avgOPDPerDay: opdDays.length > 0 ? opdDays.reduce((s, d) => s + (d.opdTotal || 0), 0) / opdDays.length : 0,
+        overallTelePercentage: opdDays.length > 0
+          ? (opdDays.reduce((s, d) => s + (d.opdTele || 0), 0) / opdDays.reduce((s, d) => s + (d.opdTotal || 0), 0)) * 100
+          : 0,
+        totalGoogleReviews: ccDays.reduce((s, d) => s + (d.googleReviews || 0), 0),
+        totalFeedback: ccDays.reduce((s, d) => s + (d.customerFeedback || 0), 0),
+        totalVideoTestimonials: ccDays.reduce((s, d) => s + (d.videoTestimonials || 0), 0),
+        complaintDays: ccDays.filter(d => d.hasComplaint).length,
+        escalationDays: ccDays.filter(d => d.hasEscalation).length,
+        doctorLateDays: ccDays.filter(d => d.doctorsLate.length > 0).length,
+        patientWaitDays: ccDays.filter(d => d.patientWaitIncidents > 0).length,
+        totalPatientWaitIncidents: ccDays.reduce((s, d) => s + d.patientWaitIncidents, 0),
+        doctorLateFrequency: allTimeDoctorLate,
+        doctorLeaveFrequency: allTimeDoctorLeave,
+      };
+
+      return NextResponse.json({
+        slug,
+        department: 'Customer Care',
+        summary,
+        months: ccMonths,
+        availableMonths: sortedMonths,
+        allDays: ccDays,
       });
     }
   } catch (err) {
