@@ -35,6 +35,7 @@ export default function Home() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [sewaKpis, setSewaKpis] = useState<Record<string, {open: number; newToday: number; breached: number; avgRes: number}>>({});
 
   const selectedDateRef = useRef(selectedDate);
   selectedDateRef.current = selectedDate;
@@ -132,8 +133,22 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  const fetchSewaKpis = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sewa/kpis');
+      const data = await res.json();
+      if (data.departments) {
+        const mapped: Record<string, {open: number; newToday: number; breached: number; avgRes: number}> = {};
+        data.departments.forEach((d: any) => {
+          mapped[d.dept] = { open: d.openCount, newToday: d.newToday, breached: d.slaBreachCount, avgRes: d.avgResolutionMin };
+        });
+        setSewaKpis(mapped);
+      }
+    } catch (e) { console.error('Sewa KPI fetch error:', e); }
+  }, []);
   useEffect(() => { if (!selectedDate) setSelectedDate(todayStr()); }, []);
-  useEffect(() => { fetchDays(); fetchAllSnapshots(); }, [fetchDays, fetchAllSnapshots]);
+  useEffect(() => { fetchDays(); fetchAllSnapshots(); fetchSewaKpis(); }, [fetchDays, fetchAllSnapshots, fetchSewaKpis]);
   useEffect(() => { if (selectedDate) fetchDay(selectedDate); }, [selectedDate, fetchDay]);
   useEffect(() => {
     syncFromSheets();
@@ -276,6 +291,10 @@ export default function Home() {
                 </svg>
                 <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync'}</span>
               </button>
+            {/* Sewa button */}
+            <a href="/sewa" className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors">
+              Sewa
+            </a>
               {/* Upload button */}
               <button
                 onClick={() => setShowUpload(!showUpload)}
@@ -310,7 +329,7 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6">
         <div className="flex gap-6">
-          {/* Sidebar â hidden on mobile, slide-in overlay */}
+          {/* Sidebar Ã¢ÂÂ hidden on mobile, slide-in overlay */}
           {showSidebar && (
             <div className="fixed inset-0 bg-black/50 z-50 lg:hidden" onClick={() => setShowSidebar(false)}>
               <div className="w-72 h-full bg-white shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
