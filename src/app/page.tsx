@@ -34,6 +34,7 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [sewaKpis, setSewaKpis] = useState<Record<string, { openCount: number; newToday: number; slaBreachCount: number; avgResolutionMin: number | null }>>({});
 
   const fetchDays = useCallback(async () => {
     const res = await fetch('/api/days');
@@ -132,7 +133,18 @@ export default function Home() {
   // Set initial date on client to avoid hydration mismatch
   useEffect(() => { if (!selectedDate) setSelectedDate(todayStr()); }, []);
 
-  useEffect(() => { fetchDays(); fetchAllSnapshots(); }, [fetchDays, fetchAllSnapshots]);
+  // Fetch Sewa KPIs for department integration
+  const fetchSewaKpis = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sewa/kpis');
+      if (res.ok) {
+        const data = await res.json();
+        setSewaKpis(data.kpis || {});
+      }
+    } catch { /* Sewa KPIs optional — silently fail */ }
+  }, []);
+
+  useEffect(() => { fetchDays(); fetchAllSnapshots(); fetchSewaKpis(); }, [fetchDays, fetchAllSnapshots, fetchSewaKpis]);
   useEffect(() => { if (selectedDate) fetchDay(selectedDate); }, [selectedDate, fetchDay]);
 
   // Auto-sync from Google Sheets every 5 minutes — runs once on mount
@@ -225,7 +237,14 @@ export default function Home() {
                       `}
                     >
                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${hasData ? 'bg-green-400' : 'bg-red-300'}`} />
-                      <span className="truncate">{dept.name}</span>
+                      <span className="truncate flex-1">{dept.name}</span>
+                      {sewaKpis[dept.slug]?.openCount > 0 && (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                          sewaKpis[dept.slug]?.slaBreachCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {sewaKpis[dept.slug].openCount}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -281,11 +300,73 @@ export default function Home() {
                             <span className="text-xs text-gray-500">{activeFormDef.description}</span>
                           )}
                         </div>
+                        {/* Sewa KPI Strip */}
+                        {activeDept && sewaKpis[activeDept] && (sewaKpis[activeDept].openCount > 0 || sewaKpis[activeDept].newToday > 0) && (
+                          <Link href={`/sewa/queue`} className="block mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 hover:bg-amber-100 transition-colors">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-sm">📋</span>
+                              <span className="text-xs font-bold text-amber-800">Sewa Complaints</span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-2">
+                              <div className="text-center">
+                                <p className="text-lg font-bold text-amber-700">{sewaKpis[activeDept].openCount}</p>
+                                <p className="text-[10px] text-amber-600">Open</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-lg font-bold text-blue-600">{sewaKpis[activeDept].newToday}</p>
+                                <p className="text-[10px] text-blue-500">New Today</p>
+                              </div>
+                              <div className="text-center">
+                                <p className={`text-lg font-bold ${sewaKpis[activeDept].slaBreachCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                  {sewaKpis[activeDept].slaBreachCount}
+                                </p>
+                                <p className="text-[10px] text-gray-500">SLA Breach</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-lg font-bold text-gray-700">
+                                  {sewaKpis[activeDept].avgResolutionMin != null ? `${sewaKpis[activeDept].avgResolutionMin}m` : '—'}
+                                </p>
+                                <p className="text-[10px] text-gray-500">Avg Resolve</p>
+                              </div>
+                            </div>
+                          </Link>
+                        )}
                         <DepartmentPanel dept={activeDeptData} />
                       </div>
                     ) : activeDept && activeFormDef ? (
                       <div>
                         <h2 className="text-lg font-bold text-gray-900 mb-3">{activeFormDef.name || activeFormDef.department}</h2>
+                        {/* Sewa KPI Strip (even for depts with no standup data) */}
+                        {activeDept && sewaKpis[activeDept] && (sewaKpis[activeDept].openCount > 0 || sewaKpis[activeDept].newToday > 0) && (
+                          <Link href={`/sewa/queue`} className="block mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 hover:bg-amber-100 transition-colors">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-sm">📋</span>
+                              <span className="text-xs font-bold text-amber-800">Sewa Complaints</span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-2">
+                              <div className="text-center">
+                                <p className="text-lg font-bold text-amber-700">{sewaKpis[activeDept].openCount}</p>
+                                <p className="text-[10px] text-amber-600">Open</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-lg font-bold text-blue-600">{sewaKpis[activeDept].newToday}</p>
+                                <p className="text-[10px] text-blue-500">New Today</p>
+                              </div>
+                              <div className="text-center">
+                                <p className={`text-lg font-bold ${sewaKpis[activeDept].slaBreachCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                  {sewaKpis[activeDept].slaBreachCount}
+                                </p>
+                                <p className="text-[10px] text-gray-500">SLA Breach</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-lg font-bold text-gray-700">
+                                  {sewaKpis[activeDept].avgResolutionMin != null ? `${sewaKpis[activeDept].avgResolutionMin}m` : '—'}
+                                </p>
+                                <p className="text-[10px] text-gray-500">Avg Resolve</p>
+                              </div>
+                            </div>
+                          </Link>
+                        )}
                         <DepartmentPanel dept={{ name: activeFormDef.name || activeFormDef.department, slug: activeFormDef.slug, tab: activeFormDef.tab || '', entries: [] }} />
                       </div>
                     ) : null}
