@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-// ── Types ────────────────────────────────────────────────────────────
+// ââ Types ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 interface DayData {
   date: string;
@@ -100,31 +100,31 @@ interface Props {
   embedded?: boolean;
 }
 
-// ── Formatting Helpers ───────────────────────────────────────────────
+// ââ Formatting Helpers âââââââââââââââââââââââââââââââââââââââââââââââ
 
 function formatLakhs(num: number | null | undefined): string {
-  if (num === null || num === undefined || isNaN(num)) return '—';
-  if (num === 0) return '₹0';
-  if (Math.abs(num) >= 100) return '₹' + (num / 100).toFixed(2) + ' Cr';
-  return '₹' + num.toFixed(1) + ' L';
+  if (num === null || num === undefined || isNaN(num)) return 'â';
+  if (num === 0) return 'â¹0';
+  if (Math.abs(num) >= 100) return 'â¹' + (num / 100).toFixed(2) + ' Cr';
+  return 'â¹' + num.toFixed(1) + ' L';
 }
 
 function formatIndian(num: number | null | undefined): string {
-  if (num === null || num === undefined || isNaN(num)) return '—';
+  if (num === null || num === undefined || isNaN(num)) return 'â';
   if (num === 0) return '0';
-  if (Math.abs(num) >= 10000000) return '₹' + (num / 10000000).toFixed(2) + ' Cr';
-  if (Math.abs(num) >= 100000) return '₹' + (num / 100000).toFixed(2) + ' L';
-  if (Math.abs(num) >= 1000) return '₹' + (num / 1000).toFixed(1) + 'K';
-  return '₹' + num.toFixed(0);
+  if (Math.abs(num) >= 10000000) return 'â¹' + (num / 10000000).toFixed(2) + ' Cr';
+  if (Math.abs(num) >= 100000) return 'â¹' + (num / 100000).toFixed(2) + ' L';
+  if (Math.abs(num) >= 1000) return 'â¹' + (num / 1000).toFixed(1) + 'K';
+  return 'â¹' + num.toFixed(0);
 }
 
 function formatNumber(num: number | null | undefined): string {
-  if (num === null || num === undefined || isNaN(num)) return '—';
+  if (num === null || num === undefined || isNaN(num)) return 'â';
   return num.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
 function formatPct(num: number | null | undefined): string {
-  if (num === null || num === undefined || isNaN(num)) return '—';
+  if (num === null || num === undefined || isNaN(num)) return 'â';
   // If already in decimal form (0-1 range), multiply by 100
   const val = Math.abs(num) <= 2 ? num * 100 : num;
   return val.toFixed(1) + '%';
@@ -159,7 +159,7 @@ function pctChange(current: number | null | undefined, previous: number | null |
   };
 }
 
-// ── SVG Sparkline ────────────────────────────────────────────────────
+// ââ SVG Sparkline ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function Sparkline({ data, color = '#3b82f6', width = 120, height = 32 }: {
   data: { date: string; value: number }[];
@@ -167,7 +167,7 @@ function Sparkline({ data, color = '#3b82f6', width = 120, height = 32 }: {
   width?: number;
   height?: number;
 }) {
-  if (data.length < 2) return <span className="text-slate-300 text-xs">—</span>;
+  if (data.length < 2) return <span className="text-slate-300 text-xs">â</span>;
   const values = data.map(d => d.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -185,7 +185,7 @@ function Sparkline({ data, color = '#3b82f6', width = 120, height = 32 }: {
   );
 }
 
-// ── Change Badge ─────────────────────────────────────────────────────
+// ââ Change Badge âââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function ChangeBadge({ current, previous, invert = false, suffix = '' }: {
   current: number | null;
@@ -198,12 +198,12 @@ function ChangeBadge({ current, previous, invert = false, suffix = '' }: {
   const isGood = invert ? !change.positive : change.positive;
   return (
     <span className={`inline-flex items-center text-[10px] font-medium ${isGood ? 'text-emerald-600' : 'text-red-500'}`}>
-      {change.positive ? '↑' : '↓'} {change.label}{suffix}
+      {change.positive ? 'â' : 'â'} {change.label}{suffix}
     </span>
   );
 }
 
-// ── BRM Monthly Progression Table ────────────────────────────────────
+// ââ BRM Monthly Progression Table ââââââââââââââââââââââââââââââââââââ
 
 function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
   if (brmMonths.length === 0) return null;
@@ -218,8 +218,8 @@ function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
     { key: 'arpob_daily', label: 'ARPOB (Daily)', format: (v) => formatIndian(v), getValue: b => b.arpob_daily },
     { key: 'opd_footfall', label: 'OPD Footfall', format: formatNumber, getValue: b => b.opd_footfall_total },
     { key: 'ip_admissions', label: 'IP Admissions', format: formatNumber, getValue: b => b.ip_admissions },
-    { key: 'avg_beds', label: 'Avg Occupied Beds', format: (v) => v != null ? v.toFixed(1) : '—', getValue: b => b.avg_occupied_beds },
-    { key: 'alos', label: 'ALOS (days)', format: (v) => v != null ? v.toFixed(1) : '—', getValue: b => b.alos_days },
+    { key: 'avg_beds', label: 'Avg Occupied Beds', format: (v) => v != null ? v.toFixed(1) : 'â', getValue: b => b.avg_occupied_beds },
+    { key: 'alos', label: 'ALOS (days)', format: (v) => v != null ? v.toFixed(1) : 'â', getValue: b => b.alos_days },
     { key: 'days', label: 'Operating Days', format: formatNumber, getValue: b => b.operating_days },
   ];
 
@@ -227,11 +227,11 @@ function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-blue-50">
         <div className="flex items-center gap-2">
-          <span className="text-lg">📊</span>
-          <h3 className="text-sm font-bold text-slate-800">Business Review — Monthly Progression</h3>
+          <span className="text-lg">ð</span>
+          <h3 className="text-sm font-bold text-slate-800">Business Review â Monthly Progression</h3>
           <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">BRM Official</span>
         </div>
-        <p className="text-[11px] text-slate-500 mt-1">Audited monthly figures from BRM Excel reports (Aug 2025 — Feb 2026)</p>
+        <p className="text-[11px] text-slate-500 mt-1">Audited monthly figures from BRM Excel reports (Aug 2025 â Feb 2026)</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -258,7 +258,7 @@ function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
                   const change = pctChange(val, prevVal);
                   return (
                     <td key={b.month} className="px-3 py-2 text-right whitespace-nowrap">
-                      <span className="text-slate-800 font-medium">{val != null ? metric.format(val) : '—'}</span>
+                      <span className="text-slate-800 font-medium">{val != null ? metric.format(val) : 'â'}</span>
                       {change && (
                         <span className={`block text-[9px] font-medium ${
                           metric.invert ? (!change.positive ? 'text-emerald-600' : 'text-red-500') : (change.positive ? 'text-emerald-600' : 'text-red-500')
@@ -278,7 +278,7 @@ function BrmProgressionTable({ brmMonths }: { brmMonths: BrmMonth[] }) {
   );
 }
 
-// ── BRM vs Daily Tracker Comparison Bars ─────────────────────────────
+// ââ BRM vs Daily Tracker Comparison Bars âââââââââââââââââââââââââââââ
 
 function DualTrackBars({ brmMonths, dailyMonths, metric }: {
   brmMonths: BrmMonth[];
@@ -321,7 +321,7 @@ function DualTrackBars({ brmMonths, dailyMonths, metric }: {
     occupancy: {
       getBrm: b => b.occupancy_pct != null ? b.occupancy_pct * 100 : null,
       getDaily: _ => null,
-      formatVal: n => n != null ? n.toFixed(1) + '%' : '—',
+      formatVal: n => n != null ? n.toFixed(1) + '%' : 'â',
       label: 'Occupancy %',
       brmColor: '#059669',
       dailyColor: '#34d399',
@@ -419,7 +419,7 @@ function DualTrackBars({ brmMonths, dailyMonths, metric }: {
   );
 }
 
-// ── BRM Hero Cards ───────────────────────────────────────────────────
+// ââ BRM Hero Cards âââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function BrmHeroCards({ brmMonths }: { brmMonths: BrmMonth[] }) {
   if (brmMonths.length === 0) return null;
@@ -446,7 +446,7 @@ function BrmHeroCards({ brmMonths }: { brmMonths: BrmMonth[] }) {
     {
       label: 'Occupancy %',
       value: formatPct(latest.occupancy_pct),
-      subLabel: `${latest.avg_occupied_beds?.toFixed(1) ?? '—'} avg beds`,
+      subLabel: `${latest.avg_occupied_beds?.toFixed(1) ?? 'â'} avg beds`,
       current: latest.occupancy_pct,
       previous: prev?.occupancy_pct ?? null,
       color: 'border-teal-200 bg-teal-50/50',
@@ -483,7 +483,7 @@ function BrmHeroCards({ brmMonths }: { brmMonths: BrmMonth[] }) {
   );
 }
 
-// ── Bar Chart Component ──────────────────────────────────────────────
+// ââ Bar Chart Component ââââââââââââââââââââââââââââââââââââââââââââââ
 
 function BarChart({ data, color = '#3b82f6', formatValue, height = 200 }: {
   data: MonthlyMetric[];
@@ -511,7 +511,7 @@ function BarChart({ data, color = '#3b82f6', formatValue, height = 200 }: {
                 </span>
               )}
               <span className="text-[10px] text-slate-500 mb-1">
-                {d.value !== null ? formatValue(d.value) : '—'}
+                {d.value !== null ? formatValue(d.value) : 'â'}
               </span>
               <div
                 className="w-full max-w-[32px] rounded-t transition-all"
@@ -526,7 +526,7 @@ function BarChart({ data, color = '#3b82f6', formatValue, height = 200 }: {
   );
 }
 
-// ── Line Chart with Range Band ───────────────────────────────────────
+// ââ Line Chart with Range Band âââââââââââââââââââââââââââââââââââââââ
 
 function LineChartWithBand({ data, color = '#3b82f6', bandColor = '#dbeafe', formatY, height = 220, title }: {
   data: { date: string; value: number }[];
@@ -595,7 +595,7 @@ function LineChartWithBand({ data, color = '#3b82f6', bandColor = '#dbeafe', for
   );
 }
 
-// ── Revenue Combo Chart ──────────────────────────────────────────────
+// ââ Revenue Combo Chart ââââââââââââââââââââââââââââââââââââââââââââââ
 
 function RevenueComboChart({ dailyRevenue, monthLabel }: {
   dailyRevenue: { date: string; value: number }[];
@@ -607,7 +607,7 @@ function RevenueComboChart({ dailyRevenue, monthLabel }: {
 
   return (
     <div>
-      <h4 className="text-sm font-semibold text-slate-700 mb-2">{monthLabel} — Daily Revenue</h4>
+      <h4 className="text-sm font-semibold text-slate-700 mb-2">{monthLabel} â Daily Revenue</h4>
       <div className="overflow-x-auto">
         <div className="flex items-end gap-[2px] min-w-0" style={{ height: '160px' }}>
           {dailyRevenue.map((d) => {
@@ -631,7 +631,7 @@ function RevenueComboChart({ dailyRevenue, monthLabel }: {
   );
 }
 
-// ── Data Table ───────────────────────────────────────────────────────
+// ââ Data Table âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function DataTable({ days, expanded, onToggle }: {
   days: DayData[];
@@ -667,15 +667,15 @@ function DataTable({ days, expanded, onToggle }: {
               {[...days].reverse().map((d) => (
                 <tr key={d.date} className="border-t border-slate-100 hover:bg-blue-50/30">
                   <td className="px-3 py-2 text-slate-700 font-medium whitespace-nowrap">{formatDate(d.date)}</td>
-                  <td className="px-3 py-2 text-right text-slate-600">{d.revenue !== null ? formatIndian(d.revenue) : '—'}</td>
-                  <td className="px-3 py-2 text-right text-slate-600">{d.revenueMTD !== null ? formatIndian(d.revenueMTD) : '—'}</td>
-                  <td className="px-3 py-2 text-right text-slate-600">{d.arpob !== null ? formatIndian(d.arpob) : '—'}</td>
-                  <td className="px-3 py-2 text-right text-slate-600">{d.ipCensus !== null ? formatNumber(d.ipCensus) : '—'}</td>
-                  <td className="px-3 py-2 text-right text-slate-600">{d.surgeriesMTD !== null ? formatNumber(d.surgeriesMTD) : '—'}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{d.revenue !== null ? formatIndian(d.revenue) : 'â'}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{d.revenueMTD !== null ? formatIndian(d.revenueMTD) : 'â'}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{d.arpob !== null ? formatIndian(d.arpob) : 'â'}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{d.ipCensus !== null ? formatNumber(d.ipCensus) : 'â'}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{d.surgeriesMTD !== null ? formatNumber(d.surgeriesMTD) : 'â'}</td>
                   <td className="px-3 py-2 text-slate-600 max-w-[200px] truncate">
                     {d.revenueLeakage && d.revenueLeakage.toLowerCase() !== 'nil' && d.revenueLeakage.toLowerCase() !== 'none'
                       ? <span className="text-red-600">{d.revenueLeakage}</span>
-                      : '—'}
+                      : 'â'}
                   </td>
                 </tr>
               ))}
@@ -687,7 +687,7 @@ function DataTable({ days, expanded, onToggle }: {
   );
 }
 
-// ── Main Component ───────────────────────────────────────────────────
+// ââ Main Component âââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 const FinanceOverview: React.FC<Props> = ({ onBack, onNavigateToDashboard, embedded = false }) => {
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -793,7 +793,7 @@ const [loading, setLoading] = useState(true);
 
   return (
     <div className={embedded ? 'space-y-5' : 'max-w-7xl mx-auto px-4 py-6 space-y-6'}>
-      {/* Header — hidden in embedded mode */}
+      {/* Header â hidden in embedded mode */}
       {!embedded && (
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -805,9 +805,9 @@ const [loading, setLoading] = useState(true);
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Finance Department Overview</h1>
               <p className="text-sm text-slate-500">
-                {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} — {brmMonths[brmMonths.length - 1].label}</span>}
-                {hasBrm && summary.dateRange && ' · '}
-                {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} — {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
+                {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} â {brmMonths[brmMonths.length - 1].label}</span>}
+                {hasBrm && summary.dateRange && ' Â· '}
+                {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} â {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
               </p>
             </div>
           </div>
@@ -853,14 +853,14 @@ const [loading, setLoading] = useState(true);
       {embedded && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-slate-500">
-            {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} — {brmMonths[brmMonths.length - 1].label}</span>}
-            {hasBrm && summary.dateRange && ' · '}
-            {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} — {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
+            {hasBrm && <span className="text-indigo-600 font-medium">BRM: {brmMonths[0].label} â {brmMonths[brmMonths.length - 1].label}</span>}
+            {hasBrm && summary.dateRange && ' Â· '}
+            {summary.dateRange && <span>Daily: {formatDate(summary.dateRange.from)} â {formatDate(summary.dateRange.to)} ({summary.totalDaysReported} days)</span>}
           </p>
         </div>
       )}
 
-      {/* ═══ TRACK TOGGLE ═══ */}
+      {/* âââ TRACK TOGGLE âââ */}
       {hasBrm && (
         <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
           <button
@@ -882,7 +882,7 @@ const [loading, setLoading] = useState(true);
         </div>
       )}
 
-      {/* ═══ BRM TRACK ═══ */}
+      {/* âââ BRM TRACK âââ */}
       {activeTrack === 'brm' && hasBrm && (
         <>
           {/* BRM Hero Cards */}
@@ -912,7 +912,7 @@ const [loading, setLoading] = useState(true);
         </>
       )}
 
-      {/* ═══ DAILY TRACKER TRACK ═══ */}
+      {/* âââ DAILY TRACKER TRACK âââ */}
       {activeTrack === 'daily' && (
         <>
           {/* Daily Tracker Hero Cards */}
@@ -931,13 +931,13 @@ const [loading, setLoading] = useState(true);
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Avg IP Census</p>
-              <p className="text-xl font-bold text-slate-900 mt-1">{summary.latestCensus !== null ? Math.round(summary.latestCensus).toString() : '—'}</p>
+              <p className="text-xl font-bold text-slate-900 mt-1">{summary.latestCensus !== null ? Math.round(summary.latestCensus).toString() : 'â'}</p>
               {prevMonth && currentMonth && <ChangeBadge current={currentMonth.avgCensus} previous={prevMonth.avgCensus} suffix=" vs prev" />}
               <div className="mt-2"><Sparkline data={summary.censusSparkline} color="#f59e0b" width={100} height={24} /></div>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Surgeries MTD</p>
-              <p className="text-xl font-bold text-slate-900 mt-1">{summary.latestSurgeriesMTD !== null ? formatNumber(summary.latestSurgeriesMTD) : '—'}</p>
+              <p className="text-xl font-bold text-slate-900 mt-1">{summary.latestSurgeriesMTD !== null ? formatNumber(summary.latestSurgeriesMTD) : 'â'}</p>
               {prevMonth && currentMonth && <ChangeBadge current={currentMonth.surgeriesMTD} previous={prevMonth.surgeriesMTD} suffix=" vs prev" />}
               <div className="mt-2"><Sparkline data={summary.surgeriesSparkline} color="#10b981" width={100} height={24} /></div>
             </div>
@@ -967,7 +967,7 @@ const [loading, setLoading] = useState(true);
             <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-slate-700">ARPOB Trend (Daily)</h3>
-                <span className="text-[10px] text-slate-400">Band = ±10% of mean</span>
+                <span className="text-[10px] text-slate-400">Band = Â±10% of mean</span>
               </div>
               <LineChartWithBand
                 data={summary.arpobSparkline}
@@ -1041,15 +1041,15 @@ const [loading, setLoading] = useState(true);
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 <div className="bg-purple-50 rounded-lg p-3 text-center">
                   <div className="text-xs text-purple-600 font-medium">Running Bill</div>
-                  <div className="text-xl font-bold text-purple-900">{formatLakhs(unbilledData.totalBillAmt)}</div>
+                  <div className="text-xl font-bold text-purple-900">{formatIndian(unbilledData.totalBillAmt)}</div>
                 </div>
                 <div className="bg-emerald-50 rounded-lg p-3 text-center">
                   <div className="text-xs text-emerald-600 font-medium">Deposits Collected</div>
-                  <div className="text-xl font-bold text-emerald-900">{formatLakhs(unbilledData.totalDepositAmt)}</div>
+                  <div className="text-xl font-bold text-emerald-900">{formatIndian(unbilledData.totalDepositAmt)}</div>
                 </div>
                 <div className="bg-red-50 rounded-lg p-3 text-center">
                   <div className="text-xs text-red-600 font-medium">Net Due</div>
-                  <div className="text-xl font-bold text-red-900">{formatLakhs(unbilledData.totalDueAmt)}</div>
+                  <div className="text-xl font-bold text-red-900">{formatIndian(unbilledData.totalDueAmt)}</div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3 text-center">
                   <div className="text-xs text-slate-600 font-medium">IP Count / Dep. Cover</div>
@@ -1080,9 +1080,9 @@ const [loading, setLoading] = useState(true);
                           <tr key={ward} className="border-b border-slate-100 hover:bg-slate-50">
                             <td className="py-1.5 px-2 font-medium text-slate-800">{ward}</td>
                             <td className="py-1.5 px-2 text-right text-slate-600">{(data as Record<string, number>).patients}</td>
-                            <td className="py-1.5 px-2 text-right text-slate-600">{formatLakhs((data as Record<string, number>).billAmt)}</td>
-                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatLakhs((data as Record<string, number>).depositAmt)}</td>
-                            <td className="py-1.5 px-2 text-right text-red-600">{formatLakhs((data as Record<string, number>).dueAmt)}</td>
+                            <td className="py-1.5 px-2 text-right text-slate-600">{formatIndian((data as Record<string, number>).billAmt)}</td>
+                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatIndian((data as Record<string, number>).depositAmt)}</td>
+                            <td className="py-1.5 px-2 text-right text-red-600">{formatIndian((data as Record<string, number>).dueAmt)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1108,7 +1108,7 @@ const [loading, setLoading] = useState(true);
                           <span className="font-medium text-slate-800">{p.name}</span>
                           <span className="text-slate-500">{p.ward} / {p.bed}</span>
                           <span className="text-slate-600">LOS: {p.los}d</span>
-                          <span className="font-medium text-red-700">{formatLakhs(p.billAmt)}</span>
+                          <span className="font-medium text-red-700">{formatIndian(p.billAmt)}</span>
                         </div>
                       ))}
                   </div>

@@ -49,7 +49,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
   {
     slug: 'finance',
     label: 'Revenue MTD',
-    unit: 'Ã¢ÂÂ¹',
+    unit: '\u20b9',
     type: 'number',
     // Actual DB: "Total revenue MTD (Rs.)"
     fieldPatterns: ['total revenue mtd', 'revenue mtd'],
@@ -75,7 +75,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     slug: 'facility',
     label: 'Readiness',
     type: 'text-status',
-    // Actual DB: "Facility readiness Ã¢ÂÂ power / water / gases"
+    // Actual DB: "Facility readiness ÃÂ¢ÃÂÃÂ power / water / gases"
     fieldPatterns: ['facility readiness', 'readiness', 'power'],
     statusKeywords: {
       good: ['all ok', 'ok', 'ready', 'normal', 'all systems', 'no issue', 'functional', 'running', 'all running', 'available'],
@@ -86,7 +86,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
   {
     slug: 'pharmacy',
     label: 'Pharmacy Rev MTD',
-    unit: 'Ã¢ÂÂ¹',
+    unit: '\u20b9',
     type: 'number',
     // Actual DB: "Pharmacy revenue MTD (Rs.)"
     fieldPatterns: ['pharmacy revenue mtd', 'revenue mtd'],
@@ -151,7 +151,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     slug: 'biomedical',
     label: 'Equipment Status',
     type: 'text-status',
-    // Actual DB: "Equipment readiness Ã¢ÂÂ OT, ICU, etc."
+    // Actual DB: "Equipment readiness ÃÂ¢ÃÂÃÂ OT, ICU, etc."
     fieldPatterns: ['equipment readiness', 'equipment'],
     statusKeywords: {
       good: ['all ok', 'functional', 'ready', 'operational', 'no issue', 'running', 'all equipment', 'working fine'],
@@ -249,7 +249,7 @@ export const DEPARTMENT_SECONDARY_KPIS: Record<string, SecondaryKPI[]> = {
 
 
 /**
- * Global issue definitions Ã¢ÂÂ things that get surfaced in the hospital-wide
+ * Global issue definitions ÃÂ¢ÃÂÃÂ things that get surfaced in the hospital-wide
  * issues panel. Each issue pulls from a specific department + field.
  */
 export interface GlobalIssue {
@@ -286,7 +286,7 @@ export const GLOBAL_ISSUES: GlobalIssue[] = [
 ];
 
 /**
- * Per-department alert definitions Ã¢ÂÂ what to check when building the
+ * Per-department alert definitions ÃÂ¢ÃÂÃÂ what to check when building the
  * expandable detail view for each department card.
  */
 export interface DeptAlertDef {
