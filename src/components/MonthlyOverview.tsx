@@ -96,9 +96,10 @@ interface Props {
   onNavigateToDashboard: (deptSlug?: string) => void;
   onNavigateToDeptOverview?: (slug: string) => void;
   onNavigateToDashboardWithDate?: (date: string, slug: string) => void;
+  sewaKpis?: Record<string, {open: number; newToday: number; breached: number; avgRes: number}>;
 }
 
-const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToDeptOverview, onNavigateToDashboardWithDate }) => {
+const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToDeptOverview, onNavigateToDashboardWithDate, sewaKpis }) => {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -604,6 +605,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
           <DepartmentGrid
             departments={data.departmentKPIs}
             deptAlerts={data.deptAlerts}
+            sewaKpis={sewaKpis}
             onNavigateToDept={(slug) => onNavigateToDashboard(slug)}
             onNavigateToDashboard={onNavigateToDashboardWithDate}
             currentMonth={data.currentMonth}
