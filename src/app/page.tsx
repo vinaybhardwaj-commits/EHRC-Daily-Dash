@@ -33,7 +33,6 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [sewaKpis, setSewaKpis] = useState<Record<string, { openCount: number; newToday: number; slaBreachCount: number; avgResolutionMin: number | null }>>({});
   const [showSidebar, setShowSidebar] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -134,18 +133,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => { if (!selectedDate) setSelectedDate(todayStr()); }, []);
-  // Fetch Sewa KPIs for department integration
-  const fetchSewaKpis = useCallback(async () => {
-    try {
-      const res = await fetch('/api/sewa/kpis');
-      if (res.ok) {
-        const data = await res.json();
-        setSewaKpis(data.kpis || {});
-      }
-    } catch { /* Sewa KPIs optional */ }
-  }, []);
-
-  useEffect(() => { fetchDays(); fetchAllSnapshots(); fetchSewaKpis(); }, [fetchDays, fetchAllSnapshots, fetchSewaKpis]);
+  useEffect(() => { fetchDays(); fetchAllSnapshots(); }, [fetchDays, fetchAllSnapshots]);
   useEffect(() => { if (selectedDate) fetchDay(selectedDate); }, [selectedDate, fetchDay]);
   useEffect(() => {
     syncFromSheets();
@@ -288,13 +276,6 @@ export default function Home() {
                 </svg>
                 <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync'}</span>
               </button>
-              {/* Sewa button */}
-              <Link
-                href="/sewa"
-                className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors shadow-sm"
-              >
-                Sewa
-              </Link>
               {/* Upload button */}
               <button
                 onClick={() => setShowUpload(!showUpload)}
