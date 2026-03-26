@@ -46,7 +46,20 @@ export function parseCSV(csvText: string, filename: string): { byDate: Map<strin
 
   for (const row of result.data as Record<string, string>[]) {
     // Find ALL date-like columns (some forms have duplicate "Date" columns from form revisions)
-    const dateFields = headers.filter(h => h.toLowerCase().includes('date') && !h.toLowerCase().includes('timestamp'));
+    let dateFields = headers.filter(h => h.toLowerCase().includes('date') && !h.toLowerCase().includes('timestamp'));
+
+    // Fallback: if no header contains "date", detect columns whose values look like dates
+    if (dateFields.length === 0) {
+      for (const h of headers) {
+        if (h.toLowerCase().includes('timestamp')) continue;
+        const val = row[h]?.trim() || '';
+        // Check if value matches common date patterns: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
+        if (val.match(/^\d{1,2}[/.\-]\d{1,2}[/.\-]\d{4}$/) || val.match(/^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/)) {
+          dateFields = [h];
+          break;
+        }
+      }
+    }
     const timestampField = headers.find(h => h.toLowerCase().includes('timestamp'));
 
     // Try each date column until we find a non-empty, parseable date
