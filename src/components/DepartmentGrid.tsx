@@ -124,6 +124,7 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
 interface Props {
   departments: DeptKPIData[];
   deptAlerts?: DeptAlertData[];
+  sewaKpis?: Record<string, {open: number; newToday: number; breached: number; avgRes: number}>;
   onNavigateToDept?: (slug: string) => void;
   onNavigateToDashboard?: (date: string, slug: string) => void;
   currentMonth?: string;
@@ -131,7 +132,7 @@ interface Props {
   latestDate?: string;
 }
 
-export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth, latestDate }: Props) {
+export default function DepartmentGrid({ departments, deptAlerts, sewaKpis, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth, latestDate }: Props) {
   // Use provided latestDate or default to today
   const effectiveDate = latestDate || new Date().toISOString().slice(0, 10);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
@@ -195,6 +196,11 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                     <span className="text-sm font-semibold text-slate-900 truncate">{name}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {sewaKpis && sewaKpis[dept.slug] && sewaKpis[dept.slug].open > 0 && (
+                      <span className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full " + (sewaKpis[dept.slug].breached > 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-600')} title={`Sewa: ${sewaKpis[dept.slug].open} open${sewaKpis[dept.slug].breached > 0 ? ', ' + sewaKpis[dept.slug].breached + ' SLA breached' : ''}`}>
+                        \u{1F514}{sewaKpis[dept.slug].open}
+                      </span>
+                    )}
                     {alerts.length > 0 && (
                       <span className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full " + (redCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')}>
                         {alerts.length}
