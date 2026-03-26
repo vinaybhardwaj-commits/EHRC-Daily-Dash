@@ -59,6 +59,9 @@ async function syncAllSheets() {
           if (fixedDate.startsWith('2036')) fixedDate = '2026' + fixedDate.slice(4);
 
           if (fixedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // Skip future dates (e.g. DD/MM misparse creating 2026-06-18 from 18/03/2026)
+            const parsedDate = new Date(fixedDate + 'T00:00:00Z');
+            if (parsedDate > new Date()) continue;
             await upsertDepartmentData(fixedDate, deptData);
             datesUpdated.push(fixedDate);
           }
