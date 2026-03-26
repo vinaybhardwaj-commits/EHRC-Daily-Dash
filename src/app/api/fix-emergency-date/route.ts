@@ -9,9 +9,9 @@ export async function POST(request: Request) {
     }
 
     const oldData = await sql`
-      SELECT id, date_val, slug, tab, name, entries
+      SELECT id, date, slug, name, tab, entries
       FROM department_data
-      WHERE slug = 'emergency' AND date_val = '2026-01-26'
+      WHERE slug = 'emergency' AND date = '2026-01-26'
     `;
 
     if ((oldData.rowCount ?? 0) === 0) {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
     const existingToday = await sql`
       SELECT id FROM department_data
-      WHERE slug = 'emergency' AND date_val = '2026-03-26'
+      WHERE slug = 'emergency' AND date = '2026-03-26'
     `;
 
     if ((existingToday.rowCount ?? 0) > 0) {
@@ -29,22 +29,23 @@ export async function POST(request: Request) {
 
     const updated = await sql`
       UPDATE department_data
-      SET date_val = '2026-03-26'
-      WHERE slug = 'emergency' AND date_val = '2026-01-26'
+      SET date = '2026-03-26'
+      WHERE slug = 'emergency' AND date = '2026-01-26'
     `;
 
     const snapUpdate = await sql`
       UPDATE day_snapshots
-      SET date_val = '2026-03-26'
-      WHERE date_val = '2026-01-26'
-      AND NOT EXISTS (SELECT 1 FROM day_snapshots WHERE date_val = '2026-03-26')
+      SET date = '2026-03-26'
+      WHERE date = '2026-01-26'
+      AND NOT EXISTS (SELECT 1 FROM day_snapshots WHERE date = '2026-03-26')
     `;
 
     return NextResponse.json({
       success: true,
       department_data_moved: updated.rowCount ?? 0,
       day_snapshots_moved: snapUpdate.rowCount ?? 0,
-      old_entry: oldData.rows[0]
+      old_entry_slug: oldData.rows[0]?.slug,
+      old_entry_name: oldData.rows[0]?.name
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
