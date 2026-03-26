@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import {
   SEWA_DEPARTMENTS,
   getDepartment,
@@ -116,7 +117,7 @@ export default function SewaPage() {
 
   // ── Requests state ──
   const [requests, setRequests] = useState<SewaRequest[]>([]);
-  const [nextId, setNextId] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ── UI state ──
   const [toast, setToast] = useState<string | null>(null);
@@ -136,11 +137,30 @@ export default function SewaPage() {
     } catch { /* first time */ }
   }, []);
 
-  // SLA countdown ticker
+  // ── Load user's complaints from API ──
+  const loadMyRequests = useCallback(async () => {
+    if (!userName) return;
+    try {
+      const res = await fetch(`/api/sewa/requests?requestor=${encodeURIComponent(userName)}&limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        setRequests(data.requests || []);
+      }
+    } catch { /* silently fail, will retry on next tick */ }
+  }, [userName]);
+
   useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 30000);
+    if (isRegistered && userName) loadMyRequests();
+  }, [isRegistered, userName, loadMyRequests]);
+
+  // SLA countdown ticker + refresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+      if (isRegistered && userName) loadMyRequests();
+    }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isRegistered, userName, loadMyRequests]);
 
   // ── Registration handler ──
   const handleRegister = useCallback(() => {
@@ -150,53 +170,62 @@ export default function SewaPage() {
     setIsRegistered(true);
   }, [userName, userDept, userEmpId]);
 
-  // ── Submit complaint ──
-  const handleSubmit = useCallback(() => {
+  // ── Submit complaint via API ──
+  const handleSubmit = useCallback(async () => {
     if (!selectedType || !selectedDept) return;
     if (!formDescription.trim()) {
       setToast('Please describe the issue');
       return;
     }
+    setIsSubmitting(true);
 
-    const id = `SEW-${String(nextId).padStart(4, '0')}`;
-    const newReq: SewaRequest = {
-      id,
-      requestorName: userName,
-      requestorDept: userDept,
-      requestorEmpId: userEmpId || undefined,
-      targetDept: selectedDept.slug,
-      complaintTypeId: selectedType.id,
-      complaintTypeName: selectedType.name,
-      subMenu: selectedSubMenu?.name,
-      priority: formPriority,
-      status: 'NEW',
-      location: formLocation,
-      description: formDescription,
-      patientName: formPatientName || undefined,
-      patientUhid: formPatientUhid || undefined,
-      extraFields: { ...formExtraFields },
-      responseSlaMin: selectedType.responseSlaMin,
-      resolutionSlaMin: selectedType.resolutionSlaMin,
-      createdAt: new Date().toISOString(),
-      escalationLevel: 0,
-      comments: [],
-    };
+    try {
+      const res = await fetch('/api/sewa/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestorName: userName,
+          requestorDept: userDept,
+          requestorEmpId: userEmpId || undefined,
+          targetDept: selectedDept.slug,
+          complaintTypeId: selectedType.id,
+          complaintTypeName: selectedType.name,
+          subMenu: selectedSubMenu?.name,
+          priority: formPriority,
+          location: formLocation,
+          description: formDescription,
+          patientName: formPatientName || undefined,
+          patientUhid: formPatientUhid || undefined,
+          extraFields: { ...formExtraFields },
+          responseSlaMin: selectedType.responseSlaMin,
+          resolutionSlaMin: selectedType.resolutionSlaMin,
+        }),
+      });
 
-    setRequests(prev => [newReq, ...prev]);
-    setNextId(n => n + 1);
-    setToast(`Complaint ${id} submitted!`);
-
-    // Reset form
-    setSelectedType(null);
-    setSelectedSubMenu(null);
-    setSelectedDept(null);
-    setFormLocation('');
-    setFormPriority('normal');
-    setFormDescription('');
-    setFormPatientName('');
-    setFormPatientUhid('');
-    setFormExtraFields({});
-  }, [selectedType, selectedDept, selectedSubMenu, formLocation, formPriority, formDescription, formPatientName, formPatientUhid, formExtraFields, userName, userDept, userEmpId, nextId]);
+      const data = await res.json();
+      if (res.ok && data.id) {
+        setToast(`Complaint ${data.id} submitted!`);
+        // Reset form
+        setSelectedType(null);
+        setSelectedSubMenu(null);
+        setSelectedDept(null);
+        setFormLocation('');
+        setFormPriority('normal');
+        setFormDescription('');
+        setFormPatientName('');
+        setFormPatientUhid('');
+        setFormExtraFields({});
+        // Refresh complaints list
+        loadMyRequests();
+      } else {
+        setToast(data.error || 'Failed to submit');
+      }
+    } catch {
+      setToast('Network error — please try again');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [selectedType, selectedDept, selectedSubMenu, formLocation, formPriority, formDescription, formPatientName, formPatientUhid, formExtraFields, userName, userDept, userEmpId, loadMyRequests]);
 
   // ── Reset form state ──
   const resetToHome = useCallback(() => {
@@ -390,10 +419,10 @@ export default function SewaPage() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!formDescription.trim()}
+            disabled={!formDescription.trim() || isSubmitting}
             className="w-full py-3.5 bg-[#1a6bf0] text-white rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] shadow-lg"
           >
-            Submit Complaint
+            {isSubmitting ? 'Submitting...' : 'Submit Complaint'}
           </button>
         </div>
 
@@ -662,9 +691,14 @@ export default function SewaPage() {
         )}
       </BottomSheet>
 
-      {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto text-center py-2 text-[10px] text-gray-400 bg-white border-t border-gray-100">
-        Powered by Sewa &middot; Even Healthcare
+      {/* Footer with nav */}
+      <div className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-white border-t border-gray-100 px-4 py-2 flex justify-between items-center">
+        <Link href="/" className="text-[10px] text-blue-600 font-medium hover:underline">EHRC Dash</Link>
+        <span className="text-[10px] text-gray-400">Sewa &middot; Even Healthcare</span>
+        <div className="flex gap-3">
+          <Link href="/sewa/queue" className="text-[10px] text-blue-600 font-medium hover:underline">Queue</Link>
+          <Link href="/sewa/dashboard" className="text-[10px] text-blue-600 font-medium hover:underline">Dashboard</Link>
+        </div>
       </div>
 
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
