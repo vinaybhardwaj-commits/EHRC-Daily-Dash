@@ -28,7 +28,7 @@ function normalizeDate(dateStr: string): string {
     return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
   }
 
-  // Try DD-MM-YY format (2-digit year — assume 20xx)
+  // Try DD-MM-YY format (2-digit year â assume 20xx)
   const ddmmyy = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2})$/.exec(s);
   if (ddmmyy) {
     return `20${ddmmyy[3]}-${ddmmyy[2].padStart(2, '0')}-${ddmmyy[1].padStart(2, '0')}`;
@@ -55,6 +55,11 @@ export async function POST(request: Request) {
     let normalizedDate: string;
     try {
       normalizedDate = normalizeDate(date);
+      // Validate the date is a real calendar date (reject Feb 31, etc.)
+      const dateCheck = new Date(normalizedDate + 'T00:00:00Z');
+      if (isNaN(dateCheck.getTime())) throw new Error('Invalid calendar date: ' + normalizedDate);
+      // Reject future dates
+      if (dateCheck > new Date()) throw new Error('Date cannot be in the future: ' + normalizedDate);
     } catch (e) {
       return Response.json(
         { error: (e as Error).message },
@@ -70,6 +75,8 @@ export async function POST(request: Request) {
           const value = fields[field.id];
           if (value === '' || value === undefined || value === null) {
             missingRequired.push(field.label);
+          } else if (field.type === 'number' && isNaN(Number(value))) {
+            missingRequired.push(field.label + ' (must be a number)');
           }
         }
       });
