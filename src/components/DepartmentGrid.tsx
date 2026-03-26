@@ -198,7 +198,7 @@ export default function DepartmentGrid({ departments, deptAlerts, sewaKpis, onNa
                   <div className="flex items-center gap-1.5">
                     {sewaKpis && sewaKpis[dept.slug] && sewaKpis[dept.slug].open > 0 && (
                       <span className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full " + (sewaKpis[dept.slug].breached > 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-600')} title={`Sewa: ${sewaKpis[dept.slug].open} open${sewaKpis[dept.slug].breached > 0 ? ', ' + sewaKpis[dept.slug].breached + ' SLA breached' : ''}`}>
-                        \u{1F514}{sewaKpis[dept.slug].open}
+                        S{sewaKpis[dept.slug].open}
                       </span>
                     )}
                     {alerts.length > 0 && (
