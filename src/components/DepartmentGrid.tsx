@@ -305,7 +305,7 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                   )}
 
                   {onNavigateToDept && (
-                    {dept.submitted ? (
+                    dept.submitted ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); onNavigateToDept(dept.slug); }}
                     className="w-full text-center text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg py-2 transition-colors"
@@ -320,7 +320,7 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                     staleDate={dept.staleDate}
                     formUrl="https://ehrc-daily-dash.vercel.app/form"
                   />
-                )}
+                )
                   )}
                 </div>
               )}
