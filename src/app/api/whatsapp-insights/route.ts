@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { DEPARTMENTS } from '@/lib/types';
 
+
+/**
+ * Normalize JSONB entries from dual format.
+ * Web forms store [{key, value}], sheets sync stores [{fields: {...}}].
+ * This converts both to a single [{fields: {...}}] format.
+ */
+function normalizeEntriesToFields(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  entries: any[]
+): { fields: Record<string, string | number> }[] {
+  if (!entries || entries.length === 0) return [];
+  const first = entries[0];
+  // Already in {fields} format
+  if (first && typeof first === 'object' && 'fields' in first) {
+    return entries;
+  }
+  // Convert [{key, value}] to single {fields} object
+  if (first && typeof first === 'object' && 'key' in first) {
+    const fields: Record<string, string | number> = {};
+    for (const e of entries) {
+      if (e.key) fields[e.key] = e.value;
+    }
+    return [{ fields }];
+  }
+  return [];
+}
+
 export const dynamic = 'force-dynamic';
 
 interface WAEntry {
@@ -53,25 +80,8 @@ export async function GET(req: NextRequest) {
     for (const row of rows.rows) {
       const entries = row.entries as Array<{ timestamp?: string; date?: string; fields: Record<string, string | number> }>;
 
-      
-    // Normalize JSONB dual format: [{key, value}] → {fields: {...}}
-    const normalizedEntries = entries.map((entry: Record<string, unknown>) => {
-      if (entry.fields) return entry as { fields: Record<string, string | number> };
-      // Convert [{key, value}] format
-      if (entry.key !== undefined && entry.value !== undefined) {
-        // This is a single key-value pair from the array
-        return null; // Will be handled below
-      }
-      return { fields: {} as Record<string, string | number> };
-    }).filter(Boolean) as { fields: Record<string, string | number> }[];
-
-    // If entries is in [{key, value}] format, convert entire array to single fields object
-    const isKeyValueFormat = entries.length > 0 && entries[0] && 'key' in (entries[0] as Record<string, unknown>) && !('fields' in (entries[0] as Record<string, unknown>));
-    const processedEntries: { fields: Record<string, string | number> }[] = isKeyValueFormat
-      ? [{ fields: Object.fromEntries((entries as Array<{key: string; value: string | number}>).filter(e => e.key).map(e => [e.key, e.value])) }]
-      : normalizedEntries;
-
-    for (const entry of processedEntries) {
+      const normalizedEntries = normalizeEntriesToFields(entries as any[]);
+    for (const entry of normalizedEntries) {
         if (entry.fields['_source'] !== 'whatsapp') continue;
 
         // Parse field metadata
