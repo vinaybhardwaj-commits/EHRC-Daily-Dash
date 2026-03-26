@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sql } from '@vercel/postgres';
 import { Resend } from 'resend';
 import { SHEET_TAB_MAP, getSheetCsvUrl } from '@/lib/sheets-config';
 import { DEPARTMENT_CONTACTS, CONTACTS_BY_SLUG } from '@/lib/department-contacts';
@@ -11,7 +12,7 @@ function getResendClient() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-// Sender email â must be verified in Resend (use onboarding@resend.dev for testing)
+// Sender email Ã¢ÂÂ must be verified in Resend (use onboarding@resend.dev for testing)
 const FROM_EMAIL = process.env.NOTIFICATION_FROM_EMAIL || 'EHRC Dashboard <onboarding@resend.dev>';
 
 /**
@@ -44,12 +45,27 @@ function normalizeDate(raw: string): string | null {
   const ddmmMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
   if (ddmmMatch) {
     let [, d, m, y] = ddmmMatch;
-    // Fix known year errors (2036 â 2026)
+    // Fix known year errors (2036 Ã¢ÂÂ 2026)
     if (y === '2036') y = '2026';
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
 
   return null;
+}
+
+/**
+ * Check the database for a web-form or sheets-sync submission.
+ * Returns true if department_data has a row for this slug+date.
+ */
+async function hasSubmittedInDB(slug: string, date: string): Promise<boolean> {
+  try {
+    const result = await sql`
+      SELECT 1 FROM department_data WHERE slug = ${slug} AND date = ${date} LIMIT 1
+    `;
+    return result.rowCount > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -88,13 +104,14 @@ async function hasSubmittedToday(tabName: string, today: string): Promise<boolea
  */
 async function sendReminderEmail(
   contact: { headName: string; email: string; department: string },
-  today: string
+  today: string,
+  slug: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { data, error } = await getResendClient().emails.send({
       from: FROM_EMAIL,
       to: contact.email,
-      subject: `â° EHRC Daily Form â Pending Submission for ${today}`,
+      subject: `Ã¢ÂÂ° EHRC Daily Form Ã¢ÂÂ Pending Submission for ${today}`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
           <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); padding: 20px 24px; border-radius: 12px 12px 0 0;">
@@ -110,9 +127,9 @@ async function sendReminderEmail(
               Please submit your form at your earliest convenience so the dashboard stays up to date.
             </p>
             <div style="text-align: center; margin: 24px 0;">
-              <a href="https://ehrc-daily-dash.vercel.app"
+              <a href="https://ehrc-daily-dash.vercel.app/form/${slug}"
                  style="display: inline-block; background: #2563eb; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
-                View Dashboard
+                Submit Your Form Now
               </a>
             </div>
             <p style="font-size: 12px; color: #9ca3af; margin: 16px 0 0; text-align: center;">
@@ -168,6 +185,10 @@ export async function GET(request: Request) {
     const batch = slugs.slice(i, i + 5);
     const checks = await Promise.all(
       batch.map(async (slug) => {
+        // Check database first (catches web-form submissions),
+        // then fall back to Google Sheets CSV check
+        const inDB = await hasSubmittedInDB(slug, today);
+        if (inDB) return { slug, submitted: true };
         const tabName = SHEET_TAB_MAP[slug];
         const submitted = await hasSubmittedToday(tabName, today);
         return { slug, submitted };
@@ -188,7 +209,7 @@ export async function GET(request: Request) {
         });
       } else if (resolvedContact) {
         // Send reminder email
-        const emailResult = await sendReminderEmail(resolvedContact, today);
+        const emailResult = await sendReminderEmail(resolvedContact, today, slug);
         results.push({
           slug,
           department: resolvedContact.department,
