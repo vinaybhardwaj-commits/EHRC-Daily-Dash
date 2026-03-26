@@ -450,6 +450,31 @@ const it: DepartmentConfig = {
 // MASTER EXPORT
 // ═══════════════════════════════════════════════════════════════════
 
+
+
+// ═══════════════════════════════════════════════════════════════════
+// 18. ADMINISTRATION
+// ═══════════════════════════════════════════════════════════════════
+
+const administration: DepartmentConfig = {
+  slug: 'administration',
+  name: 'Administration',
+  icon: '🏥',
+  color: '#4f46e5',
+  complaintTypes: [
+    { id: 'adm-01', name: 'Interdepartmental coordination failure', icon: '🔗', responseSlaMin: 30, resolutionSlaMin: 240, extraFields: [{ id: 'deptsInvolved', label: 'Departments Involved', type: 'text', required: true, placeholder: 'e.g., Finance + Billing' }, { id: 'impactDesc', label: 'Impact Description', type: 'textarea', required: true }] },
+    { id: 'adm-02', name: 'Approval / authorization delay', icon: '⏳', responseSlaMin: 30, resolutionSlaMin: 120, extraFields: [{ id: 'approvalType', label: 'Approval Type', type: 'select', required: true, options: ['Purchase Order', 'Leave/HR', 'Vendor Payment', 'Capital Expenditure', 'Policy Exception', 'Other'] }, { id: 'pendingSince', label: 'Pending Since (date)', type: 'text', required: true, placeholder: 'e.g., 2026-03-20' }] },
+    { id: 'adm-03', name: 'Policy / process concern', icon: '📜', responseSlaMin: 60, resolutionSlaMin: 1440, extraFields: [{ id: 'policyName', label: 'Policy / SOP Name', type: 'text', required: true }, { id: 'concern', label: 'Concern Details', type: 'textarea', required: true }] },
+    { id: 'adm-04', name: 'Communication gap', icon: '📢', responseSlaMin: 30, resolutionSlaMin: 120, extraFields: [{ id: 'commType', label: 'Communication Type', type: 'select', required: true, options: ['Circular not received', 'Incorrect info shared', 'Delayed communication', 'Missing escalation', 'Other'] }, { id: 'affectedParties', label: 'Affected Parties', type: 'text', required: true }] },
+    { id: 'adm-05', name: 'Meeting / scheduling conflict', icon: '📅', responseSlaMin: 30, resolutionSlaMin: 60, extraFields: [{ id: 'meetingSubject', label: 'Meeting Subject', type: 'text', required: true }, { id: 'conflictDetails', label: 'Conflict Details', type: 'textarea', required: true }] },
+    { id: 'adm-06', name: 'Documentation / record-keeping issue', icon: '📂', responseSlaMin: 30, resolutionSlaMin: 240, extraFields: [{ id: 'docType', label: 'Document Type', type: 'select', required: true, options: ['Patient record', 'Administrative record', 'Compliance document', 'Financial document', 'HR record', 'Other'] }, { id: 'issue', label: 'Issue Description', type: 'textarea', required: true }] },
+    { id: 'adm-07', name: 'Compliance / regulatory concern', icon: '⚖️', responseSlaMin: 15, resolutionSlaMin: 480, extraFields: [{ id: 'regulatoryBody', label: 'Regulatory Body', type: 'select', required: true, options: ['NABH', 'State Health Dept', 'CPCB', 'Fire Safety', 'AERB', 'Other'] }, { id: 'complianceDetails', label: 'Compliance Issue Details', type: 'textarea', required: true }] },
+    { id: 'adm-08', name: 'Staff welfare issue', icon: '🙋', responseSlaMin: 30, resolutionSlaMin: 480, extraFields: [{ id: 'issueCategory', label: 'Issue Category', type: 'select', required: true, options: ['Workplace safety', 'Harassment/bullying', 'Facilities concern', 'Workload', 'Benefits/compensation', 'Other'] }, { id: 'details', label: 'Details', type: 'textarea', required: true }] },
+    { id: 'adm-09', name: 'Visitor / vendor management issue', icon: '👥', responseSlaMin: 15, resolutionSlaMin: 60, extraFields: [{ id: 'personType', label: 'Person Type', type: 'select', required: true, options: ['Visitor', 'Vendor', 'Contractor', 'Consultant', 'Other'] }, { id: 'issueDesc', label: 'Issue Description', type: 'textarea', required: true }] },
+    { id: 'adm-10', name: 'General administrative request', icon: '📋', responseSlaMin: 60, resolutionSlaMin: 1440, extraFields: [{ id: 'requestDetails', label: 'Request Details', type: 'textarea', required: true }] },
+  ],
+};
+
 export const SEWA_DEPARTMENTS: DepartmentConfig[] = [
   emergency,
   customerCare,
@@ -468,6 +493,7 @@ export const SEWA_DEPARTMENTS: DepartmentConfig[] = [
   biomedical,
   nursing,
   it,
+  administration,
 ];
 
 // Helper: get department by slug
