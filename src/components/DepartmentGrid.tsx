@@ -1,5 +1,9 @@
 'use client';
 
+  // Use provided latestDate or default to today
+  const effectiveDate = latestDate || new Date().toISOString().split('T')[0];
+import DeptReminderPanel from './DeptReminderPanel';
+
 import React, { useState } from 'react';
 
 export interface SecondaryKPIData {
@@ -86,9 +90,9 @@ function TrendArrow({ trend, invert }: { trend: 'up' | 'down' | 'flat'; invert: 
   );
 }
 
-function KPIRow({ label, value, textValue, status, unit, type, trend, invertTrend, isStale }: {
+function KPIRow({ label, value, textValue, status, unit, type, trend, invertTrend, isStale, onClickRow }: {
   label: string; value: number | null; textValue: string | null; status: 'good' | 'warning' | 'bad' | null;
-  unit: string | null; type: string; trend: 'up' | 'down' | 'flat'; invertTrend: boolean; isStale?: boolean;
+  unit: string | null; type: string; trend: 'up' | 'down' | 'flat'; invertTrend: boolean; isStale?: boolean; onClickRow?: () => void;
 }) {
   const statusBg: Record<string, string> = {
     good: 'text-emerald-700', warning: 'text-amber-700', bad: 'text-red-700',
@@ -99,7 +103,7 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
   const staleStatusColor = isStale ? 'text-slate-400' : '';
 
   return (
-    <div className="flex items-center justify-between py-1">
+    <div className={`flex items-center justify-between py-1 ${onClickRow ? 'cursor-pointer hover:bg-slate-50 -mx-1 px-1 rounded transition-colors' : ''}`} onClick={onClickRow}>
       <span className="text-[11px] text-slate-500 truncate mr-2">{label}</span>
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {type === 'number' ? (
@@ -126,9 +130,10 @@ interface Props {
   onNavigateToDashboard?: (date: string, slug: string) => void;
   currentMonth?: string;
   previousMonth?: string;
+  latestDate?: string;
 }
 
-export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth }: Props) {
+export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth, latestDate }: Props) {
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const alertsBySlug = new Map((deptAlerts || []).map(a => [a.slug, a]));
 
@@ -300,12 +305,22 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                   )}
 
                   {onNavigateToDept && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onNavigateToDept(dept.slug); }}
-                      className="w-full text-center text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg py-2 transition-colors"
-                    >
-                      View in Daily Dashboard →
-                    </button>
+                    {dept.submitted ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onNavigateToDept(dept.slug); }}
+                    className="w-full text-center text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg py-2 transition-colors"
+                  >
+                    View in Daily Dashboard →
+                  </button>
+                ) : (
+                  <DeptReminderPanel
+                    deptSlug={dept.slug}
+                    deptName={dept.name}
+                    date={effectiveDate}
+                    staleDate={dept.staleDate}
+                    formUrl="https://ehrc-daily-dash.vercel.app/form"
+                  />
+                )}
                   )}
                 </div>
               )}

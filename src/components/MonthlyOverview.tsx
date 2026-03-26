@@ -608,6 +608,7 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
             onNavigateToDashboard={onNavigateToDashboardWithDate}
             currentMonth={data.currentMonth}
             previousMonth={data.previousMonth}
+            latestDate={data.todayDate}
           />
         </div>
       )}
