@@ -224,6 +224,9 @@ export default function Home() {
             </svg>
             <span className="hidden sm:inline">Forms</span>
           </a>
+          <a href="/sewa" className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors">
+            Sewa
+          </a>
         </div>
       </nav>
 
@@ -291,10 +294,6 @@ export default function Home() {
                 </svg>
                 <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync'}</span>
               </button>
-            {/* Sewa button */}
-            <a href="/sewa" className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors">
-              Sewa
-            </a>
               {/* Upload button */}
               <button
                 onClick={() => setShowUpload(!showUpload)}
@@ -329,7 +328,7 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6">
         <div className="flex gap-6">
-          {/* Sidebar Ã¢ÂÂ hidden on mobile, slide-in overlay */}
+          {/* Sidebar ÃÂ¢ÃÂÃÂ hidden on mobile, slide-in overlay */}
           {showSidebar && (
             <div className="fixed inset-0 bg-black/50 z-50 lg:hidden" onClick={() => setShowSidebar(false)}>
               <div className="w-72 h-full bg-white shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
