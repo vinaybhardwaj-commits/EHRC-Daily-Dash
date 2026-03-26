@@ -138,10 +138,10 @@ export default function Home() {
     try {
       const res = await fetch('/api/sewa/kpis');
       const data = await res.json();
-      if (data.departments) {
+      if (data.kpis) {
         const mapped: Record<string, {open: number; newToday: number; breached: number; avgRes: number}> = {};
-        data.departments.forEach((d: any) => {
-          mapped[d.dept] = { open: d.openCount, newToday: d.newToday, breached: d.slaBreachCount, avgRes: d.avgResolutionMin };
+        Object.entries(data.kpis).forEach(([dept, kpi]: [string, any]) => {
+          mapped[dept] = { open: kpi.openCount || 0, newToday: kpi.newToday || 0, breached: kpi.slaBreachCount || 0, avgRes: kpi.avgResolutionMin || 0 };
         });
         setSewaKpis(mapped);
       }
@@ -233,6 +233,7 @@ export default function Home() {
       {/* Overview View */}
       {view === 'overview' && (
         <MonthlyOverview
+          sewaKpis={sewaKpis}
           onNavigateToDashboard={(deptSlug) => {
             if (deptSlug) setActiveDept(deptSlug);
             setActiveTab('department');
@@ -384,7 +385,12 @@ export default function Home() {
                       `}
                     >
                       <span className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${hasData ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                      <span className="truncate">{dept.name}</span>
+                      <span className="truncate flex-1">{dept.name}</span>
+                      {sewaKpis[dept.slug]?.open > 0 && (
+                        <span className={`text-[9px] font-bold px-1 py-0.5 rounded-full flex-shrink-0 ${sewaKpis[dept.slug]?.breached > 0 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                          {sewaKpis[dept.slug].open}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
