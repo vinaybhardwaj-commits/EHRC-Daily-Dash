@@ -1,7 +1,5 @@
 'use client';
 
-  // Use provided latestDate or default to today
-  const effectiveDate = latestDate || new Date().toISOString().split('T')[0];
 import DeptReminderPanel from './DeptReminderPanel';
 
 import React, { useState } from 'react';
@@ -134,6 +132,8 @@ interface Props {
 }
 
 export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDept, onNavigateToDashboard, currentMonth, previousMonth, latestDate }: Props) {
+  // Use provided latestDate or default to today
+  const effectiveDate = latestDate || new Date().toISOString().slice(0, 10);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const alertsBySlug = new Map((deptAlerts || []).map(a => [a.slug, a]));
 
