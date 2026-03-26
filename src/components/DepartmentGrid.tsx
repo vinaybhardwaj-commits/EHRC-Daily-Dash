@@ -315,7 +315,7 @@ export default function DepartmentGrid({ departments, deptAlerts, onNavigateToDe
                 ) : (
                   <DeptReminderPanel
                     deptSlug={dept.slug}
-                    deptName={dept.name}
+                    deptName={dept.label}
                     date={effectiveDate}
                     staleDate={dept.staleDate}
                     formUrl="https://ehrc-daily-dash.vercel.app/form"
