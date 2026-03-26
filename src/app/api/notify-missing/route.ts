@@ -62,8 +62,8 @@ async function hasSubmittedInDB(slug: string, date: string): Promise<boolean> {
     const result = await sql`
       SELECT 1 FROM department_data WHERE slug = ${slug} AND date = ${date} LIMIT 1
     `;
-    return result.rowCount > 0;
-  } catch {
+    return (result.rowCount ?? 0) > 0;
+  } catch (_e) {
     return false;
   }
 }
