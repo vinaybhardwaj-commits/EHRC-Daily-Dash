@@ -53,7 +53,25 @@ export async function GET(req: NextRequest) {
     for (const row of rows.rows) {
       const entries = row.entries as Array<{ timestamp?: string; date?: string; fields: Record<string, string | number> }>;
 
-      for (const entry of entries) {
+      
+    // Normalize JSONB dual format: [{key, value}] → {fields: {...}}
+    const normalizedEntries = entries.map((entry: Record<string, unknown>) => {
+      if (entry.fields) return entry as { fields: Record<string, string | number> };
+      // Convert [{key, value}] format
+      if (entry.key !== undefined && entry.value !== undefined) {
+        // This is a single key-value pair from the array
+        return null; // Will be handled below
+      }
+      return { fields: {} as Record<string, string | number> };
+    }).filter(Boolean) as { fields: Record<string, string | number> }[];
+
+    // If entries is in [{key, value}] format, convert entire array to single fields object
+    const isKeyValueFormat = entries.length > 0 && entries[0] && 'key' in (entries[0] as Record<string, unknown>) && !('fields' in (entries[0] as Record<string, unknown>));
+    const processedEntries: { fields: Record<string, string | number> }[] = isKeyValueFormat
+      ? [{ fields: Object.fromEntries((entries as Array<{key: string; value: string | number}>).filter(e => e.key).map(e => [e.key, e.value])) }]
+      : normalizedEntries;
+
+    for (const entry of processedEntries) {
         if (entry.fields['_source'] !== 'whatsapp') continue;
 
         // Parse field metadata
