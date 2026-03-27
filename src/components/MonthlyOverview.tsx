@@ -97,7 +97,7 @@ interface Props {
   onNavigateToDashboard: (deptSlug?: string) => void;
   onNavigateToDeptOverview?: (slug: string) => void;
   onNavigateToDashboardWithDate?: (date: string, slug: string) => void;
-  sewaKpis?: Record<string, {open: number; newToday: number; breached: number; avgRes: number}>;
+  sewaKpis?: Record<string, {open: number; newToday: number; breached: number; avgRes: number; blocked: number}>;
 }
 
 const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToDeptOverview, onNavigateToDashboardWithDate, sewaKpis }) => {

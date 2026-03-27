@@ -1,28 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import SewaResponsePanel from './SewaResponsePanel';
+import { type SewaRequest } from '@/lib/sewa-config';
 
 interface SewaKpiData {
   openCount: number;
   newToday: number;
   slaBreachCount: number;
   avgResolutionMin: number | null;
-}
-
-interface SewaRequestRow {
-  id: string;
-  requestorName: string;
-  requestorDept: string;
-  targetDept: string;
-  complaintTypeId: string;
-  complaintTypeName: string;
-  priority: string;
-  status: string;
-  createdAt: string;
-  acknowledgedAt: string | null;
-  resolvedAt: string | null;
-  responseSlaMin: number;
-  resolutionSlaMin: number;
+  blockedCount: number;
 }
 
 const DEPT_LABELS: Record<string, string> = {
@@ -43,39 +30,18 @@ const DEPT_ICONS: Record<string, string> = {
   nursing: 'NR', it: 'IT', administration: 'AD',
 };
 
-function elapsedStr(isoDate: string): string {
-  const ms = Date.now() - new Date(isoDate).getTime();
-  const mins = Math.floor(ms / 60000);
-  if (mins < 60) return mins + 'm';
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs + 'h ' + (mins % 60) + 'm';
-  const days = Math.floor(hrs / 24);
-  return days + 'd ' + (hrs % 24) + 'h';
-}
-
-function slaPercent(createdAt: string, slaMin: number): number {
-  const elapsed = (Date.now() - new Date(createdAt).getTime()) / 60000;
-  return Math.max(0, Math.min(100, 100 - (elapsed / slaMin) * 100));
-}
-
-const STATUS_CHIP: Record<string, { bg: string; text: string; label: string }> = {
-  NEW: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'New' },
-  ACKNOWLEDGED: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Ack' },
-  IN_PROGRESS: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'In Progress' },
-  RESOLVED: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Resolved' },
-};
-
 export default function SewaOverviewPanel() {
   const [kpis, setKpis] = useState<Record<string, SewaKpiData>>({});
-  const [requests, setRequests] = useState<SewaRequestRow[]>([]);
+  const [requests, setRequests] = useState<SewaRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'blocked' | 'breached'>('all');
 
   const fetchData = useCallback(async () => {
     try {
       const [kpiRes, reqRes] = await Promise.all([
         fetch('/api/sewa/kpis'),
-        fetch('/api/sewa/requests?limit=15'),
+        fetch('/api/sewa/requests?limit=25'),
       ]);
       const kpiData = await kpiRes.json();
       const reqData = await reqRes.json();
@@ -89,30 +55,40 @@ export default function SewaOverviewPanel() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  // Auto-refresh every 60s
   useEffect(() => {
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Aggregate hospital-wide totals
+  // Aggregate totals
   const totals = Object.values(kpis).reduce(
     (acc, k) => ({
       open: acc.open + k.openCount,
       newToday: acc.newToday + k.newToday,
       breached: acc.breached + k.slaBreachCount,
+      blocked: acc.blocked + (k.blockedCount || 0),
     }),
-    { open: 0, newToday: 0, breached: 0 }
+    { open: 0, newToday: 0, breached: 0, blocked: 0 }
   );
 
-  // Sort departments by open count desc for hotspots
+  // Hotspots
   const hotspots = Object.entries(kpis)
     .filter(([, k]) => k.openCount > 0)
-    .sort((a, b) => b[1].openCount - a[1].openCount);
+    .sort((a, b) => b[1].slaBreachCount - a[1].slaBreachCount || b[1].openCount - a[1].openCount);
+
+  // Filter requests
+  const filteredRequests = requests.filter(r => {
+    if (r.status === 'RESOLVED') return false;
+    if (activeFilter === 'blocked') return r.status === 'BLOCKED';
+    if (activeFilter === 'breached') {
+      const elapsed = (Date.now() - new Date(r.createdAt).getTime()) / 60000;
+      return (r.status === 'NEW' && elapsed > r.responseSlaMin) || elapsed > r.resolutionSlaMin;
+    }
+    return true;
+  });
 
   const hasData = totals.open > 0 || totals.newToday > 0 || requests.length > 0;
-  const healthColor = totals.breached > 2 ? 'red' : totals.breached > 0 ? 'amber' : 'emerald';
+  const healthColor = totals.breached > 2 ? 'red' : totals.blocked > 0 ? 'amber' : totals.breached > 0 ? 'amber' : 'emerald';
 
   const healthStyles: Record<string, { dot: string; bg: string; border: string; headerBg: string }> = {
     emerald: { dot: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-200', headerBg: 'from-emerald-600 to-emerald-700' },
@@ -138,7 +114,7 @@ export default function SewaOverviewPanel() {
 
   return (
     <div className={"bg-white rounded-xl border shadow-sm overflow-hidden transition-all " + hs.border}>
-      {/* Collapsed Header — always visible */}
+      {/* Collapsed Header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full text-left"
@@ -148,23 +124,26 @@ export default function SewaOverviewPanel() {
             <span className="w-8 h-8 rounded-lg bg-white/20 text-white text-sm font-bold flex items-center justify-center">S</span>
             <div>
               <div className="text-sm font-bold">Sewa Service Requests</div>
-              <div className="text-[11px] opacity-80">Internal staff complaint tracker</div>
+              <div className="text-[11px] opacity-80">Tap complaints below to respond</div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {!hasData && <span className="text-xs opacity-80">No active requests</span>}
             {hasData && (
-              <div className="flex items-center gap-2.5 text-xs">
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-xs flex-wrap justify-end">
                 <span className="bg-white/20 px-2 py-0.5 rounded-full font-bold">{totals.open} open</span>
+                {totals.blocked > 0 && (
+                  <span className="bg-red-500/40 px-2 py-0.5 rounded-full font-bold">{totals.blocked} blocked</span>
+                )}
                 {totals.breached > 0 && (
-                  <span className="bg-red-500/30 px-2 py-0.5 rounded-full font-bold">{totals.breached} SLA breach</span>
+                  <span className="bg-red-500/30 px-2 py-0.5 rounded-full font-bold">{totals.breached} breach</span>
                 )}
                 {totals.newToday > 0 && (
-                  <span className="bg-white/20 px-2 py-0.5 rounded-full">+{totals.newToday} today</span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded-full hidden sm:inline-block">+{totals.newToday} today</span>
                 )}
               </div>
             )}
-            <svg className={"w-4 h-4 transition-transform " + (expanded ? 'rotate-180' : '')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={"w-4 h-4 transition-transform flex-shrink-0 " + (expanded ? 'rotate-180' : '')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
@@ -175,22 +154,26 @@ export default function SewaOverviewPanel() {
       {expanded && (
         <div className="p-4">
           {/* KPI Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-5">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-blue-900">{totals.open}</div>
-              <div className="text-[11px] font-medium text-blue-600">Open</div>
+              <div className="text-xl sm:text-2xl font-bold text-blue-900">{totals.open}</div>
+              <div className="text-[10px] sm:text-[11px] font-medium text-blue-600">Open</div>
             </div>
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-orange-900">{totals.newToday}</div>
-              <div className="text-[11px] font-medium text-orange-600">New Today</div>
+              <div className="text-xl sm:text-2xl font-bold text-orange-900">{totals.newToday}</div>
+              <div className="text-[10px] sm:text-[11px] font-medium text-orange-600">New Today</div>
             </div>
-            <div className={"rounded-lg p-3 text-center border " + (totals.breached > 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200')}>
-              <div className={"text-2xl font-bold " + (totals.breached > 0 ? 'text-red-900' : 'text-slate-400')}>{totals.breached}</div>
-              <div className={"text-[11px] font-medium " + (totals.breached > 0 ? 'text-red-600' : 'text-slate-400')}>SLA Breached</div>
+            <div className={`rounded-lg p-3 text-center border ${totals.blocked > 0 ? 'bg-red-50 border-red-300' : 'bg-slate-50 border-slate-200'}`}>
+              <div className={`text-xl sm:text-2xl font-bold ${totals.blocked > 0 ? 'text-red-900' : 'text-slate-400'}`}>{totals.blocked}</div>
+              <div className={`text-[10px] sm:text-[11px] font-medium ${totals.blocked > 0 ? 'text-red-600' : 'text-slate-400'}`}>Blocked</div>
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-slate-900">{requests.length}</div>
-              <div className="text-[11px] font-medium text-slate-500">Recent</div>
+            <div className={`rounded-lg p-3 text-center border ${totals.breached > 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+              <div className={`text-xl sm:text-2xl font-bold ${totals.breached > 0 ? 'text-red-900' : 'text-slate-400'}`}>{totals.breached}</div>
+              <div className={`text-[10px] sm:text-[11px] font-medium ${totals.breached > 0 ? 'text-red-600' : 'text-slate-400'}`}>SLA Breach</div>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-center col-span-2 sm:col-span-1">
+              <div className="text-xl sm:text-2xl font-bold text-slate-900">{requests.filter(r => r.status !== 'RESOLVED').length}</div>
+              <div className="text-[10px] sm:text-[11px] font-medium text-slate-500">Active</div>
             </div>
           </div>
 
@@ -200,95 +183,86 @@ export default function SewaOverviewPanel() {
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Department Hotspots</div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {hotspots.map(([slug, k]) => (
-                  <a
+                  <div
                     key={slug}
-                    href={'/sewa/queue'}
-                    className={"flex items-center gap-2 p-2.5 rounded-lg border transition-colors hover:shadow-sm " + (k.slaBreachCount > 0 ? 'border-red-200 bg-red-50/50 hover:bg-red-50' : 'border-slate-200 bg-white hover:bg-slate-50')}
+                    className={"flex items-center gap-2 p-2.5 rounded-lg border transition-colors " + ((k.slaBreachCount > 0 || (k.blockedCount || 0) > 0) ? 'border-red-200 bg-red-50/50' : 'border-slate-200 bg-white')}
                   >
                     <span className="w-7 h-7 rounded-full bg-slate-700 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">{DEPT_ICONS[slug] || '??'}</span>
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-semibold text-slate-800 truncate">{DEPT_LABELS[slug] || slug}</div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className="text-[10px] text-slate-500">{k.openCount} open</span>
+                        {(k.blockedCount || 0) > 0 && (
+                          <span className="text-[10px] text-red-600 font-bold">{k.blockedCount} blocked</span>
+                        )}
                         {k.slaBreachCount > 0 && (
                           <span className="text-[10px] text-red-600 font-bold">{k.slaBreachCount} breach</span>
                         )}
                       </div>
                     </div>
-                  </a>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Recent Complaints Table */}
-          {requests.length > 0 && (
-            <div className="mb-4">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Recent Complaints</div>
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="text-left px-3 py-2 font-semibold text-slate-600">ID</th>
-                        <th className="text-left px-3 py-2 font-semibold text-slate-600">From</th>
-                        <th className="text-left px-3 py-2 font-semibold text-slate-600">To</th>
-                        <th className="text-left px-3 py-2 font-semibold text-slate-600">Type</th>
-                        <th className="text-left px-3 py-2 font-semibold text-slate-600">Status</th>
-                        <th className="text-left px-3 py-2 font-semibold text-slate-600">SLA</th>
-                        <th className="text-right px-3 py-2 font-semibold text-slate-600">Elapsed</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {requests.map((r) => {
-                        const chip = STATUS_CHIP[r.status] || STATUS_CHIP.NEW;
-                        const resSla = slaPercent(r.createdAt, r.resolutionSlaMin);
-                        const slaColor = r.status === 'RESOLVED' ? 'bg-emerald-400' : resSla > 50 ? 'bg-emerald-400' : resSla > 25 ? 'bg-amber-400' : 'bg-red-500';
-                        return (
-                          <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
-                            <td className="px-3 py-2 font-mono font-bold text-blue-600 whitespace-nowrap">{r.id}</td>
-                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{DEPT_LABELS[r.requestorDept] || r.requestorDept}</td>
-                            <td className="px-3 py-2 text-slate-900 font-semibold whitespace-nowrap">{DEPT_LABELS[r.targetDept] || r.targetDept}</td>
-                            <td className="px-3 py-2 text-slate-600 max-w-[200px] truncate">{r.complaintTypeName}</td>
-                            <td className="px-3 py-2">
-                              <span className={"px-1.5 py-0.5 rounded text-[10px] font-bold " + chip.bg + " " + chip.text}>{chip.label}</span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={"h-full rounded-full transition-all " + slaColor} style={{ width: (r.status === 'RESOLVED' ? 100 : Math.max(resSla, 2)) + '%' }} />
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-right text-slate-500 whitespace-nowrap">{elapsedStr(r.createdAt)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+          {/* Filter tabs */}
+          <div className="flex gap-1.5 mb-3">
+            {([
+              { key: 'all' as const, label: 'All Open', count: requests.filter(r => r.status !== 'RESOLVED').length },
+              { key: 'blocked' as const, label: 'Blocked', count: totals.blocked },
+              { key: 'breached' as const, label: 'SLA Breach', count: totals.breached },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveFilter(tab.key)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+                  activeFilter === tab.key
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
+          </div>
+
+          {/* Actionable Complaint Cards */}
+          {filteredRequests.length > 0 ? (
+            <div className="space-y-2 mb-4">
+              {filteredRequests.slice(0, 15).map(req => (
+                <SewaResponsePanel
+                  key={req.id}
+                  request={req}
+                  onActionComplete={fetchData}
+                  compact
+                />
+              ))}
+              {filteredRequests.length > 15 && (
+                <div className="text-center text-xs text-slate-400 py-2">
+                  + {filteredRequests.length - 15} more complaints
                 </div>
-              </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-slate-400">
+              {activeFilter === 'blocked' ? 'No blocked complaints' :
+               activeFilter === 'breached' ? 'No SLA breaches - great!' :
+               'No open complaints'}
             </div>
           )}
 
-          {/* Footer link to full Sewa dashboard */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <a
-              href="/sewa/dashboard"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
-            >
-              Open Sewa Dashboard →
+          {/* Footer Links */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <a href="/sewa/dashboard" className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+              Full Sewa Dashboard &rarr;
             </a>
-            <div className="flex items-center gap-2">
-              <a
-                href="/sewa/queue"
-                className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                Responder Queue
+            <div className="flex items-center gap-3">
+              <a href="/sewa/queue" className="text-xs text-slate-500 hover:text-slate-700 transition-colors">
+                Dept Login
               </a>
               <span className="text-slate-300">|</span>
-              <a
-                href="/sewa"
-                className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
-              >
+              <a href="/sewa" className="text-xs text-slate-500 hover:text-slate-700 transition-colors">
                 File Complaint
               </a>
             </div>

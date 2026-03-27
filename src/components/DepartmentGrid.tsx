@@ -124,7 +124,7 @@ function KPIRow({ label, value, textValue, status, unit, type, trend, invertTren
 interface Props {
   departments: DeptKPIData[];
   deptAlerts?: DeptAlertData[];
-  sewaKpis?: Record<string, {open: number; newToday: number; breached: number; avgRes: number}>;
+  sewaKpis?: Record<string, {open: number; newToday: number; breached: number; avgRes: number; blocked: number}>;
   onNavigateToDept?: (slug: string) => void;
   onNavigateToDashboard?: (date: string, slug: string) => void;
   currentMonth?: string;
@@ -197,9 +197,9 @@ export default function DepartmentGrid({ departments, deptAlerts, sewaKpis, onNa
                   </div>
                   <div className="flex items-center gap-1.5">
                     {sewaKpis && sewaKpis[dept.slug] && sewaKpis[dept.slug].open > 0 && (
-                      <span className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full " + (sewaKpis[dept.slug].breached > 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-600')} title={`Sewa: ${sewaKpis[dept.slug].open} open${sewaKpis[dept.slug].breached > 0 ? ', ' + sewaKpis[dept.slug].breached + ' SLA breached' : ''}`}>
-                        S{sewaKpis[dept.slug].open}
-                      </span>
+                      <a href="/sewa/dashboard" className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full no-underline " + (sewaKpis[dept.slug].blocked > 0 ? 'bg-red-100 text-red-700' : sewaKpis[dept.slug].breached > 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-600')} title={`Sewa: ${sewaKpis[dept.slug].open} open${sewaKpis[dept.slug].blocked > 0 ? ', ' + sewaKpis[dept.slug].blocked + ' blocked' : ''}${sewaKpis[dept.slug].breached > 0 ? ', ' + sewaKpis[dept.slug].breached + ' SLA breached' : ''}`} onClick={e => e.stopPropagation()}>
+                        S{sewaKpis[dept.slug].open}{sewaKpis[dept.slug].blocked > 0 ? '!' : ''}
+                      </a>
                     )}
                     {alerts.length > 0 && (
                       <span className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full " + (redCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')}>

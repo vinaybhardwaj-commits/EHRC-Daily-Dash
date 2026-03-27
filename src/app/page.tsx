@@ -35,7 +35,7 @@ export default function Home() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [sewaKpis, setSewaKpis] = useState<Record<string, {open: number; newToday: number; breached: number; avgRes: number}>>({});
+  const [sewaKpis, setSewaKpis] = useState<Record<string, {open: number; newToday: number; breached: number; avgRes: number; blocked: number}>>({});
 
   const selectedDateRef = useRef(selectedDate);
   selectedDateRef.current = selectedDate;
@@ -139,9 +139,9 @@ export default function Home() {
       const res = await fetch('/api/sewa/kpis');
       const data = await res.json();
       if (data.kpis) {
-        const mapped: Record<string, {open: number; newToday: number; breached: number; avgRes: number}> = {};
+        const mapped: Record<string, {open: number; newToday: number; breached: number; avgRes: number; blocked: number}> = {};
         Object.entries(data.kpis).forEach(([dept, kpi]: [string, any]) => {
-          mapped[dept] = { open: kpi.openCount || 0, newToday: kpi.newToday || 0, breached: kpi.slaBreachCount || 0, avgRes: kpi.avgResolutionMin || 0 };
+          mapped[dept] = { open: kpi.openCount || 0, newToday: kpi.newToday || 0, breached: kpi.slaBreachCount || 0, avgRes: kpi.avgResolutionMin || 0, blocked: kpi.blockedCount || 0 };
         });
         setSewaKpis(mapped);
       }
@@ -224,9 +224,49 @@ export default function Home() {
             </svg>
             <span className="hidden sm:inline">Forms</span>
           </a>
-          <a href="/sewa" className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors">
-            Sewa
-          </a>
+          {/* Sewa Dropdown */}
+          <div className="relative group">
+            <button className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-orange-700 transition-colors flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+              Sewa
+              <svg className="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60]">
+              <div className="py-1.5">
+                <a href="/sewa" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-orange-50 transition-colors">
+                  <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold text-xs">File Complaint</div>
+                    <div className="text-[10px] text-slate-400">Submit a new service request</div>
+                  </div>
+                </a>
+                <a href="/sewa/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors">
+                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold text-xs">Dashboard</div>
+                    <div className="text-[10px] text-slate-400">Overview &amp; manage complaints</div>
+                  </div>
+                </a>
+                <a href="/sewa/queue" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors">
+                  <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold text-xs">Dept Login</div>
+                    <div className="text-[10px] text-slate-400">Respond to your dept complaints</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </nav>
 

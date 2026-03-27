@@ -441,6 +441,7 @@ export default function SewaPage() {
       NEW: '#3b82f6',
       ACKNOWLEDGED: '#f59e0b',
       IN_PROGRESS: '#8b5cf6',
+      BLOCKED: '#dc2626',
       RESOLVED: '#10b981',
     };
 
@@ -598,7 +599,7 @@ export default function SewaPage() {
               {myRequests.map(req => {
                 const dept = getDepartment(req.targetDept);
                 const statusColors: Record<RequestStatus, string> = {
-                  NEW: '#3b82f6', ACKNOWLEDGED: '#f59e0b', IN_PROGRESS: '#8b5cf6', RESOLVED: '#10b981',
+                  NEW: '#3b82f6', ACKNOWLEDGED: '#f59e0b', IN_PROGRESS: '#8b5cf6', BLOCKED: '#dc2626', RESOLVED: '#10b981',
                 };
                 return (
                   <button

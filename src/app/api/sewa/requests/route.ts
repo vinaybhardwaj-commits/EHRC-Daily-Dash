@@ -72,6 +72,9 @@ export async function GET(request: Request) {
       resolvedBy: row.resolved_by,
       escalationLevel: row.escalation_level,
       comments: row.comments || [],
+      blockedAt: row.blocked_at || null,
+      blockingDept: row.blocking_dept || null,
+      blockedReason: row.blocked_reason || null,
     }));
 
     return Response.json({ requests, count: requests.length });

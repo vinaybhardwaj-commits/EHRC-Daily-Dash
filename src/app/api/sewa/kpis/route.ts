@@ -71,22 +71,32 @@ export async function GET(request: Request) {
       GROUP BY target_dept
     `, [sevenDaysAgo]);
 
+    // Blocked complaints per department
+    const blockedResult = await sql.query(`
+      SELECT target_dept, COUNT(*) as count
+      FROM sewa_requests
+      WHERE status = 'BLOCKED' ${deptFilter}
+      GROUP BY target_dept
+    `);
+
     // Merge into per-department map
     const kpis: Record<string, {
       openCount: number;
       newToday: number;
       slaBreachCount: number;
       avgResolutionMin: number | null;
+      blockedCount: number;
     }> = {};
 
     const ensureDept = (d: string) => {
-      if (!kpis[d]) kpis[d] = { openCount: 0, newToday: 0, slaBreachCount: 0, avgResolutionMin: null };
+      if (!kpis[d]) kpis[d] = { openCount: 0, newToday: 0, slaBreachCount: 0, avgResolutionMin: null, blockedCount: 0 };
     };
 
     openResult.rows.forEach(r => { ensureDept(r.target_dept); kpis[r.target_dept].openCount = Number(r.count); });
     newTodayResult.rows.forEach(r => { ensureDept(r.target_dept); kpis[r.target_dept].newToday = Number(r.count); });
     slaBreachResult.rows.forEach(r => { ensureDept(r.target_dept); kpis[r.target_dept].slaBreachCount = Number(r.count); });
     avgResResult.rows.forEach(r => { ensureDept(r.target_dept); kpis[r.target_dept].avgResolutionMin = Number(r.avg_min); });
+    blockedResult.rows.forEach(r => { ensureDept(r.target_dept); kpis[r.target_dept].blockedCount = Number(r.count); });
 
     return Response.json({ kpis, generatedAt: new Date().toISOString() });
   } catch (error) {

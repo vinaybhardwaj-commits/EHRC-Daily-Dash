@@ -529,7 +529,7 @@ export const SLA_LEVELS = [
 ];
 
 // Request status type
-export type RequestStatus = 'NEW' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED';
+export type RequestStatus = 'NEW' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'BLOCKED' | 'RESOLVED';
 
 // Complaint/Request interface
 export interface SewaRequest {
@@ -556,5 +556,8 @@ export interface SewaRequest {
   acknowledgedBy?: string;
   resolvedBy?: string;
   escalationLevel: number;
-  comments: { user: string; text: string; time: string }[];
+  comments: { user: string; text: string; time: string; action?: string; blockingDept?: string }[];
+  blockedAt?: string;
+  blockingDept?: string;
+  blockedReason?: string;
 }
