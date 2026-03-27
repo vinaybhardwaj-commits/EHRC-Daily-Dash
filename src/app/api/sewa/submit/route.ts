@@ -1,4 +1,6 @@
 import { sql } from '@vercel/postgres';
+import { notifyDeptHead, buildNewComplaintMessage } from '@/lib/whatsapp';
+import { getDepartment } from '@/lib/sewa-config';
 
 interface SubmitBody {
   requestorName: string;
@@ -77,6 +79,21 @@ export async function POST(request: Request) {
       VALUES (${body.requestorName}, ${body.requestorDept}, ${body.requestorEmpId || null})
       ON CONFLICT DO NOTHING;
     `;
+
+    // Fire-and-forget WhatsApp notification for new complaint
+    const deptConfig = getDepartment(body.targetDept);
+    const msg = buildNewComplaintMessage(
+      body.complaintTypeName,
+      deptConfig?.name || body.targetDept,
+      body.description,
+      body.requestorName,
+      body.requestorDept,
+      body.priority,
+      requestId
+    );
+    notifyDeptHead(body.targetDept, msg).catch(err =>
+      console.error('[WhatsApp] New complaint notification failed:', err)
+    );
 
     return Response.json({ success: true, id: requestId });
   } catch (error) {

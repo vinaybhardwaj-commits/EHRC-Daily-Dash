@@ -4,6 +4,7 @@ import { Resend } from 'resend';
 import { SHEET_TAB_MAP, getSheetCsvUrl } from '@/lib/sheets-config';
 import { DEPARTMENT_CONTACTS, CONTACTS_BY_SLUG } from '@/lib/department-contacts';
 import Papa from 'papaparse';
+import { notifyAdmins, buildMissingDeptMessage } from '@/lib/whatsapp';
 
 // Lazy-init: Resend client must NOT be created at module scope because
 // process.env.RESEND_API_KEY is unavailable during the Next.js build step.
@@ -232,6 +233,27 @@ export async function GET(request: Request) {
   const submitted = results.filter(r => r.submitted);
   const missing = results.filter(r => !r.submitted);
   const notified = results.filter(r => r.notified);
+
+  // Fire-and-forget WhatsApp summary of missing departments
+  if (missing.length > 0) {
+    const missingList = missing
+      .map(m => `- ${m.department}`)
+      .join('\n');
+    const whatsappSummary = [
+      `*EHRC Daily Dashboard*`,
+      `Missing Submissions for ${today}`,
+      ``,
+      `${missing.length} department(s) have NOT submitted:`,
+      missingList,
+      ``,
+      `${submitted.length}/${results.length} submitted. ${notified.length} emails sent.`,
+      ``,
+      `https://ehrc-daily-dash.vercel.app`,
+    ].join('\n');
+    notifyAdmins(whatsappSummary).catch(err =>
+      console.error('[WhatsApp] Missing dept summary failed:', err)
+    );
+  }
 
   const summary = {
     date: today,

@@ -1,4 +1,9 @@
 import { sql } from '@vercel/postgres';
+import {
+  notifyAdmins,
+  buildBlockedComplaintMessage,
+  buildResolutionMessage,
+} from '@/lib/whatsapp';
 
 interface UpdateBody {
   requestId: string;
@@ -92,6 +97,40 @@ export async function POST(request: Request) {
       SET comments = COALESCE(comments, '[]'::jsonb) || ${commentEntry}::jsonb
       WHERE id = ${body.requestId};
     `;
+
+    // Fire-and-forget WhatsApp notifications for key status changes
+    if (body.action === 'blocked') {
+      // Fetch complaint details for the notification
+      const reqRow = await sql`SELECT complaint_type_name, target_dept FROM sewa_requests WHERE id = ${body.requestId}`;
+      if (reqRow.rows.length > 0) {
+        const row = reqRow.rows[0];
+        const msg = buildBlockedComplaintMessage(
+          row.complaint_type_name,
+          row.target_dept,
+          body.blockingDept || '',
+          body.comment,
+          body.requestId
+        );
+        notifyAdmins(msg).catch(err =>
+          console.error('[WhatsApp] Blocked notification failed:', err)
+        );
+      }
+    } else if (body.action === 'resolve') {
+      const reqRow = await sql`SELECT complaint_type_name, target_dept FROM sewa_requests WHERE id = ${body.requestId}`;
+      if (reqRow.rows.length > 0) {
+        const row = reqRow.rows[0];
+        const msg = buildResolutionMessage(
+          row.complaint_type_name,
+          row.target_dept,
+          body.responderName,
+          body.comment,
+          body.requestId
+        );
+        notifyAdmins(msg).catch(err =>
+          console.error('[WhatsApp] Resolution notification failed:', err)
+        );
+      }
+    }
 
     return Response.json({ success: true, requestId: body.requestId, action: body.action });
   } catch (error) {
