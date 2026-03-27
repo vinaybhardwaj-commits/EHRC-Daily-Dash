@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import GlobalIssuesPanel, { type GlobalIssueData } from './GlobalIssuesPanel';
 import DepartmentGrid, { type DeptKPIData, type DeptAlertData } from './DepartmentGrid';
+import SewaOverviewPanel from './SewaOverviewPanel';
 import OverviewHeatmap from './OverviewHeatmap';
 import DepartmentAccordion from './DepartmentAccordion';
 
@@ -614,6 +615,11 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
           />
         </div>
       )}
+
+      {/* ===== SEWA SERVICE REQUESTS ===== */}
+      <div className="mb-6">
+        <SewaOverviewPanel />
+      </div>
 
       {/* ===== SECTION 4: SUBMISSION HEATMAP ===== */}
       {data.heatmapData && data.allDepartments && (
