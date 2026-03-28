@@ -42,9 +42,9 @@ interface OverdueItem {
 }
 
 const SHIFT_LABELS: Record<string, string> = {
-  AM: 'Morning (8 AM \u2013 2 PM)',
-  PM: 'Evening (2 PM \u2013 8 PM)',
-  NIGHT: 'Night (8 PM \u2013 8 AM)',
+  AM: 'Morning (8 AM – 2 PM)',
+  PM: 'Evening (2 PM – 8 PM)',
+  NIGHT: 'Night (8 PM – 8 AM)',
 };
 
 const AREA_TYPE_LABELS: Record<string, string> = {
@@ -144,11 +144,11 @@ export default function HKDashboardPage() {
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">\ud83e\uddf9 HK Dashboard</h1>
+            <h1 className="text-xl font-bold text-gray-900">🧹 HK Dashboard</h1>
             <p className="text-sm text-gray-500">SanitizeTrack — EHRC Housekeeping Operations</p>
           </div>
           <a href="/hk" className="text-sm px-4 py-2 rounded-lg bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100">
-            Supervisor View \u2192
+            Supervisor View →
           </a>
         </div>
       </div>
@@ -161,10 +161,10 @@ export default function HKDashboardPage() {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h2 className="text-base font-bold text-gray-900">
-                  \ud83c\udfe5 Current Shift — {SHIFT_LABELS[summary.shiftType] || summary.shiftType}
+                  🏥 Current Shift — {SHIFT_LABELS[summary.shiftType] || summary.shiftType}
                 </h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Supervisor: {summary.supervisorName || '\u2014'} | Staff: {summary.staffCount || 0}
+                  Supervisor: {summary.supervisorName || '—'} | Staff: {summary.staffCount || 0}
                   {summary.maleCount != null ? ` (M:${summary.maleCount} F:${summary.femaleCount})` : ''}
                   {summary.ipCensus ? ` | IP Census: ${summary.ipCensus}` : ''}
                 </p>
@@ -224,7 +224,7 @@ export default function HKDashboardPage() {
                       <td className="py-2 px-2 font-semibold text-gray-700">{floor}</td>
                       {areaTypes.map(at => {
                         const cell = heatmap.find(h => h.floor === floor && h.areaType === at);
-                        if (!cell) return <td key={at} className="text-center py-2 px-1"><span className="text-gray-300">\u2014</span></td>;
+                        if (!cell) return <td key={at} className="text-center py-2 px-1"><span className="text-gray-300">—</span></td>;
                         return (
                           <td key={at} className="text-center py-2 px-1">
                             <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${heatColor(cell.pct)}`}>
@@ -239,8 +239,8 @@ export default function HKDashboardPage() {
               </table>
             </div>
             <div className="flex gap-3 mt-3 text-[10px] text-gray-500">
-              <span><span className="inline-block w-3 h-3 rounded bg-green-500 mr-1 align-middle" /> \u226580%</span>
-              <span><span className="inline-block w-3 h-3 rounded bg-yellow-400 mr-1 align-middle" /> 50\u201379%</span>
+              <span><span className="inline-block w-3 h-3 rounded bg-green-500 mr-1 align-middle" /> ≥80%</span>
+              <span><span className="inline-block w-3 h-3 rounded bg-yellow-400 mr-1 align-middle" /> 50–79%</span>
               <span><span className="inline-block w-3 h-3 rounded bg-red-500 mr-1 align-middle" /> &lt;50%</span>
             </div>
           </div>
@@ -258,7 +258,7 @@ export default function HKDashboardPage() {
                   'bg-gray-50 border-gray-200'
                 }`}>
                   <span className="text-sm">
-                    {item.source === 'carryover' ? '\ud83d\udd34' : item.source === 'sewa' ? '\ud83d\udfe0' : '\u23ed\ufe0f'}
+                    {item.source === 'carryover' ? '🔴' : item.source === 'sewa' ? '🟠' : '⏭️'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800">{item.floor} — {item.area_name}</p>
@@ -291,7 +291,7 @@ export default function HKDashboardPage() {
               className="w-full flex items-center justify-between"
             >
               <h2 className="text-base font-bold text-gray-900">Shift History (7 days)</h2>
-              <span className="text-gray-400 text-sm">{expandedHistory ? '\u25b2' : '\u25bc'}</span>
+              <span className="text-gray-400 text-sm">{expandedHistory ? '▲' : '▼'}</span>
             </button>
             {expandedHistory && (
               <div className="mt-3 space-y-2">

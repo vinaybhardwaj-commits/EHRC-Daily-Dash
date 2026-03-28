@@ -160,7 +160,7 @@ export default function AdminAreasPage() {
                     <td className="px-4 py-2.5">
                       <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{TYPE_LABELS[area.area_type] || area.area_type}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500">{area.room_number || '\u2014'}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{area.room_number || '—'}</td>
                     <td className="px-4 py-2.5">
                       <span className={`text-xs font-semibold ${area.active ? 'text-green-600' : 'text-gray-400'}`}>
                         {area.active ? 'Active' : 'Inactive'}

@@ -259,7 +259,7 @@ export default function Home() {
                   </div>
                 </a>
                 <a href="/hk/dashboard" className="px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 text-sm font-medium hover:bg-teal-100 transition-colors">
-                  \ud83e\uddf9 HK Dashboard
+                  🧹 HK Dashboard
                 </a>
                 <a href="/sewa/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors">
                   <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

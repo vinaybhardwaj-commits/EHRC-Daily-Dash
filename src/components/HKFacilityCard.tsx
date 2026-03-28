@@ -47,7 +47,7 @@ export default function HKFacilityCard() {
     return (
       <a href="/hk/dashboard" className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-lg">\ud83e\uddf9</span>
+          <span className="text-lg">🧹</span>
           <h3 className="text-sm font-bold text-gray-900">Housekeeping</h3>
         </div>
         <p className="text-xs text-gray-400">No active shift</p>
@@ -64,7 +64,7 @@ export default function HKFacilityCard() {
     <a href="/hk/dashboard" className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-lg">\ud83e\uddf9</span>
+          <span className="text-lg">🧹</span>
           <div>
             <h3 className="text-sm font-bold text-gray-900">Housekeeping</h3>
             <p className="text-[11px] text-gray-500">
@@ -82,10 +82,10 @@ export default function HKFacilityCard() {
 
       <div className="flex justify-between text-[11px]">
         {summary.overdueTasks > 0 && (
-          <span className="text-red-600 font-semibold">\ud83d\udd34 Overdue: {summary.overdueTasks}</span>
+          <span className="text-red-600 font-semibold">🔴 Overdue: {summary.overdueTasks}</span>
         )}
-        <span className="text-gray-500">\u23f3 Pending: {summary.pendingTasks}</span>
-        <span className="text-gray-400">View Dashboard \u2192</span>
+        <span className="text-gray-500">⏳ Pending: {summary.pendingTasks}</span>
+        <span className="text-gray-400">View Dashboard →</span>
       </div>
     </a>
   );

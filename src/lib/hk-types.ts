@@ -183,9 +183,9 @@ export const SHIFT_TYPES = ['AM', 'PM', 'NIGHT'] as const;
 export type ShiftType = (typeof SHIFT_TYPES)[number];
 
 export const SHIFT_WINDOWS: Record<ShiftType, { start: number; end: number; label: string }> = {
-  AM:    { start: 8,  end: 14, label: 'Morning (8 AM \u2013 2 PM)' },
-  PM:    { start: 14, end: 20, label: 'Evening (2 PM \u2013 8 PM)' },
-  NIGHT: { start: 20, end: 8,  label: 'Night (8 PM \u2013 8 AM)' },
+  AM:    { start: 8,  end: 14, label: 'Morning (8 AM – 2 PM)' },
+  PM:    { start: 14, end: 20, label: 'Evening (2 PM – 8 PM)' },
+  NIGHT: { start: 20, end: 8,  label: 'Night (8 PM – 8 AM)' },
 };
 
 export const TASK_CATEGORIES = [

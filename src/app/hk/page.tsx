@@ -35,9 +35,9 @@ interface ShiftSummary {
 }
 
 const SHIFT_LABELS: Record<string, string> = {
-  AM: 'Morning (8 AM \u2013 2 PM)',
-  PM: 'Evening (2 PM \u2013 8 PM)',
-  NIGHT: 'Night (8 PM \u2013 8 AM)',
+  AM: 'Morning (8 AM – 2 PM)',
+  PM: 'Evening (2 PM – 8 PM)',
+  NIGHT: 'Night (8 PM – 8 AM)',
 };
 
 export default function HKSupervisorPage() {
@@ -232,7 +232,7 @@ export default function HKSupervisorPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg w-full max-w-sm p-6">
           <div className="text-center mb-6">
-            <div className="text-3xl mb-2">\ud83c\udfe5</div>
+            <div className="text-3xl mb-2">🏥</div>
             <h1 className="text-lg font-bold text-gray-900">EHRC Housekeeping</h1>
             <p className="text-sm text-gray-500">{todayStr}</p>
           </div>
@@ -275,7 +275,7 @@ export default function HKSupervisorPage() {
               disabled={!supervisorName.trim() || loading}
               className="w-full py-3 mt-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Starting...' : 'Start Shift \u25b6'}
+              {loading ? 'Starting...' : 'Start Shift ▶'}
             </button>
           </div>
         </div>
@@ -289,7 +289,7 @@ export default function HKSupervisorPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg w-full max-w-sm p-6">
           <div className="text-center mb-4">
-            <div className="text-3xl mb-2">\u2705</div>
+            <div className="text-3xl mb-2">✅</div>
             <h1 className="text-lg font-bold text-gray-900">Shift Complete</h1>
             <p className="text-sm text-gray-500">{shift?.date} | {shift?.shift_type}</p>
           </div>
@@ -328,7 +328,7 @@ export default function HKSupervisorPage() {
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h1 className="text-sm font-bold text-gray-900">\ud83c\udfe5 EHRC Housekeeping</h1>
+            <h1 className="text-sm font-bold text-gray-900">🏥 EHRC Housekeeping</h1>
             <p className="text-xs text-gray-500">{shift?.supervisor_name} | {SHIFT_LABELS[shift?.shift_type || 'PM'] || shift?.shift_type}</p>
           </div>
           <button
