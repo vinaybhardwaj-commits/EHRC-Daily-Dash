@@ -251,6 +251,35 @@ export async function POST(request: Request) {
         uploaded_at = NOW()
     `;
 
+    // Log IP admissions to admissions_log (for accurate Admissions MTD tracking)
+    let admissionsLogged = 0;
+    try {
+      for (const p of patients) {
+        if (!p.admissionNo || !p.admissionNo.startsWith('IP-')) continue;
+        if (!p.doa) continue;
+
+        // Parse DOA: "DD/MM/YYYY, HH:MM am/pm"
+        const doaMatch = p.doa.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (!doaMatch) continue;
+        const admDate = `${doaMatch[3]}-${doaMatch[2].padStart(2, '0')}-${doaMatch[1].padStart(2, '0')}`;
+
+        await sql`
+          INSERT INTO admissions_log (
+            admission_no, uhid, patient_name, admission_date,
+            ward, bed_category, treating_doctor, payer_type, payer_name, source
+          ) VALUES (
+            ${p.admissionNo}, ${p.uhid || null}, ${p.name || null}, ${admDate},
+            ${p.ward || null}, ${p.billingCategory || null}, ${p.treatingDoctor || null},
+            ${p.payerType || null}, ${p.payerName || null}, 'kx_upload'
+          )
+          ON CONFLICT (admission_no) DO NOTHING
+        `;
+        admissionsLogged++;
+      }
+    } catch {
+      // admissions_log table may not exist yet — silently skip
+    }
+
     return NextResponse.json({
       success: true,
       date: dateStr,
@@ -261,6 +290,7 @@ export async function POST(request: Request) {
         totalDueAmt: Math.round(totalDueAmt * 100) / 100,
         depositCoverage: totalBillAmt > 0 ? Math.round((totalDepositAmt / totalBillAmt) * 10000) / 100 : 0,
         wardBreakdown: wardMap,
+        admissionsLogged,
       },
     });
   } catch (err: unknown) {
