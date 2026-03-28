@@ -19,9 +19,13 @@ export const maxDuration = 60; // Allow up to 60s for large exports
  */
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get('secret');
-  const expectedSecret = process.env.BACKUP_SECRET || process.env.MIGRATION_SECRET;
+  const validKeys = [
+    process.env.ADMIN_KEY,
+    process.env.BACKUP_SECRET,
+    process.env.MIGRATION_SECRET,
+  ].filter(Boolean);
 
-  if (!expectedSecret || secret !== expectedSecret) {
+  if (!secret || validKeys.length === 0 || !validKeys.includes(secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
