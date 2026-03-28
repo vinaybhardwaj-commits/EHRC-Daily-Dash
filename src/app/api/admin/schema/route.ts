@@ -20,17 +20,37 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Get table info with row counts and sizes
-    const tablesResult = await sql`
+    // Get table names and sizes
+    const tablesRaw = await sql`
       SELECT
         c.relname as table_name,
-        c.reltuples::bigint as row_count,
-        pg_size_pretty(pg_total_relation_size(c.oid)) as size_pretty
+        pg_size_pretty(pg_total_relation_size(c.oid)) as size_pretty,
+        pg_total_relation_size(c.oid) as size_bytes
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind = 'r'
       ORDER BY pg_total_relation_size(c.oid) DESC
     `;
+
+    // Get exact row counts for each table
+    const tablesWithCounts = [];
+    for (const row of tablesRaw.rows) {
+      try {
+        const countResult = await sql.query(`SELECT COUNT(*) as cnt FROM "${row.table_name}"`);
+        tablesWithCounts.push({
+          table_name: row.table_name,
+          row_count: parseInt(countResult.rows[0]?.cnt || '0', 10),
+          size_pretty: row.size_pretty,
+        });
+      } catch {
+        tablesWithCounts.push({
+          table_name: row.table_name,
+          row_count: 0,
+          size_pretty: row.size_pretty,
+        });
+      }
+    }
+    const tablesResult = { rows: tablesWithCounts };
 
     // Get migrations
     let migrations: { version: number; name: string; applied_at: string }[] = [];
