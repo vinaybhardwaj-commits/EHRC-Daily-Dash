@@ -928,6 +928,84 @@ export async function GET(req: NextRequest) {
     console.error('Unbilled check skipped:', e);
   }
 
+  // --- KX-derived Admissions MTD (replaces unreliable Emergency form parsing) ---
+  // Count unique patients whose DOA falls in the current month from latest KX snapshot
+  try {
+    const kxLatest = await sql`
+      SELECT patient_details FROM ip_unbilled_snapshots
+      WHERE snapshot_date >= ${currentMonth + '-01'}
+      ORDER BY snapshot_date DESC LIMIT 1
+    `;
+    if (kxLatest.rows.length > 0 && current) {
+      const patients = (typeof kxLatest.rows[0].patient_details === 'string'
+        ? JSON.parse(kxLatest.rows[0].patient_details)
+        : kxLatest.rows[0].patient_details) as Array<{ doa?: string; admissionNo?: string }>;
+
+      // Parse DOA format "DD/MM/YYYY, HH:MM am/pm" and count those in current month
+      const [cYear, cMonth] = currentMonth.split('-').map(Number);
+      const seen = new Set<string>();
+      let admCount = 0;
+      for (const p of patients) {
+        if (!p.doa) continue;
+        // Deduplicate by admissionNo
+        const key = p.admissionNo || p.doa;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // Parse DD/MM/YYYY from the DOA string
+        const doaMatch = p.doa.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (doaMatch) {
+          const doaMonth = parseInt(doaMatch[2], 10);
+          const doaYear = parseInt(doaMatch[3], 10);
+          if (doaYear === cYear && doaMonth === cMonth) {
+            admCount++;
+          }
+        }
+      }
+      if (admCount > 0) {
+        current.totalAdmissions = admCount;
+      }
+    }
+
+    // Also compute previous month admissions from KX for comparison
+    if (current && previous) {
+      const kxPrev = await sql`
+        SELECT patient_details FROM ip_unbilled_snapshots
+        WHERE snapshot_date >= ${prevMonth + '-01'}
+          AND snapshot_date < ${currentMonth + '-01'}
+        ORDER BY snapshot_date DESC LIMIT 1
+      `;
+      if (kxPrev.rows.length > 0) {
+        const prevPatients = (typeof kxPrev.rows[0].patient_details === 'string'
+          ? JSON.parse(kxPrev.rows[0].patient_details)
+          : kxPrev.rows[0].patient_details) as Array<{ doa?: string; admissionNo?: string }>;
+
+        const [pYear, pMonth] = prevMonth.split('-').map(Number);
+        const prevSeen = new Set<string>();
+        let prevAdmCount = 0;
+        for (const p of prevPatients) {
+          if (!p.doa) continue;
+          const key = p.admissionNo || p.doa;
+          if (prevSeen.has(key)) continue;
+          prevSeen.add(key);
+          const doaMatch = p.doa.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (doaMatch) {
+            const doaMonth = parseInt(doaMatch[2], 10);
+            const doaYear = parseInt(doaMatch[3], 10);
+            if (doaYear === pYear && doaMonth === pMonth) {
+              prevAdmCount++;
+            }
+          }
+        }
+        if (prevAdmCount > 0) {
+          previous.totalAdmissions = prevAdmCount;
+        }
+      }
+    }
+  } catch (e) {
+    // ip_unbilled_snapshots table may not exist or have no data — keep Emergency form fallback
+    console.error('KX admissions count skipped:', e);
+  }
+
   const departmentKPIs = buildDeptKPIs(currentRawData, prevRawData);
   const heatmapData = buildHeatmapData(currentRawData);
   const deptAlerts = buildDeptAlerts(currentRawData);
