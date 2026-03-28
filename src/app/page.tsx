@@ -384,7 +384,7 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6">
         <div className="flex gap-6">
-          {/* Sidebar ÃÂ¢ÃÂÃÂ hidden on mobile, slide-in overlay */}
+          {/* Sidebar ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ hidden on mobile, slide-in overlay */}
           {showSidebar && (
             <div className="fixed inset-0 bg-black/50 z-50 lg:hidden" onClick={() => setShowSidebar(false)}>
               <div className="w-72 h-full bg-white shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -471,7 +471,7 @@ export default function Home() {
                 <div className="mb-4">
                   <HKFacilityCard />
                 </div>
-<ExecutiveSummary snapshot={snapshot} />}
+<ExecutiveSummary snapshot={snapshot} />
 
                 {/* Tab Bar */}
                 <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
