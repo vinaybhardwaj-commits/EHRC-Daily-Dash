@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Even Hospital &mdash; Staff Portal</title>
+    <style>
+        /* ============================================
+           EVEN BRAND SYSTEM (Official Palette)
+           Primary Blue: #0055ff
+           Dark Navy:    #002054
+           Off-White:    #fcfcfc
+           Pink Accent:  #f96eb1
+           ============================================ */
+        :root {
+            --brand: #0055ff;
+            --brand-dark: #0044cc;
+            --brand-light: #e6eeff;
+            --navy: #002054;
+            --bg: #f2f4f8;
+            --card: #fcfcfc;
+            --text: #1a1a2e;
+            --text-secondary: #4a5568;
+            --text-muted: #7a8599;
+            --border: #e2e6ec;
+            --pink: #f96eb1;
+            --pink-light: #fde8f2;
+            --shadow: 0 4px 16px rgba(0,32,84,0.07);
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           HEADER
+           ============================================ */
+        .header {
+            background: var(--navy);
+            padding: 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-inner {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .logo-area img {
+            height: 40px;
+            width: auto;
+        }
+        .logo-text {
+            color: white;
+        }
+        .logo-text h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            line-height: 1.2;
+        }
+        .logo-text .subtitle {
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+            font-weight: 400;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        .header-clock {
+            color: white;
+            text-align: right;
+            font-size: 13px;
+        }
+        .header-clock .time {
+            font-size: 18px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .header-clock .date {
+            opacity: 0.7;
+            font-size: 12px;
+        }
+
+        /* ============================================
+           EMERGENCY BANNER
+           ============================================ */
+        .emergency-banner {
+            display: none;
+            background: var(--pink);
+            color: white;
+            padding: 10px 32px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0.2px;
+        }
+        .emergency-banner.active { display: block; }
+
+        /* ============================================
+           HERO / WELCOME
+           ============================================ */
+        .hero {
+            background: linear-gradient(135deg, var(--navy) 0%, #001a45 60%, var(--brand) 100%);
+            padding: 40px 32px 48px;
+            color: white;
+            text-align: center;
+        }
+        .hero h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .hero p {
+            font-size: 15px;
+            opacity: 0.7;
+            font-weight: 300;
+        }
+
+        /* ============================================
+           QUICK LINKS BAR
+           ============================================ */
+        .quick-bar {
+            max-width: 1280px;
+            margin: -28px auto 0;
+            padding: 0 32px;
+            position: relative;
+            z-index: 10;
+        }
+        .quick-bar-inner {
+            background: var(--card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            padding: 20px 28px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .qlink {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 48px;
+            text-decoration: none;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            border: 2px solid var(--border);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .qlink:hover {
+            border-color: var(--brand);
+            color: var(--brand);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,85,255,0.15);
+        }
+        .qlink .ql-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        /* ============================================
+           MAIN LAYOUT
+           ============================================ */
+        .main {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 32px 32px;
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 28px;
+        }
+
+        /* ============================================
+           CARDS
+           ============================================ */
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-bottom: 28px;
+        }
+        .card-head {
+            padding: 20px 24px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+        .card-head-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .card-head h2 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--navy);
+            letter-spacing: -0.2px;
+        }
+        .card-head .badge-count {
+            background: var(--brand);
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 20px;
+        }
+        .card-body {
+            padding: 8px 24px 20px;
+        }
+
+        /* ============================================
+           ANNOUNCEMENTS (PROMINENT)
+           ============================================ */
+        .announcements-card { border-left: 4px solid var(--brand); }
+        .announcement-item {
+            padding: 16px 0;
+            border-bottom: 1px solid #f0f2f5;
+        }
+        .announcement-item:last-child { border-bottom: none; }
+        .ann-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .ann-badge {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 3px 10px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+        .ann-badge-urgent { background: var(--pink-light); color: #d43a7a; }
+        .ann-badge-update { background: var(--brand-light); color: var(--brand); }
+        .ann-badge-info { background: #e8edf5; color: var(--navy); }
+        .ann-badge-education { background: var(--brand-light); color: var(--brand-dark); }
+        .ann-date {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .announcement-item h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 3px;
+        }
+        .announcement-item p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* ============================================
+           EDUCATION (PROMINENT)
+           ============================================ */
+        .education-card { border-left: 4px solid var(--pink); }
+        .edu-item {
+            display: flex;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid #f0f2f5;
+            text-decoration: none;
+            color: inherit;
+            transition: background 0.15s;
+            margin: 0 -24px;
+            padding-left: 24px;
+            padding-right: 24px;
+        }
+        .edu-item:last-child { border-bottom: none; }
+        .edu-item:hover {
+            background: var(--brand-light);
+        }
+        .edu-thumb {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .edu-cat {
+            font-size: 10px;
+            color: var(--brand);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .edu-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--navy);
+            margin: 1px 0;
+        }
+        .edu-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* STATIC UPTODATE LINK */
+        .uptodate-link {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, var(--brand-light) 0%, #f0f5ff 100%);
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            color: var(--navy);
+            border: 1px solid #c5d5f5;
+            margin-top: 12px;
+            transition: all 0.2s;
+        }
+        .uptodate-link:hover {
+            border-color: var(--brand);
+            box-shadow: 0 2px 8px rgba(0,85,255,0.12);
+            transform: translateY(-1px);
+        }
+        .uptodate-link .ut-icon {
+            font-size: 28px;
+        }
+        .uptodate-link .ut-text h3 {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .uptodate-link .ut-text p {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================
+           LITERATURE LINK CARDS
+           ============================================ */
+        .cureus-card-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+            overflow: hidden;
+        }
+        .cureus-card-link:hover {
+            border-color: var(--brand);
+            box-shadow: 0 4px 14px rgba(0,85,255,0.1);
+            transform: translateY(-2px);
+        }
+        .cureus-card-inner {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px;
+        }
+        .cureus-logo-area {
+            flex-shrink: 0;
+            width: 52px;
+            height: 52px;
+            background: var(--brand-light);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .cureus-text h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 2px;
+        }
+        .cureus-text p {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .cureus-arrow {
+            margin-left: auto;
+            font-size: 20px;
+            color: var(--brand);
+            flex-shrink: 0;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .cureus-card-link:hover .cureus-arrow { opacity: 1; }
+
+        /* ============================================
+           CONTACTS SIDEBAR
+           ============================================ */
+        .contact-row {
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f2f5;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .contact-row:last-child { border-bottom: none; }
+        .contact-row strong { color: var(--navy); }
+        .contact-row span { color: var(--text-secondary); }
+
+        /* ============================================
+           FOOTER
+           ============================================ */
+        .footer {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 24px 32px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .footer a {
+            color: var(--brand);
+            text-decoration: none;
+        }
+
+        /* ============================================
+           LOADING STATE
+           ============================================ */
+        .loading {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        .loading::before {
+            content: '';
+            display: block;
+            width: 28px;
+            height: 28px;
+            border: 3px solid var(--border);
+            border-top-color: var(--brand);
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ============================================
+           COLOR HELPERS
+           ============================================ */
+        .bg-brand { background: var(--brand-light); }
+        .bg-brand-bold { background: #ccdcff; }
+        .bg-pink { background: var(--pink-light); }
+        .bg-navy-light { background: #e4e8f0; }
+        .bg-light { background: #f0f2f7; }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 960px) {
+            .main { grid-template-columns: 1fr; }
+            .hero h2 { font-size: 22px; }
+            .quick-bar-inner { flex-direction: column; align-items: stretch; }
+            .qlink { justify-content: center; }
+        }
+
+        /* ============================================
+           EVEN LOGO SVG INLINE
+           ============================================ */
+        .even-logo-svg {
+            height: 36px;
+            width: auto;
+        }
+
+        /* ============================================
+           "NEW" BADGE + PULSE DOT
+           ============================================ */
+        .new-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 8px;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--pink);
+            vertical-align: middle;
+        }
+        .new-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--pink);
+            animation: pulse-dot 2s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+
+        /* Subtle highlight background for new items */
+        .is-new-item {
+            background: linear-gradient(90deg, var(--pink-light) 0%, transparent 60%);
+            border-radius: 8px;
+            margin: 0 -12px;
+            padding-left: 12px !important;
+            padding-right: 12px !important;
+        }
+
+        /* ============================================
+           ENTRY TIMESTAMP
+           ============================================ */
+        .entry-timestamp {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           TODAY BAR (below hero)
+           ============================================ */
+        .today-bar {
+            text-align: center;
+            padding: 10px 32px;
+            font-size: 13px;
+            color: var(--navy);
+            font-weight: 600;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            letter-spacing: 0.2px;
+        }
+        .today-bar .today-label {
+            color: var(--brand);
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Emergency Banner -->
+<div class="emergency-banner" id="emergencyBanner"></div>
+
+<!-- Header -->
+<header class="header">
+    <div class="header-inner">
+        <div class="logo-area">
+            <!-- Even Logo SVG (matching the brand) -->
+            <svg class="even-logo-svg" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#0055ff"/>
+                        <stop offset="100%" style="stop-color:#0066ff"/>
+                    </linearGradient>
+                </defs>
+                <!-- Balloon icon -->
+                <ellipse cx="22" cy="18" rx="14" ry="17" fill="url(#logoGrad)"/>
+                <path d="M22 35 L19 42 L25 42 Z" fill="url(#logoGrad)"/>
+                <line x1="22" y1="42" x2="22" y2="52" stroke="url(#logoGrad)" stroke-width="1.5"/>
+                <!-- "even" text -->
+                <text x="46" y="42" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="800" fill="white" letter-spacing="-1">even</text>
+            </svg>
+            <div class="logo-text">
+                <div class="subtitle">Hospital &bull; Race Course Road</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="header-clock">
+                <div class="time" id="clockTime">--:--:--</div>
+                <div class="date" id="clockDate">Loading...</div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Hero -->
+<div class="hero">
+    <h2>Staff Portal</h2>
+    <p>Your hub for hospital updates, clinical resources, and system access</p>
+</div>
+
+<!-- Today Bar -->
+<div class="today-bar">
+    <span class="today-label">Today</span> &mdash; <span id="todayDate">Loading...</span>
+</div>
+
+<!-- Quick Access Bar -->
+<div class="quick-bar">
+    <div class="quick-bar-inner">
+        <a href="https://even.karexpert.com/account-management/login" target="_blank" class="qlink">
+            <span class="ql-icon">&#x1F3E5;</span> KareXpert HIS
+        </a>
+        <a href="https://pulse.even.in/" target="_blank" class="qlink">
+            <span class="ql-icon">&#x1F4CA;</span> Pulse
+        </a>
+        <a href="https://sniv3r2.github.io/" target="_blank" class="qlink">
+            <span class="ql-icon">&#x1F4D6;</span> UpToDate
+        </a>
+        <a href="https://www.cureus.com/newsroom" target="_blank" class="qlink">
+            <span class="ql-icon">&#x1F4F0;</span> Cureus News
+        </a>
+        <span class="qlink" id="quickLinksExtra" style="display:none;"></span>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+    <!-- ====== LEFT COLUMN ====== -->
+    <div class="left-col">
+
+        <!-- ANNOUNCEMENTS (Prominent) -->
+        <div class="card announcements-card">
+            <div class="card-head">
+                <div class="card-head-left">
+                    <div class="card-icon bg-brand">&#x1F4E2;</div>
+                    <h2>Hospital Updates &amp; Announcements</h2>
+                </div>
+                <span class="badge-count" id="annCount">0</span>
+            </div>
+            <div class="card-body" id="announcements">
+                <div class="loading">Loading announcements...</div>
+            </div>
+        </div>
+
+        <!-- EDUCATION (Prominent) -->
+        <div class="card education-card">
+            <div class="card-head">
+                <div class="card-head-left">
+                    <div class="card-icon bg-pink">&#x1F393;</div>
+                    <h2>Educational Resources &amp; Protocols</h2>
+                </div>
+            </div>
+            <div class="card-body" id="education">
+                <div class="loading">Loading resources...</div>
+            </div>
+            <!-- UpToDate permanent link -->
+            <div style="padding: 0 24px 20px;">
+                <a href="https://sniv3r2.github.io/" target="_blank" class="uptodate-link">
+                    <span class="ut-icon">&#x1F4D6;</span>
+                    <div class="ut-text">
+                        <h3>UpToDate Clinical Reference</h3>
+                        <p>Evidence-based clinical decision support &mdash; access anytime</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ====== RIGHT COLUMN (SIDEBAR) ====== -->
+    <div class="right-col">
+
+        <!-- CUREUS NEWSROOM -->
+        <div class="card">
+            <div class="card-head">
+                <div class="card-head-left">
+                    <div class="card-icon bg-brand">&#x1F4F0;</div>
+                    <h2>Medical Literature</h2>
+                </div>
+            </div>
+            <div class="card-body">
+                <a href="https://www.cureus.com/newsroom" target="_blank" class="cureus-card-link">
+                    <div class="cureus-card-inner">
+                        <div class="cureus-logo-area">
+                            <span style="font-size:32px;">&#x1F4DA;</span>
+                        </div>
+                        <div class="cureus-text">
+                            <h3>Cureus Newsroom</h3>
+                            <p>Open-access medical journal &mdash; latest articles, specialty highlights, and research updates</p>
+                        </div>
+                        <div class="cureus-arrow">&#x2192;</div>
+                    </div>
+                </a>
+                <a href="https://sniv3r2.github.io/" target="_blank" class="cureus-card-link" style="margin-top:12px;">
+                    <div class="cureus-card-inner">
+                        <div class="cureus-logo-area">
+                            <span style="font-size:32px;">&#x1F4D6;</span>
+                        </div>
+                        <div class="cureus-text">
+                            <h3>UpToDate</h3>
+                            <p>Evidence-based clinical decision support for diagnosis and treatment</p>
+                        </div>
+                        <div class="cureus-arrow">&#x2192;</div>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        <!-- QUICK CONTACTS -->
+        <div class="card">
+            <div class="card-head">
+                <div class="card-head-left">
+                    <div class="card-icon bg-pink">&#x260E;&#xFE0F;</div>
+                    <h2>Quick Contacts</h2>
+                </div>
+            </div>
+            <div class="card-body" id="contacts">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+
+        <!-- ADDITIONAL LINKS (from Sheet) -->
+        <div class="card" id="extraLinksCard" style="display:none;">
+            <div class="card-head">
+                <div class="card-head-left">
+                    <div class="card-icon bg-navy-light">&#x1F517;</div>
+                    <h2>More Links</h2>
+                </div>
+            </div>
+            <div class="card-body" id="extraLinks"></div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+    &copy; <span id="footerYear">2026</span> <a href="https://even.in" target="_blank">Even Healthcare</a> &bull; Race Course Road &bull; Staff Portal &mdash; Internal Use Only
+</footer>
+
+<!-- ============================================
+     JAVASCRIPT
+     ============================================ -->
+<script>
+// ===========================================================
+// CONFIG — YOUR SHEET ID
+// ===========================================================
+const SHEET_ID = '1aFmsaZ9UVjHdM_lmj51Vnk3bdeo3RwAuDl0lOC8MTUQ';
+const ANNOUNCEMENTS_TAB = 'Announcements';
+const EDUCATION_TAB = 'Education';
+const LINKS_TAB = 'Links';
+const CONTACTS_TAB = 'Contacts';
+const SETTINGS_TAB = 'Settings';
+const REFRESH_INTERVAL = 5; // minutes
+
+// ===========================================================
+// CLOCK + TODAY BAR
+// ===========================================================
+function updateClock() {
+    const now = new Date();
+    document.getElementById('clockTime').textContent = now.toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    });
+    const dateStr = now.toLocaleDateString('en-IN', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+    document.getElementById('clockDate').textContent = dateStr;
+    document.getElementById('todayDate').textContent = dateStr;
+    document.getElementById('footerYear').textContent = now.getFullYear();
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ===========================================================
+// NEWNESS HELPERS
+// ===========================================================
+const NEW_THRESHOLD_HOURS = 48; // items added within 48h are "NEW"
+
+// Try to parse a date from Google Sheets (handles Date(...) format, ISO, or readable strings)
+function parseEntryDate(val) {
+    if (!val) return null;
+    // Google Sheets sometimes returns Date(year,month,day,...) format
+    const gMatch = String(val).match(/Date\((\d+),(\d+),(\d+)/);
+    if (gMatch) return new Date(+gMatch[1], +gMatch[2], +gMatch[3]);
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function isNew(dateVal) {
+    const d = parseEntryDate(dateVal);
+    if (!d) return false;
+    const hoursAgo = (Date.now() - d.getTime()) / (1000 * 60 * 60);
+    return hoursAgo >= 0 && hoursAgo <= NEW_THRESHOLD_HOURS;
+}
+
+function formatEntryDate(dateVal) {
+    const d = parseEntryDate(dateVal);
+    if (!d) return '';
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function newBadgeHTML() {
+    return `<span class="new-indicator"><span class="new-dot"></span>NEW</span>`;
+}
+
+// ===========================================================
+// GOOGLE SHEETS FETCH
+// ===========================================================
+function sheetURL(tab) {
+    return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tab)}`;
+}
+
+// FIXED: Handles Google Sheets returning empty column labels
+// (parsedNumHeaders:0) by detecting when headers are missing
+// and using the first data row as headers instead.
+function parseSheetJSON(text) {
+    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);?/);
+    if (!match) return [];
+    const json = JSON.parse(match[1]);
+    if (!json.table || !json.table.rows || !json.table.rows.length) return [];
+
+    // Try to get headers from column labels
+    let headers = json.table.cols.map(c => (c.label || '').trim().toLowerCase());
+    const hasHeaders = headers.some(h => h.length > 0);
+    let dataRows = json.table.rows;
+
+    // If Google didn't detect headers, use the first data row as headers
+    if (!hasHeaders && dataRows.length > 0) {
+        const firstRow = dataRows[0];
+        headers = firstRow.c.map(cell =>
+            cell && cell.v ? String(cell.v).trim().toLowerCase() : ''
+        );
+        dataRows = dataRows.slice(1); // Skip the header row from data
+    }
+
+    return dataRows.map(row => {
+        const obj = {};
+        row.c.forEach((cell, i) => {
+            if (headers[i]) {
+                obj[headers[i]] = cell ? (cell.v !== null && cell.v !== undefined ? cell.v : '') : '';
+            }
+        });
+        return obj;
+    }).filter(row => Object.values(row).some(v => v !== ''));
+}
+
+async function fetchSheet(tab) {
+    try {
+        const resp = await fetch(sheetURL(tab));
+        const text = await resp.text();
+        return parseSheetJSON(text);
+    } catch (e) {
+        console.warn(`Failed to load ${tab}:`, e);
+        return [];
+    }
+}
+
+// ===========================================================
+// RENDER: ANNOUNCEMENTS
+// ===========================================================
+function renderAnnouncements(data) {
+    const container = document.getElementById('announcements');
+    const active = data.filter(d => {
+        const a = String(d.active || '').toLowerCase();
+        return a === '' || a === 'true' || a === 'yes' || a === '1' || a === 'TRUE';
+    });
+
+    // Sort newest first: items with dates sorted by date desc, then remaining in reverse row order
+    active.sort((a, b) => {
+        const da = parseEntryDate(a.date);
+        const db = parseEntryDate(b.date);
+        if (da && db) return db - da;
+        if (da) return -1;
+        if (db) return 1;
+        return 0; // preserve reverse order (we reverse below)
+    });
+    // Reverse so that items added last in the sheet come first (for undated items)
+    const undatedStart = active.findIndex(a => !parseEntryDate(a.date));
+    if (undatedStart >= 0) {
+        const dated = active.slice(0, undatedStart);
+        const undated = active.slice(undatedStart).reverse();
+        active.splice(0, active.length, ...dated, ...undated);
+    }
+
+    document.getElementById('annCount').textContent = active.length;
+    if (!active.length) {
+        container.innerHTML = '<p style="color:#999;font-size:13px;padding:16px 0;">No announcements at this time. Check back soon.</p>';
+        return;
+    }
+    container.innerHTML = active.map(item => {
+        const badgeMap = { 'urgent': 'ann-badge-urgent', 'update': 'ann-badge-update', 'info': 'ann-badge-info', 'education': 'ann-badge-education' };
+        const bc = badgeMap[String(item.type || 'info').toLowerCase()] || 'ann-badge-info';
+        const itemIsNew = isNew(item.date);
+        const newClass = itemIsNew ? ' is-new-item' : '';
+        const dateDisplay = formatEntryDate(item.date) || String(item.date || '');
+        return `
+            <div class="announcement-item${newClass}">
+                <div class="ann-meta">
+                    <span class="ann-badge ${bc}">${item.type || 'Info'}</span>
+                    <span class="ann-date">${dateDisplay}</span>
+                    ${itemIsNew ? newBadgeHTML() : ''}
+                </div>
+                <h3>${item.title || ''}</h3>
+                <p>${item.description || ''}</p>
+            </div>`;
+    }).join('');
+}
+
+// ===========================================================
+// RENDER: EDUCATION
+// ===========================================================
+function renderEducation(data) {
+    const container = document.getElementById('education');
+    let active = data.filter(d => {
+        const a = String(d.active || '').toLowerCase();
+        return a === '' || a === 'true' || a === 'yes' || a === '1' || a === 'TRUE';
+    });
+
+    // Reverse so newest additions (last rows in sheet) appear first
+    active = active.reverse();
+
+    if (!active.length) {
+        container.innerHTML = '<p style="color:#999;font-size:13px;padding:16px 0;">No educational resources listed yet.</p>';
+        return;
+    }
+    const icons = { 'protocol': '&#x1F4CB;', 'training': '&#x1F393;', 'safety': '&#x1F6E1;&#xFE0F;', 'clinical': '&#x2695;&#xFE0F;', 'general': '&#x1F4D6;' };
+    const colors = { 'protocol': 'bg-brand', 'training': 'bg-brand-bold', 'safety': 'bg-pink', 'clinical': 'bg-brand', 'general': 'bg-navy-light' };
+    container.innerHTML = active.map((item, idx) => {
+        const cat = String(item.category || 'general').toLowerCase();
+        const icon = icons[cat] || '&#x1F4D6;';
+        const bg = colors[cat] || 'bg-navy-light';
+        // Mark the first item (newest) as NEW if it was recently added
+        // Since Education has no date field, we mark only the first item as new
+        // (the most recently added row) — this resets naturally as more rows are added
+        const itemIsNew = (idx === 0);
+        return `
+            <a href="${item.link || '#'}" target="_blank" class="edu-item${itemIsNew ? ' is-new-item' : ''}">
+                <div class="edu-thumb ${bg}">${icon}</div>
+                <div>
+                    <div class="edu-cat">${item.category || 'General'}${itemIsNew ? newBadgeHTML() : ''}</div>
+                    <div class="edu-title">${item.title || ''}</div>
+                    <div class="edu-desc">${item.description || ''}</div>
+                </div>
+            </a>`;
+    }).join('');
+}
+
+// ===========================================================
+// RENDER: EXTRA LINKS (from Sheet, beyond defaults)
+// ===========================================================
+// Convert any image link (Google Drive, Dropbox, etc.) into a direct image URL
+function toDirectImageURL(url) {
+    if (!url) return '';
+    url = url.trim();
+    // Google Drive: /file/d/ID/view... or /open?id=ID
+    let m = url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+    if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w128`;
+    m = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+    if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w128`;
+    // Google Drive /uc?export=view&id=ID (already direct, but use thumbnail for reliability)
+    m = url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);
+    if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w128`;
+    // Dropbox: replace dl=0 with raw=1
+    if (url.includes('dropbox.com')) return url.replace(/dl=0/, 'raw=1');
+    // OneDrive: replace /redir to /download
+    if (url.includes('1drv.ms') || url.includes('onedrive.live.com')) return url.replace(/redir/, 'download');
+    // Imgur: ensure direct image link
+    m = url.match(/imgur\.com\/(\w+)$/);
+    if (m) return `https://i.imgur.com/${m[1]}.png`;
+    // Otherwise return as-is (already a direct image URL or unknown provider)
+    return url;
+}
+
+function renderLinks(data) {
+    if (!data.length) return;
+    // Reverse so newest additions (last rows in sheet) appear first
+    const reversed = [...data].reverse();
+    const card = document.getElementById('extraLinksCard');
+    const container = document.getElementById('extraLinks');
+    card.style.display = 'block';
+    container.innerHTML = reversed.map((item, idx) => {
+        const url = item.url || item.link || '#';
+        const iconVal = (item.icon || '').trim();
+        let iconHtml;
+        if (iconVal && (iconVal.startsWith('http://') || iconVal.startsWith('https://') || iconVal.startsWith('data:'))) {
+            const directURL = toDirectImageURL(iconVal);
+            iconHtml = `<img src="${directURL}" alt="" style="width:24px;height:24px;object-fit:contain;border-radius:4px;vertical-align:middle;" onerror="this.outerHTML='&#x1F517;'">`;
+        } else {
+            iconHtml = iconVal || '&#x1F517;';
+        }
+        const itemIsNew = (idx === 0);
+        return `<a href="${url}" target="_blank" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f0f2f5;text-decoration:none;color:var(--navy);font-size:13px;font-weight:600;${itemIsNew ? 'background:linear-gradient(90deg,var(--pink-light) 0%,transparent 60%);border-radius:8px;margin:0 -8px;padding-left:8px;padding-right:8px;' : ''}">
+            <span style="flex-shrink:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:var(--brand-light);border-radius:8px;">${iconHtml}</span>
+            <span>
+                ${item.name || item.title || url}${itemIsNew ? newBadgeHTML() : ''}
+                <span style="display:block;font-weight:400;color:var(--text-muted);font-size:12px;">${item.description || ''}</span>
+            </span>
+        </a>`;
+    }).join('');
+}
+
+// ===========================================================
+// RENDER: CONTACTS
+// ===========================================================
+function renderContacts(data) {
+    const container = document.getElementById('contacts');
+    if (!data.length) {
+        container.innerHTML = `
+            <div class="contact-row"><strong>Reception</strong><span>Ext. 100</span></div>
+            <div class="contact-row"><strong>Emergency</strong><span>Ext. 101</span></div>
+            <div class="contact-row"><strong>IT Support</strong><span>Ext. 200</span></div>
+            <div class="contact-row"><strong>Admin Office</strong><span>Ext. 300</span></div>`;
+        return;
+    }
+    container.innerHTML = data.map(item =>
+        `<div class="contact-row"><strong>${item.name || item.department || ''}</strong><span>${item.number || item.extension || item.phone || ''}</span></div>`
+    ).join('');
+}
+
+// ===========================================================
+// SETTINGS
+// ===========================================================
+function applySettings(data) {
+    if (!data.length) return;
+    const settings = {};
+    data.forEach(row => {
+        if (row.key && row.value) settings[row.key.toLowerCase().trim()] = String(row.value);
+    });
+    if (settings['emergency_message'] && settings['emergency_message'].trim()) {
+        const banner = document.getElementById('emergencyBanner');
+        banner.textContent = settings['emergency_message'];
+        banner.classList.add('active');
+    }
+}
+
+// ===========================================================
+// LOAD ALL
+// ===========================================================
+async function loadAll() {
+    const [announcements, education, links, contacts, settings] = await Promise.all([
+        fetchSheet(ANNOUNCEMENTS_TAB),
+        fetchSheet(EDUCATION_TAB),
+        fetchSheet(LINKS_TAB),
+        fetchSheet(CONTACTS_TAB),
+        fetchSheet(SETTINGS_TAB),
+    ]);
+    renderAnnouncements(announcements);
+    renderEducation(education);
+    renderLinks(links);
+    renderContacts(contacts);
+    applySettings(settings);
+}
+
+loadAll();
+setInterval(loadAll, REFRESH_INTERVAL * 60 * 1000);
+</script>
+
+</body>
+</html>
