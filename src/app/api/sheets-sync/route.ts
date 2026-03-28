@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
+import { sql } from '@vercel/postgres';
 import { SHEET_TAB_MAP, getSheetCsvUrl } from '@/lib/sheets-config';
 import { csvToDepartmentDataByDate } from '@/lib/parse-csv';
-import { upsertDepartmentData } from '@/lib/storage';
 import { FORM_DEFINITIONS } from '@/lib/form-definitions';
 
 export const dynamic = 'force-dynamic';
@@ -58,13 +58,34 @@ async function syncAllSheets() {
           let fixedDate = date;
           if (fixedDate.startsWith('2036')) fixedDate = '2026' + fixedDate.slice(4);
 
+          // Reject future dates (DD/MM misparse guard)
+          const today = new Date().toISOString().split('T')[0];
+          if (fixedDate > today) continue;
+
           if (fixedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            // Skip future dates (e.g. DD/MM misparse creating 2026-06-18 from 18/03/2026)
-            const parsedDate = new Date(fixedDate + 'T00:00:00Z');
-            if (parsedDate > new Date()) continue;
-            await upsertDepartmentData(fixedDate, deptData);
+            // Upsert into Postgres instead of ephemeral JSON files
+            const entriesJson = JSON.stringify(deptData.entries);
+            await sql`
+              INSERT INTO department_data (date, slug, name, tab, entries)
+              VALUES (${fixedDate}, ${slug}, ${deptName}, ${deptData.tab}, ${entriesJson}::jsonb)
+              ON CONFLICT (date, slug) DO UPDATE SET
+                name = EXCLUDED.name,
+                tab = EXCLUDED.tab,
+                entries = EXCLUDED.entries;
+            `;
             datesUpdated.push(fixedDate);
           }
+        }
+
+        // Upsert day_snapshots for all synced dates
+        const isoNow = new Date().toISOString();
+        const uniqueDates = [...new Set(datesUpdated)];
+        for (const d of uniqueDates) {
+          await sql`
+            INSERT INTO day_snapshots (date, updated_at)
+            VALUES (${d}, ${isoNow})
+            ON CONFLICT (date) DO UPDATE SET updated_at = ${isoNow};
+          `;
         }
 
         return { department: deptName, status: 'ok', datesUpdated };

@@ -38,66 +38,43 @@ export async function saveDaySnapshot(snapshot: DaySnapshot): Promise<void> {
  * Load a full day snapshot by date, or null if no data exists.
  */
 export async function loadDaySnapshot(date: string): Promise<DaySnapshot | null> {
-  // Check if the day exists
-  const dayRow = await sql`SELECT date, updated_at FROM day_snapshots WHERE date = ${date};`;
-  if (dayRow.rows.length === 0) return null;
-
   // Fetch departments for this date
   const deptRows = await sql`
     SELECT slug, name, tab, entries FROM department_data WHERE date = ${date} ORDER BY name;
   `;
-  const departments: DepartmentData[] = deptRows.rows.map(r => {
-    // Normalize entries: some come as [{key, value}] from Google Forms,
-    // others as [{fields: {...}}] from sheets sync. Ensure all have .fields.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawEntries = r.entries as any[];
-    const normalizedEntries: DepartmentData['entries'] = [];
+  if ((deptRows.rowCount ?? 0) === 0) return null;
 
-    if (Array.isArray(rawEntries)) {
-      // Check if entries are in {key, value} format (Google Forms)
-      const hasKeyValueFormat = rawEntries.some(e => 'key' in e && !('fields' in e));
-
-      if (hasKeyValueFormat) {
-        // Convert [{key, value}, ...] into a single entry with .fields
-        const fields: Record<string, string | number> = {};
-        for (const e of rawEntries) {
-          const k = e.key as string;
-          if (k && !k.startsWith('_')) {
-            fields[k] = e.value as string | number;
-          }
-        }
-        normalizedEntries.push({ timestamp: '', date: date || '', fields });
-      } else {
-        // Already in [{fields: {...}}] format — pass through, ensuring .fields exists
-        for (const e of rawEntries) {
-          normalizedEntries.push({
-            timestamp: e.timestamp || '',
-            date: e.date || '',
-            fields: e.fields || {},
-          });
-        }
-      }
-    }
-
-    return { name: r.name, slug: r.slug, tab: r.tab, entries: normalizedEntries };
-  });
-
-  // Fetch huddle summaries
-  const hsRows = await sql`
-    SELECT filename, content, uploaded_at, type FROM huddle_summaries WHERE date = ${date} ORDER BY uploaded_at;
-  `;
-  const huddleSummaries: HuddleSummary[] = hsRows.rows.map(r => ({
-    filename: r.filename,
-    content: r.content,
-    uploadedAt: r.uploaded_at,
-    type: r.type as HuddleSummary['type'],
+  const departments: DepartmentData[] = deptRows.rows.map(r => ({
+    name: r.name,
+    slug: r.slug,
+    tab: r.tab,
+    entries: typeof r.entries === 'string' ? JSON.parse(r.entries) : r.entries,
   }));
+
+  // Fetch the snapshot metadata
+  const dayRow = await sql`SELECT updated_at FROM day_snapshots WHERE date = ${date};`;
+
+  // Fetch huddle summaries (table may not exist yet — graceful fallback)
+  let huddleSummaries: HuddleSummary[] = [];
+  try {
+    const hsRows = await sql`
+      SELECT filename, content, uploaded_at, type FROM huddle_summaries WHERE date = ${date} ORDER BY uploaded_at;
+    `;
+    huddleSummaries = hsRows.rows.map(r => ({
+      filename: r.filename,
+      content: r.content,
+      uploadedAt: r.uploaded_at,
+      type: r.type as HuddleSummary['type'],
+    }));
+  } catch {
+    // huddle_summaries table may not exist yet — return empty array
+  }
 
   return {
     date,
     departments,
     huddleSummaries,
-    updatedAt: dayRow.rows[0].updated_at,
+    updatedAt: dayRow.rows[0]?.updated_at || new Date().toISOString(),
   };
 }
 
@@ -105,7 +82,7 @@ export async function loadDaySnapshot(date: string): Promise<DaySnapshot | null>
  * List all dates that have data, most recent first.
  */
 export async function listAvailableDays(): Promise<string[]> {
-  const result = await sql`SELECT date FROM day_snapshots ORDER BY date DESC;`;
+  const result = await sql`SELECT DISTINCT date FROM department_data ORDER BY date DESC;`;
   return result.rows.map(r => r.date);
 }
 
@@ -138,7 +115,7 @@ export async function upsertDepartmentData(date: string, deptData: DepartmentDat
 }
 
 /**
- * Save a huddle summary file's metadata to the database.
+ * Save a huddle summary to the database.
  */
 export async function saveHuddleSummary(date: string, summary: HuddleSummary): Promise<void> {
   const now = new Date().toISOString();
@@ -153,4 +130,18 @@ export async function saveHuddleSummary(date: string, summary: HuddleSummary): P
     INSERT INTO huddle_summaries (date, filename, content, uploaded_at, type)
     VALUES (${date}, ${summary.filename}, ${summary.content}, ${summary.uploadedAt}, ${summary.type});
   `;
+}
+
+/**
+ * @deprecated - File-based functions removed. Use saveHuddleSummary() for huddle files.
+ * For actual binary file storage on Vercel, use Vercel Blob.
+ */
+export function saveSummaryFile(_date: string, _filename: string, _content: Buffer): string {
+  console.warn('saveSummaryFile is deprecated - file storage not available on Vercel serverless');
+  return '';
+}
+
+export function getSummaryFilePath(_date: string, _filename: string): string {
+  console.warn('getSummaryFilePath is deprecated');
+  return '';
 }
