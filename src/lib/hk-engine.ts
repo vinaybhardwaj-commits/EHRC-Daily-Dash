@@ -54,30 +54,53 @@ export async function generateShift(date: string, shiftType: ShiftType): Promise
     areasByType.get(area.area_type)!.push(area);
   }
 
+  // Collect all task rows first, then batch INSERT (avoids 100+ individual round-trips)
+  const taskRows: { templateId: number; areaId: number; taskName: string; taskCategory: string; disinfectant: string | null; floor: string; areaName: string; priority: number }[] = [];
+
   for (const template of templates) {
     const areas: HKAreaRow[] = [];
 
     if (template.area_id) {
-      // Specific area
       const area = areaMap.get(template.area_id);
       if (area) areas.push(area);
     } else if (template.area_type) {
-      // All areas of this type
       const matching = areasByType.get(template.area_type) || [];
       areas.push(...matching);
     }
 
     for (const area of areas) {
-      await sql`
-        INSERT INTO hk_shift_tasks
-          (shift_id, template_id, area_id, task_name, task_category, disinfectant, floor, area_name, source, priority)
-        VALUES
-          (${shift.id}, ${template.id}, ${area.id}, ${template.name}, ${template.category},
-           ${template.disinfectant || null}, ${area.floor}, ${area.name}, 'scheduled', ${template.priority_weight})
-      `;
-      scheduledCount++;
+      taskRows.push({
+        templateId: template.id,
+        areaId: area.id,
+        taskName: template.name,
+        taskCategory: template.category,
+        disinfectant: template.disinfectant || null,
+        floor: area.floor,
+        areaName: area.name,
+        priority: template.priority_weight,
+      });
     }
   }
+
+  // Batch insert in chunks of 50 rows (Postgres param limit is ~65535, 10 params per row = safe at 50)
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < taskRows.length; i += BATCH_SIZE) {
+    const batch = taskRows.slice(i, i + BATCH_SIZE);
+    const params: (string | number | null)[] = [];
+    const valueClauses: string[] = [];
+
+    for (const row of batch) {
+      const offset = params.length;
+      params.push(shift.id, row.templateId, row.areaId, row.taskName, row.taskCategory, row.disinfectant, row.floor, row.areaName, 'scheduled', row.priority);
+      valueClauses.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`);
+    }
+
+    await sql.query(
+      `INSERT INTO hk_shift_tasks (shift_id, template_id, area_id, task_name, task_category, disinfectant, floor, area_name, source, priority) VALUES ${valueClauses.join(', ')}`,
+      params
+    );
+  }
+  scheduledCount = taskRows.length;
 
   // Step 3: Pull unresolved Sewa HK requests
   sewaCount = await pullSewaRequests(shift.id);
@@ -197,26 +220,34 @@ async function carryOverTasks(currentShift: HKShiftRow, date: string, shiftType:
     WHERE shift_id = ${prevShift.id} AND status = 'pending'
   `;
 
-  let count = 0;
-  for (const task of pendingTasks.rows) {
-    // Create carryover task in current shift
-    await sql`
-      INSERT INTO hk_shift_tasks
-        (shift_id, template_id, area_id, task_name, task_category, disinfectant,
-         floor, area_name, source, sewa_request_id, carryover_from_id, priority)
-      VALUES
-        (${currentShift.id}, ${task.template_id}, ${task.area_id}, ${task.task_name},
-         ${task.task_category}, ${task.disinfectant}, ${task.floor}, ${task.area_name},
-         'carryover', ${task.sewa_request_id}, ${task.id}, 1)
-    `;
+  if (pendingTasks.rows.length === 0) return 0;
 
-    // Mark original as skipped
-    await sql`
-      UPDATE hk_shift_tasks
-      SET status = 'skipped', skip_reason = 'Carried over to next shift'
-      WHERE id = ${task.id}
-    `;
-    count++;
+  // Batch insert carryover tasks
+  const params: (string | number | null)[] = [];
+  const valueClauses: string[] = [];
+  const taskIds: number[] = [];
+
+  for (const task of pendingTasks.rows) {
+    const offset = params.length;
+    params.push(
+      currentShift.id, task.template_id, task.area_id, task.task_name,
+      task.task_category, task.disinfectant, task.floor, task.area_name,
+      'carryover', task.sewa_request_id, task.id, 1
+    );
+    valueClauses.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12})`);
+    taskIds.push(task.id);
   }
-  return count;
+
+  await sql.query(
+    `INSERT INTO hk_shift_tasks (shift_id, template_id, area_id, task_name, task_category, disinfectant, floor, area_name, source, sewa_request_id, carryover_from_id, priority) VALUES ${valueClauses.join(', ')}`,
+    params
+  );
+
+  // Mark all originals as skipped in one query
+  await sql.query(
+    `UPDATE hk_shift_tasks SET status = 'skipped', skip_reason = 'Carried over to next shift' WHERE id = ANY($1::int[])`,
+    [taskIds]
+  );
+
+  return pendingTasks.rows.length;
 }

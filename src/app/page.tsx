@@ -245,6 +245,14 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </a>
+          {/* HK Dashboard */}
+          <a
+            href="/hk/dashboard"
+            className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-teal-500 transition-colors flex items-center gap-1.5"
+          >
+            <span className="text-sm">🧹</span>
+            <span className="hidden sm:inline">HK</span>
+          </a>
           {/* Sewa Dropdown */}
           <div className="relative group">
             <button className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-orange-700 transition-colors flex items-center gap-1.5">
@@ -266,9 +274,6 @@ export default function Home() {
                     <div className="font-semibold text-xs">File Complaint</div>
                     <div className="text-[10px] text-slate-400">Submit a new service request</div>
                   </div>
-                </a>
-                <a href="/hk/dashboard" className="px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 text-sm font-medium hover:bg-teal-100 transition-colors">
-                  🧹 HK Dashboard
                 </a>
                 <a href="/sewa/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors">
                   <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

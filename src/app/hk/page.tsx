@@ -47,6 +47,8 @@ export default function HKSupervisorPage() {
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [selectedFloor, setSelectedFloor] = useState('ALL');
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('');
+  const [error, setError] = useState('');
 
   // Form state
   const [supervisorName, setSupervisorName] = useState('');
@@ -94,7 +96,17 @@ export default function HKSupervisorPage() {
   const startShift = async () => {
     if (!supervisorName.trim()) return;
     setLoading(true);
+    setError('');
+    setLoadingMsg('Generating tasks...');
+
+    // Progress messages to keep supervisor informed
+    const progressTimer = setTimeout(() => setLoadingMsg('Setting up shift tasks...'), 3000);
+    const slowTimer = setTimeout(() => setLoadingMsg('Almost done, preparing your task list...'), 8000);
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s hard timeout
+
       const res = await fetch('/api/hk/generate-shift', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,16 +117,30 @@ export default function HKSupervisorPage() {
           femaleCount: Number(femaleCount) || 0,
           ipCensus: Number(ipCensus) || 0,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+
       const data = await res.json();
       if (data.success) {
+        setLoadingMsg('Loading tasks...');
         setPhase('tasks');
         await loadTasks();
+      } else {
+        setError(data.error || 'Failed to generate shift. Please try again.');
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setError('Request timed out. Please check your connection and try again.');
+      } else {
+        setError('Connection error. Please try again.');
+      }
       console.error('Failed to start shift:', e);
     }
+    clearTimeout(progressTimer);
+    clearTimeout(slowTimer);
     setLoading(false);
+    setLoadingMsg('');
   };
 
   const completeTask = async (taskId: number) => {
@@ -270,12 +296,23 @@ export default function HKSupervisorPage() {
               <input type="number" value={ipCensus} onChange={e => setIpCensus(e.target.value)} placeholder="Current inpatient count" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
 
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
             <button
               onClick={startShift}
               disabled={!supervisorName.trim() || loading}
-              className="w-full py-3 mt-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              className="w-full py-3 mt-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Starting...' : 'Start Shift ▶'}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {loadingMsg || 'Starting...'}
+                </span>
+              ) : 'Start Shift \u25B6'}
             </button>
           </div>
         </div>
