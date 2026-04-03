@@ -5,6 +5,7 @@ import GlobalIssuesPanel, { type GlobalIssueData } from './GlobalIssuesPanel';
 import DepartmentGrid, { type DeptKPIData, type DeptAlertData } from './DepartmentGrid';
 import SewaOverviewPanel from './SewaOverviewPanel';
 import OverviewHeatmap from './OverviewHeatmap';
+import SparklineHeatmap from './SparklineHeatmap';
 import DepartmentAccordion from './DepartmentAccordion';
 
 interface DailyMetric {
@@ -621,12 +622,12 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
         <SewaOverviewPanel />
       </div>
 
-      {/* ===== SECTION 4: SUBMISSION HEATMAP ===== */}
+      {/* ===== SECTION 4: SUBMISSION HEATMAP + FORM ANALYTICS ===== */}
       {data.heatmapData && data.allDepartments && (
-        <div className="mb-6">
-          <OverviewHeatmap
+        <div className="mb-6 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <SparklineHeatmap
             heatmapData={data.heatmapData}
-            allDepartments={data.allDepartments}
+            departments={data.allDepartments.map((d: { slug: string; name: string }) => ({ slug: d.slug, label: d.name }))}
             currentMonth={data.currentMonth}
           />
         </div>

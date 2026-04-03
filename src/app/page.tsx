@@ -9,6 +9,7 @@ import ExecutiveSummary from '@/components/ExecutiveSummary';
 import FileUpload from '@/components/FileUpload';
 import HuddleSummaryViewer from '@/components/HuddleSummaryViewer';
 import SubmissionHeatmap from '@/components/SubmissionHeatmap';
+import SparklineHeatmap from '@/components/SparklineHeatmap';
 import TrendCharts from '@/components/TrendCharts';
 import DepartmentForms from '@/components/DepartmentForms';
 import MonthlyOverview from '@/components/MonthlyOverview';
@@ -535,7 +536,25 @@ export default function Home() {
                 )}
 
                 {activeTab === 'trends' && <TrendCharts snapshots={allSnapshots} />}
-                {activeTab === 'heatmap' && <SubmissionHeatmap snapshots={allSnapshots} currentMonth={selectedDate.substring(0, 7)} />}
+                {activeTab === 'heatmap' && (() => {
+                  // Convert snapshots to SparklineHeatmap format
+                  const heatmapData = allSnapshots.map(s => ({
+                    date: s.date,
+                    slugs: s.departments.map(d => d.slug),
+                  }));
+                  const deptSet = new Map<string, string>();
+                  allSnapshots.forEach(s => s.departments.forEach(d => { if (!deptSet.has(d.slug)) deptSet.set(d.slug, d.name); }));
+                  const departments = Array.from(deptSet.entries()).map(([slug, label]) => ({ slug, label }));
+                  return (
+                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                      <SparklineHeatmap
+                        heatmapData={heatmapData}
+                        departments={departments}
+                        currentMonth={selectedDate.substring(0, 7)}
+                      />
+                    </div>
+                  );
+                })()}
                 {activeTab === 'forms' && (
                   <DepartmentForms submittedSlugs={snapshot?.departments.map(d => d.slug) || []} />
                 )}
