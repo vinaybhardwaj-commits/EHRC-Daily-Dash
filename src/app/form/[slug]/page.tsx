@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { getFormConfig } from '@/lib/form-engine/registry';
 import { SmartForm } from '@/components/form-engine';
 import { FORMS_BY_SLUG } from '@/lib/form-definitions';
+import FormChat from '@/components/FormChat';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -11,10 +13,36 @@ interface PageProps {
 
 export default function FormPage({ params }: PageProps) {
   const [slug, setSlug] = useState<string>('');
+  const [submittedData, setSubmittedData] = useState<{
+    formData: Record<string, unknown>;
+    sessionId: string;
+    date: string;
+  } | null>(null);
+  const [chatSlot, setChatSlot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     params.then(p => setSlug(p.slug));
   }, [params]);
+
+  // Watch for the chat slot element to appear after submission
+  useEffect(() => {
+    if (submittedData) {
+      const checkSlot = () => {
+        const el = document.getElementById('form-chat-slot');
+        if (el) {
+          setChatSlot(el);
+        } else {
+          // Retry once after render
+          requestAnimationFrame(() => {
+            setChatSlot(document.getElementById('form-chat-slot'));
+          });
+        }
+      };
+      checkSlot();
+    } else {
+      setChatSlot(null);
+    }
+  }, [submittedData]);
 
   if (!slug) {
     return (
@@ -46,7 +74,7 @@ export default function FormPage({ params }: PageProps) {
   // Submit handler — uses the existing form-submit API (unchanged)
   const handleSubmit = async (formData: Record<string, unknown>): Promise<{ success: boolean; error?: string }> => {
     try {
-      // Get the legacy form definition for field label mapping
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const legacyForm = FORMS_BY_SLUG[slug];
 
       const response = await fetch('/api/form-submit', {
@@ -71,5 +99,33 @@ export default function FormPage({ params }: PageProps) {
     }
   };
 
-  return <SmartForm config={config} slug={slug} onSubmit={handleSubmit} />;
+  // Called by SmartForm after successful submission
+  const handleSubmitSuccess = (data: { formData: Record<string, unknown>; sessionId: string }) => {
+    setSubmittedData({
+      formData: data.formData,
+      sessionId: data.sessionId,
+      date: data.formData.date as string,
+    });
+  };
+
+  return (
+    <>
+      <SmartForm
+        config={config}
+        slug={slug}
+        onSubmit={handleSubmit}
+        onSubmitSuccess={handleSubmitSuccess}
+      />
+      {/* Portal FormChat into the success screen's slot */}
+      {submittedData && chatSlot && createPortal(
+        <FormChat
+          slug={slug}
+          date={submittedData.date}
+          formData={submittedData.formData}
+          sessionId={submittedData.sessionId}
+        />,
+        chatSlot
+      )}
+    </>
+  );
 }

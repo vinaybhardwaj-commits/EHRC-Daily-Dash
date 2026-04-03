@@ -7,6 +7,7 @@ import SewaOverviewPanel from './SewaOverviewPanel';
 import OverviewHeatmap from './OverviewHeatmap';
 import SparklineHeatmap from './SparklineHeatmap';
 import DepartmentAccordion from './DepartmentAccordion';
+import AIFollowUpBadge from './AIFollowUpBadge';
 
 interface DailyMetric {
   date: string;
@@ -600,6 +601,9 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
           <GlobalIssuesPanel issues={data.globalIssues} currentMonth={data.currentMonth} previousMonth={data.previousMonth} onNavigateToDashboard={onNavigateToDashboardWithDate} />
         </div>
       )}
+
+      {/* ===== AI FOLLOW-UPS BADGE ===== */}
+      <AIFollowUpBadge month={selectedMonth} />
 
       {/* ===== SECTION 3: DEPARTMENT GRID ===== */}
       {data.departmentKPIs && data.departmentKPIs.length > 0 && (

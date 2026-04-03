@@ -13,6 +13,7 @@ interface SmartFormProps {
   config: SmartFormConfig;
   slug: string;
   onSubmit: (data: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+  onSubmitSuccess?: (data: { formData: Record<string, unknown>; sessionId: string }) => void;
 }
 
 /* ── Analytics Session ────────────────────────────────────────────── */
@@ -23,7 +24,7 @@ function generateSessionId(): string {
 
 /* ── Main Component ───────────────────────────────────────────────── */
 
-export default function SmartForm({ config, slug, onSubmit }: SmartFormProps) {
+export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: SmartFormProps) {
   // Form state
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -264,33 +265,48 @@ export default function SmartForm({ config, slug, onSubmit }: SmartFormProps) {
       setSubmitted(true);
       setSubmitting(false);
 
-      // Reset after 3 seconds
-      setTimeout(() => {
-        setSubmitted(false);
-        setFormData({ date: formData.date as string });
-        setCurrentStep(0);
-        sessionId.current = generateSessionId();
-        formStartTime.current = Date.now();
-        sectionsSeen.current.clear();
-      }, 3000);
+      // Notify parent with submitted data for AI question engine
+      if (onSubmitSuccess) {
+        onSubmitSuccess({ formData: { ...formData }, sessionId: sessionId.current });
+      }
     } catch {
       setSubmitError('An error occurred while submitting the form');
       setSubmitting(false);
     }
-  }, [formData, validateAll, onSubmit, trackEvent, flushAnalytics]);
+  }, [formData, validateAll, onSubmit, onSubmitSuccess, trackEvent, flushAnalytics]);
+
+  // ── Reset form for new submission ──
+  const handleNewSubmission = useCallback(() => {
+    setSubmitted(false);
+    setFormData({ date: formData.date as string });
+    setCurrentStep(0);
+    sessionId.current = generateSessionId();
+    formStartTime.current = Date.now();
+    sectionsSeen.current.clear();
+  }, [formData.date]);
 
   // ── Render: Success ──
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50">
         <FormHeader title={config.title} subtitle={config.department} />
-        <div className="max-w-2xl mx-auto px-4 py-12">
+        <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
             <CheckCircle className="w-14 h-14 text-green-600 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-green-800 mb-2">Form Submitted Successfully</h2>
             <p className="text-green-700 text-sm">
               Your {config.department} department form has been recorded.
             </p>
+          </div>
+          {/* AI Question Engine chat panel renders here via parent */}
+          <div id="form-chat-slot" />
+          <div className="mt-6 text-center">
+            <button
+              onClick={handleNewSubmission}
+              className="text-sm text-blue-600 hover:text-blue-800 underline"
+            >
+              Submit another response
+            </button>
           </div>
         </div>
       </div>
