@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, CheckCircle, AlertTriangle, AlertCircle, Info, X, ChevronDown, ChevronUp, Shield } from 'lucide-react';
+import { MessageCircle, Send, CheckCircle, AlertTriangle, AlertCircle, Info, X, ChevronDown, ChevronUp, Shield, Zap } from 'lucide-react';
 
 /* ── Types (client-side subset) ──────────────────────────────────── */
 
@@ -65,8 +65,32 @@ export default function FormChat({ slug, date, formData, sessionId, onClose, isG
   const [gmSeverity, setGmSeverity] = useState('high');
   const [gmSending, setGmSending] = useState(false);
 
+  // Cross-dept context
+  const [crossDeptAlerts, setCrossDeptAlerts] = useState<Array<{
+    pattern_name: string;
+    severity: string;
+    other_depts: string[];
+    insight: string;
+  }>>([]);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Fetch cross-dept context ──
+  useEffect(() => {
+    async function fetchCrossDept() {
+      try {
+        const res = await fetch(`/api/ai-questions/cross-dept-context?slug=${slug}&date=${date}`);
+        const data = await res.json();
+        if (data.crossDeptAlerts && data.crossDeptAlerts.length > 0) {
+          setCrossDeptAlerts(data.crossDeptAlerts);
+        }
+      } catch {
+        // Silently fail — non-critical feature
+      }
+    }
+    fetchCrossDept();
+  }, [slug, date]);
 
   // ── Load conversation: trigger detection (dept head) or fetch existing (GM) ──
   useEffect(() => {
@@ -324,6 +348,39 @@ export default function FormChat({ slug, date, formData, sessionId, onClose, isG
                 ? 'GM Moderator view — you can add follow-up questions to this thread.'
                 : 'We noticed a few things in your submission that may need clarification. Your responses help the GM prepare for the morning meeting.'}
             </p>
+
+            {/* Cross-department context alerts */}
+            {crossDeptAlerts.length > 0 && (
+              <div className="space-y-1.5">
+                {crossDeptAlerts.map((alert, i) => {
+                  const DEPT_DISPLAY: Record<string, string> = {
+                    'customer-care': 'Customer Care', 'emergency': 'Emergency', 'patient-safety': 'Patient Safety',
+                    'finance': 'Finance', 'billing': 'Billing', 'clinical-lab': 'Clinical Lab', 'pharmacy': 'Pharmacy',
+                    'supply-chain': 'Supply Chain', 'facility': 'Facility', 'nursing': 'Nursing', 'radiology': 'Radiology',
+                    'ot': 'OT', 'hr-manpower': 'HR & Manpower', 'diet': 'Diet', 'training': 'Training',
+                    'biomedical': 'Biomedical', 'it': 'IT',
+                  };
+                  const otherNames = alert.other_depts.map(d => DEPT_DISPLAY[d] || d).join(', ');
+                  const isCritical = alert.severity === 'critical';
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg border ${
+                        isCritical
+                          ? 'bg-red-50 border-red-200 text-red-700'
+                          : 'bg-purple-50 border-purple-200 text-purple-700'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold">{alert.pattern_name}:</span>{' '}
+                        Also flagged in {otherNames}.
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {messages.length === 0 && isGM && (
               <p className="text-xs text-gray-400 text-center italic py-4">

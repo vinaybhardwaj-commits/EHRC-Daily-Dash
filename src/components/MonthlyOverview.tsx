@@ -8,6 +8,7 @@ import OverviewHeatmap from './OverviewHeatmap';
 import SparklineHeatmap from './SparklineHeatmap';
 import DepartmentAccordion from './DepartmentAccordion';
 import AIFollowUpBadge from './AIFollowUpBadge';
+import SystemAlertsCard from './SystemAlertsCard';
 
 interface DailyMetric {
   date: string;
@@ -604,6 +605,9 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
 
       {/* ===== AI FOLLOW-UPS BADGE ===== */}
       <AIFollowUpBadge month={selectedMonth} />
+
+      {/* ===== CROSS-DEPARTMENT ANALYSIS ===== */}
+      <SystemAlertsCard date={new Date().toISOString().slice(0, 10)} />
 
       {/* ===== SECTION 3: DEPARTMENT GRID ===== */}
       {data.departmentKPIs && data.departmentKPIs.length > 0 && (
