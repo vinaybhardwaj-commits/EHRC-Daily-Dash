@@ -21,7 +21,7 @@ export async function GET() {
   try {
     // Quick inference test with fast model
     const testResponse = await client.chat.completions.create({
-      model: LLM_MODELS.LLAMA_8B,
+      model: LLM_MODELS.FAST,
       messages: [{ role: 'user', content: 'Say OK' }],
       max_tokens: 5,
     });
@@ -33,7 +33,7 @@ export async function GET() {
       latency_ms: latency,
       test_response: testResponse.choices[0]?.message?.content,
       tunnel_url: process.env.LLM_BASE_URL,
-      models: [LLM_MODELS.QWEN_14B, LLM_MODELS.LLAMA_8B],
+      models: [LLM_MODELS.PRIMARY, LLM_MODELS.FAST],
     });
   } catch (error: unknown) {
     const latency = Date.now() - startTime;

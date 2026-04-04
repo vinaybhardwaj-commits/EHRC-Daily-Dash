@@ -44,7 +44,7 @@ export class QwenLLMAdapter implements LLMAdapter {
       const userPrompt = buildUserPrompt(formData, anomalies, historicalSummary);
 
       const response = await client.chat.completions.create({
-        model: LLM_MODELS.QWEN_14B,
+        model: LLM_MODELS.PRIMARY,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -79,7 +79,7 @@ export class QwenLLMAdapter implements LLMAdapter {
     try {
       // Quick ping — use the fast model
       const response = await client.chat.completions.create({
-        model: LLM_MODELS.LLAMA_8B,
+        model: LLM_MODELS.FAST,
         messages: [{ role: 'user', content: 'Say OK' }],
         max_tokens: 5,
       });

@@ -26,11 +26,10 @@ export function llm(): OpenAI | null {
 }
 
 // Available models on Mac Mini:
-// 'qwen2.5:14b'  - High intelligence, slower (~20-30 tok/s)
-// 'llama3.1:8b'  - Fast, great for tool use (~60 tok/s)
+// Qwen 2.5 14B is the sole model — used for both complex and fast tasks
 export const LLM_MODELS = {
-  QWEN_14B: 'qwen2.5:14b',
-  LLAMA_8B: 'llama3.1:8b',
+  PRIMARY: 'qwen2.5:14b',   // Complex: briefings, gap analysis, predictions, question gen
+  FAST: 'qwen2.5:14b',      // Fast: trend classification, simple categorisation
 } as const;
 
 export default llm;
