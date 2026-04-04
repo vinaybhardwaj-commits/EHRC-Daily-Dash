@@ -56,14 +56,14 @@ export default function TrendInsightsCard({ date }: TrendInsightsCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedDept, setExpandedDept] = useState<string | null>(null);
 
-  async function runAnalysis() {
+  async function runAnalysis(useAI = false) {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/ai-questions/trends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, lookbackDays: 14 }),
+        body: JSON.stringify({ date, lookbackDays: 14, useAI }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
@@ -111,23 +111,35 @@ export default function TrendInsightsCard({ date }: TrendInsightsCardProps) {
           )}
         </div>
 
-        <button
-          onClick={runAnalysis}
-          disabled={loading}
-          className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <BarChart3 className="w-3 h-3" />
-              {narratives !== null ? 'Refresh Trends' : 'Analyze Trends'}
-            </>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => runAnalysis(false)}
+            disabled={loading}
+            className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <BarChart3 className="w-3 h-3" />
+                {narratives !== null ? 'Refresh' : 'Analyze Trends'}
+              </>
+            )}
+          </button>
+          {narratives !== null && !loading && (
+            <button
+              onClick={() => runAnalysis(true)}
+              disabled={loading}
+              className="flex items-center gap-2 text-[10px] font-medium px-2 py-1 rounded-md border border-teal-300 text-teal-700 hover:bg-teal-50 transition-colors"
+              title="Re-run with Qwen AI narratives (slower)"
+            >
+              AI Enhance
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
       {/* ── Error ── */}

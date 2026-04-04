@@ -197,7 +197,7 @@ Rules:
 }
 
 /**
- * Generate narratives for all departments with trend data.
+ * Generate narratives for all departments using Qwen (slower, needs tunnel).
  */
 export async function generateAllNarratives(
   trendData: DepartmentTrendData[]
@@ -213,4 +213,13 @@ export async function generateAllNarratives(
   }
 
   return results;
+}
+
+/**
+ * Generate narratives for all departments using templates only (fast, no LLM).
+ */
+export function generateAllTemplateNarratives(
+  trendData: DepartmentTrendData[]
+): TrendNarrative[] {
+  return trendData.map(d => generateTemplateNarrative(d));
 }

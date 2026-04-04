@@ -5,14 +5,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeAllTrends } from '@/lib/ai-engine/trend-analyzer';
-import { generateAllNarratives, type TrendNarrative } from '@/lib/ai-engine/trend-narrator';
+import { generateAllNarratives, generateAllTemplateNarratives, type TrendNarrative } from '@/lib/ai-engine/trend-narrator';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { date, lookbackDays } = body;
+    const { date, lookbackDays, useAI } = body;
 
     if (!date) {
       return NextResponse.json({ error: 'Missing date parameter' }, { status: 400 });
@@ -23,8 +23,12 @@ export async function POST(request: NextRequest) {
     // 1. Analyze trends for all departments
     const trendData = await analyzeAllTrends(date, days);
 
-    // 2. Generate narratives (Qwen + template fallback)
-    const narratives: TrendNarrative[] = await generateAllNarratives(trendData);
+    // 2. Generate narratives
+    //    Default: template-based (fast, no LLM needed)
+    //    With useAI=true: Qwen generates executive narratives (slower, needs tunnel)
+    const narratives: TrendNarrative[] = useAI
+      ? await generateAllNarratives(trendData)
+      : generateAllTemplateNarratives(trendData);
 
     // 3. Build top-level summary
     const allHighlights = narratives.flatMap(n => n.highlights);
