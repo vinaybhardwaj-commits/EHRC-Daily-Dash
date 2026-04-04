@@ -9,13 +9,27 @@ import { sql } from '@vercel/postgres';
 import { detectAnomalies } from '@/lib/ai-engine/anomaly-detector';
 import { getRubric } from '@/lib/ai-engine/rubrics';
 import { getLLMAdapter } from '@/lib/ai-engine/adapters';
-import { loadHistoricalData, mapFieldLabelsToIds, CUSTOMER_CARE_FIELD_MAP } from '@/lib/ai-engine/historical-loader';
+import {
+  loadHistoricalData,
+  mapFieldLabelsToIds,
+  CUSTOMER_CARE_FIELD_MAP,
+  EMERGENCY_FIELD_MAP,
+  FINANCE_FIELD_MAP,
+  CLINICAL_LAB_FIELD_MAP,
+  PATIENT_SAFETY_FIELD_MAP,
+  FACILITY_FIELD_MAP,
+} from '@/lib/ai-engine/historical-loader';
 
 export const dynamic = 'force-dynamic';
 
 /* ── Field mapping registry (expand as rubrics are added) ────────── */
 const FIELD_MAPS: Record<string, Record<string, string[]>> = {
   'customer-care': CUSTOMER_CARE_FIELD_MAP,
+  'emergency': EMERGENCY_FIELD_MAP,
+  'finance': FINANCE_FIELD_MAP,
+  'clinical-lab': CLINICAL_LAB_FIELD_MAP,
+  'patient-safety': PATIENT_SAFETY_FIELD_MAP,
+  'facility': FACILITY_FIELD_MAP,
 };
 
 /* ── POST: Trigger anomaly detection ─────────────────────────────── */

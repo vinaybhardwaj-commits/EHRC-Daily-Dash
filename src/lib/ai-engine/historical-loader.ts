@@ -114,3 +114,88 @@ export const CUSTOMER_CARE_FIELD_MAP: Record<string, string[]> = {
   callCentrePerformance: ['call centre', 'call center'],
   otherNotes: ['other notes', 'notes'],
 };
+
+/**
+ * Emergency Department field mapping.
+ */
+export const EMERGENCY_FIELD_MAP: Record<string, string[]> = {
+  genuineEmergencies: ['genuine', 'walk-in', 'ambulance emergencies'],
+  afterHoursAdmissions: ['after-hours', 'after hours', 'planned admissions'],
+  doorToDoctorTat: ['door-to-doctor', 'door to doctor', 'tat'],
+  patientsLwbs: ['lwbs', 'left without being seen'],
+  deaths: ['death'],
+  mlcCases: ['mlc'],
+  triageL1L2Count: ['triage', 'l1', 'l2'],
+  edRevenueToday: ['ed revenue', 'revenue today'],
+  lamaDama: ['lama', 'dama'],
+  criticalAlerts: ['critical alert', 'code blue', 'code red', 'code yellow'],
+  edIncidentReports: ['incident report'],
+  anticipatedChallenges: ['anticipated', 'challenges', 'other notes'],
+};
+
+/**
+ * Finance field mapping.
+ */
+export const FINANCE_FIELD_MAP: Record<string, string[]> = {
+  revenueForDay: ['revenue for the day', 'daily revenue'],
+  totalRevenueMtd: ['total revenue mtd', 'revenue mtd'],
+  midnightCensus: ['midnight census', 'ip patients'],
+  surgeriesMtd: ['surgeries mtd'],
+  arpob: ['arpob', 'avg revenue per occupied bed'],
+  opdRevenueMtd: ['opd revenue'],
+  revenueLeakageAlerts: ['revenue leakage', 'leakage alert'],
+  financeNotes: ['finance notes', 'other finance'],
+};
+
+/**
+ * Clinical Lab field mapping.
+ */
+export const CLINICAL_LAB_FIELD_MAP: Record<string, string[]> = {
+  machineEquipmentStatus: ['machine', 'equipment status'],
+  criticalReportsIssued: ['critical report'],
+  tatPerformance: ['tat performance', 'turnaround'],
+  transfusionBloodIssues: ['transfusion', 'blood request', 'blood issue'],
+  outsourcedTestsMtd: ['outsourced test'],
+  reagentShortages: ['reagent shortage', 'reagent'],
+  sampleRecollectionErrors: ['sample recollection', 'reporting error'],
+};
+
+/**
+ * Patient Safety & Quality field mapping.
+ */
+export const PATIENT_SAFETY_FIELD_MAP: Record<string, string[]> = {
+  nearMissIncidents: ['near-miss', 'near miss'],
+  adverseEvents: ['adverse event'],
+  sentinelEvents: ['sentinel event'],
+  patientFalls: ['patient fall'],
+  medicationErrors: ['medication error'],
+  underReportingFlag: ['under-reporting', 'under reporting', 'unreported'],
+  openRcasInProgress: ['open rca', 'rca in progress', 'rca currently'],
+  openRcasPastDue: ['rca past due', 'rca past their due'],
+  correctiveActionsClosed: ['corrective action', 'actions closed'],
+  rcaSummary: ['rca summary'],
+  centralLineBundleCompliance: ['central line', 'clabsi'],
+  urinaryCathetherBundleCompliance: ['urinary catheter', 'cauti'],
+  ventilatorBundleCompliance: ['ventilator', 'vap'],
+  surgicalSiteBundleCompliance: ['surgical site', 'ssi'],
+  newNabhNonCompliances: ['new nabh non-compliance', 'new nabh'],
+  nabhNonComplainancesClosed: ['nabh non-compliance closed', 'nabh closed'],
+  totalOpenNabhNonCompliances: ['total open nabh', 'open nabh'],
+  openAuditFindingsPastDue: ['audit finding', 'audit past due'],
+  clinicalAuditStatus: ['clinical audit'],
+  nonClinicalAuditStatus: ['non-clinical audit'],
+  staffSafetyBriefing: ['safety briefing', 'staff who received'],
+  safetyTopicToday: ['safety topic', 'topic of safety'],
+  qualitySafetyNotes: ['quality', 'safety notes'],
+};
+
+/**
+ * Facility (FMS) field mapping.
+ */
+export const FACILITY_FIELD_MAP: Record<string, string[]> = {
+  facilityReadiness: ['facility readiness', 'power', 'water', 'gases'],
+  safetyIssues: ['safety issue'],
+  housekeepingReadiness: ['housekeeping', 'room readiness'],
+  preventiveMaintenanceUpdate: ['preventive maintenance'],
+  facilityOtherNotes: ['other notes', 'facility notes'],
+};
