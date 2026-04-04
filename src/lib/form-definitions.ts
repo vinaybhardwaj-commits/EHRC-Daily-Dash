@@ -9,7 +9,7 @@ export interface FormField {
   type: FieldType;
   required: boolean;
   options?: string[];   // for radio type only
-  validation?: { min?: number; max?: number }; // for number fields with range
+  validation?: { min?: number; max?: number; step?: number | 'any' }; // for number fields with range
 }
 
 export interface FormSection {
