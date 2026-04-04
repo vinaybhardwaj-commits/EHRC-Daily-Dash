@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, CheckCircle, AlertTriangle, AlertCircle, Info, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageCircle, Send, CheckCircle, AlertTriangle, AlertCircle, Info, X, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 
 /* ── Types (client-side subset) ──────────────────────────────────── */
 
@@ -27,6 +27,8 @@ interface FormChatProps {
   formData: Record<string, unknown>;
   sessionId?: string;
   onClose?: () => void;
+  isGM?: boolean;       // If true, shows GM moderator controls
+  conversationId?: number | null; // Allow passing in existing conversation ID
 }
 
 /* ── Severity helpers ────────────────────────────────────────────── */
@@ -38,63 +40,101 @@ const severityConfig = {
   low:      { icon: Info, color: 'text-gray-500', bg: 'bg-gray-50', border: 'border-gray-200', badge: 'bg-gray-100 text-gray-600' },
 };
 
+const severityOptions: Array<{ value: string; label: string }> = [
+  { value: 'high', label: 'High' },
+  { value: 'critical', label: 'Critical' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+];
+
 /* ── Component ───────────────────────────────────────────────────── */
 
-export default function FormChat({ slug, date, formData, sessionId, onClose }: FormChatProps) {
+export default function FormChat({ slug, date, formData, sessionId, onClose, isGM = false, conversationId: initialConvId }: FormChatProps) {
   const [loading, setLoading] = useState(true);
   const [hasQuestions, setHasQuestions] = useState(false);
   const [questions, setQuestions] = useState<FormQuestion[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(initialConvId ?? null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // GM moderator state
+  const [gmText, setGmText] = useState('');
+  const [gmSeverity, setGmSeverity] = useState('high');
+  const [gmSending, setGmSending] = useState(false);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // ── Trigger anomaly detection on mount ──
+  // ── Load conversation: trigger detection (dept head) or fetch existing (GM) ──
   useEffect(() => {
-    async function triggerDetection() {
+    async function load() {
       try {
-        const res = await fetch('/api/ai-questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug, date, formData, sessionId }),
-        });
-        const data = await res.json();
-
-        if (data.hasQuestions) {
+        if (isGM && initialConvId) {
+          // GM mode: just fetch the existing conversation thread
+          const res = await fetch(`/api/ai-questions?slug=${slug}&date=${date}`);
+          const data = await res.json();
+          if (data.conversation) {
+            setHasQuestions(true);
+            setConversationId(data.conversation.id);
+            setMessages(data.conversation.messages || []);
+            setQuestions(data.conversation.questions || []);
+          }
+        } else if (isGM && !initialConvId) {
+          // GM mode without existing conversation — check if one exists
+          const res = await fetch(`/api/ai-questions?slug=${slug}&date=${date}`);
+          const data = await res.json();
+          if (data.conversation) {
+            setHasQuestions(true);
+            setConversationId(data.conversation.id);
+            setMessages(data.conversation.messages || []);
+            setQuestions(data.conversation.questions || []);
+          }
+          // Even if no conversation exists, GM can still create one
           setHasQuestions(true);
-          setQuestions(data.questions || []);
-          setConversationId(data.conversationId);
-          // Convert questions to initial assistant messages
-          setMessages(
-            (data.questions || []).map((q: FormQuestion, i: number) => ({
-              id: `q-${i}`,
-              role: 'assistant' as const,
-              content: q.text,
-              metadata: { severity: q.severity, rule_id: q.source_rule_id },
-            }))
-          );
+        } else {
+          // Department head mode: trigger anomaly detection
+          const res = await fetch('/api/ai-questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug, date, formData, sessionId }),
+          });
+          const data = await res.json();
+
+          if (data.hasQuestions) {
+            setHasQuestions(true);
+            setQuestions(data.questions || []);
+            setConversationId(data.conversationId);
+            setMessages(
+              (data.questions || []).map((q: FormQuestion, i: number) => ({
+                id: `q-${i}`,
+                role: 'assistant' as const,
+                content: q.text,
+                metadata: { severity: q.severity, rule_id: q.source_rule_id },
+              }))
+            );
+          }
         }
       } catch (err) {
-        console.error('FormChat detection error:', err);
-        setError('Could not check for follow-up questions');
+        console.error('FormChat load error:', err);
+        setError('Could not load conversation');
+        if (isGM) setHasQuestions(true); // GM can always moderate
       } finally {
         setLoading(false);
       }
     }
 
-    triggerDetection();
-  }, [slug, date, formData, sessionId]);
+    load();
+  }, [slug, date, formData, sessionId, isGM, initialConvId]);
 
   // ── Auto-scroll on new messages ──
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ── Send reply ──
+  // ── Send reply (department head) ──
   async function handleSendReply() {
     if (!replyText.trim() || !conversationId || sending) return;
 
@@ -102,7 +142,6 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
     setReplyText('');
     setSending(true);
 
-    // Optimistic UI update
     const tempMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
@@ -119,7 +158,6 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
       const data = await res.json();
 
       if (data.message) {
-        // Replace temp message with real one
         setMessages(prev =>
           prev.map(m => (m.id === tempMsg.id ? { ...data.message } : m))
         );
@@ -127,12 +165,67 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
     } catch (err) {
       console.error('Reply error:', err);
       setError('Failed to send reply');
-      // Remove optimistic message on error
       setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
-      setReplyText(text); // Restore text
+      setReplyText(text);
     } finally {
       setSending(false);
       inputRef.current?.focus();
+    }
+  }
+
+  // ── Send GM question (moderator) ──
+  async function handleSendGmQuestion() {
+    if (!gmText.trim() || gmSending) return;
+
+    const text = gmText.trim();
+    setGmText('');
+    setGmSending(true);
+    setError(null);
+
+    const tempMsg: ChatMessage = {
+      id: `gm-temp-${Date.now()}`,
+      role: 'assistant',
+      content: text,
+      metadata: { severity: gmSeverity, source: 'gm', author: 'GM' },
+    };
+    setMessages(prev => [...prev, tempMsg]);
+
+    try {
+      const res = await fetch('/api/ai-questions/moderate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          date,
+          content: text,
+          severity: gmSeverity,
+          conversationId: conversationId || undefined,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      if (data.message) {
+        setMessages(prev =>
+          prev.map(m => (m.id === tempMsg.id ? { ...data.message } : m))
+        );
+      }
+
+      if (data.conversationId && !conversationId) {
+        setConversationId(data.conversationId);
+      }
+
+      setHasQuestions(true);
+    } catch (err) {
+      console.error('GM moderate error:', err);
+      setError('Failed to send GM question');
+      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      setGmText(text);
+    } finally {
+      setGmSending(false);
     }
   }
 
@@ -140,6 +233,13 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendReply();
+    }
+  }
+
+  function handleGmKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendGmQuestion();
     }
   }
 
@@ -159,9 +259,9 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
     );
   }
 
-  // ── No questions — clean submission ──
-  if (!hasQuestions) {
-    return null; // Don't render anything if no anomalies
+  // ── No questions — clean submission (dept head mode only) ──
+  if (!hasQuestions && !isGM) {
+    return null;
   }
 
   // ── Chat panel ──
@@ -179,12 +279,19 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
           <span className="text-sm font-semibold text-gray-800">
             EHRC AI Assistant
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-            {questions.length} follow-up{questions.length !== 1 ? 's' : ''}
-          </span>
+          {questions.length > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+              {questions.length} follow-up{questions.length !== 1 ? 's' : ''}
+            </span>
+          )}
           {allAnswered && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
               <CheckCircle className="w-3 h-3" /> Responded
+            </span>
+          )}
+          {isGM && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
+              <Shield className="w-3 h-3" /> GM Mode
             </span>
           )}
         </div>
@@ -213,15 +320,23 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
           <div className="px-4 py-3 space-y-3 max-h-[400px] overflow-y-auto">
             {/* Intro text */}
             <p className="text-xs text-gray-500 text-center py-1">
-              We noticed a few things in your submission that may need clarification.
-              Your responses help the GM prepare for the morning meeting.
+              {isGM
+                ? 'GM Moderator view — you can add follow-up questions to this thread.'
+                : 'We noticed a few things in your submission that may need clarification. Your responses help the GM prepare for the morning meeting.'}
             </p>
+
+            {messages.length === 0 && isGM && (
+              <p className="text-xs text-gray-400 text-center italic py-4">
+                No AI questions were generated for this submission. You can add your own below.
+              </p>
+            )}
 
             {messages.map((msg) => {
               const isAssistant = msg.role === 'assistant';
+              const isGmMsg = msg.metadata?.source === 'gm';
               const severity = (msg.metadata?.severity as string) || 'medium';
               const sConf = severityConfig[severity as keyof typeof severityConfig] || severityConfig.medium;
-              const Icon = sConf.icon;
+              const Icon = isGmMsg ? Shield : sConf.icon;
 
               return (
                 <div
@@ -231,16 +346,23 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
                   <div
                     className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                       isAssistant
-                        ? `${sConf.bg} ${sConf.border} border`
+                        ? isGmMsg
+                          ? 'bg-purple-50 border-purple-200 border'
+                          : `${sConf.bg} ${sConf.border} border`
                         : 'bg-blue-600 text-white'
                     }`}
                   >
                     {isAssistant && (
                       <div className="flex items-center gap-1.5 mb-1">
-                        <Icon className={`w-3.5 h-3.5 ${sConf.color}`} />
-                        <span className={`text-[10px] font-medium uppercase ${sConf.color}`}>
-                          {severity}
+                        <Icon className={`w-3.5 h-3.5 ${isGmMsg ? 'text-purple-600' : sConf.color}`} />
+                        <span className={`text-[10px] font-medium uppercase ${isGmMsg ? 'text-purple-600' : sConf.color}`}>
+                          {isGmMsg ? 'GM' : severity}
                         </span>
+                        {isGmMsg && (
+                          <span className={`text-[10px] font-medium uppercase ${sConf.color} ml-1`}>
+                            · {severity}
+                          </span>
+                        )}
                       </div>
                     )}
                     <p className={`leading-relaxed ${isAssistant ? 'text-gray-800' : 'text-white'}`}>
@@ -259,30 +381,72 @@ export default function FormChat({ slug, date, formData, sessionId, onClose }: F
             </div>
           )}
 
-          {/* Reply input */}
-          <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
-            <div className="flex gap-2 items-end">
-              <textarea
-                ref={inputRef}
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your response..."
-                rows={2}
-                className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              />
-              <button
-                onClick={handleSendReply}
-                disabled={!replyText.trim() || sending}
-                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+          {/* GM Moderator input (only shown in GM mode) */}
+          {isGM && (
+            <div className="border-t border-purple-100 px-4 py-3 bg-purple-50/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="w-3.5 h-3.5 text-purple-600" />
+                <span className="text-xs font-semibold text-purple-700 uppercase">GM Question</span>
+                <select
+                  value={gmSeverity}
+                  onChange={(e) => setGmSeverity(e.target.value)}
+                  className="ml-auto text-xs border border-purple-200 rounded px-2 py-0.5 bg-white text-purple-700 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                >
+                  {severityOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 items-end">
+                <textarea
+                  value={gmText}
+                  onChange={(e) => setGmText(e.target.value)}
+                  onKeyDown={handleGmKeyDown}
+                  placeholder="Ask a follow-up question as GM..."
+                  rows={2}
+                  className="flex-1 resize-none rounded-lg border border-purple-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                />
+                <button
+                  onClick={handleSendGmQuestion}
+                  disabled={!gmText.trim() || gmSending}
+                  className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-[10px] text-purple-400 mt-1">
+                This question will appear in the department head&apos;s thread
+              </p>
             </div>
-            <p className="text-[10px] text-gray-400 mt-1">
-              Press Enter to send \u00b7 Shift+Enter for new line
-            </p>
-          </div>
+          )}
+
+          {/* Reply input (department head mode, or GM can also reply) */}
+          {(!isGM || (isGM && messages.some(m => m.role === 'user'))) ? null : null}
+          {!isGM && (
+            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+              <div className="flex gap-2 items-end">
+                <textarea
+                  ref={inputRef}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type your response..."
+                  rows={2}
+                  className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                />
+                <button
+                  onClick={handleSendReply}
+                  disabled={!replyText.trim() || sending}
+                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Press Enter to send · Shift+Enter for new line
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
