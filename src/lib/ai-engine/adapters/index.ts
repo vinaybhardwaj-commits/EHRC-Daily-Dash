@@ -1,13 +1,17 @@
 import type { LLMAdapter } from '../types';
 import { TemplateLLMAdapter } from './template-adapter';
+import { QwenLLMAdapter } from './qwen-adapter';
 
 /* ── Adapter Factory ─────────────────────────────────────────────── */
 
 export function getLLMAdapter(): LLMAdapter {
-  // Phase 2: check for Qwen endpoint
-  // if (process.env.QWEN_API_URL) return new QwenLLMAdapter();
+  // Use Qwen if LLM_BASE_URL is configured (Mac Mini + Cloudflare Tunnel)
+  if (process.env.LLM_BASE_URL) {
+    return new QwenLLMAdapter();
+  }
 
+  // Fallback: template mode (always available, no external dependency)
   return new TemplateLLMAdapter();
 }
 
-export { TemplateLLMAdapter };
+export { TemplateLLMAdapter, QwenLLMAdapter };

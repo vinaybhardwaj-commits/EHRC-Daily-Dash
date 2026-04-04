@@ -3,5 +3,6 @@
 export * from './types';
 export { detectAnomalies } from './anomaly-detector';
 export { getRubric, hasRubric, allRubricSlugs } from './rubrics';
-export { getLLMAdapter, TemplateLLMAdapter } from './adapters';
+export { getLLMAdapter, TemplateLLMAdapter, QwenLLMAdapter } from './adapters';
 export { loadHistoricalData, mapFieldLabelsToIds, CUSTOMER_CARE_FIELD_MAP } from './historical-loader';
+export { buildSystemPrompt, buildUserPrompt, buildHistoricalSummary } from './prompt-builder';
