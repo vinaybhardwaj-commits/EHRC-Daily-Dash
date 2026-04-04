@@ -58,7 +58,8 @@ export default function ExecutiveSummary({ snapshot }: Props) {
   const getDeptField = (slug: string, field: string): string | number | undefined => {
     const dept = snapshot.departments.find(d => d.slug === slug);
     if (!dept || !dept.entries.length) return undefined;
-    return dept.entries[dept.entries.length - 1].fields[field];
+    const entry = dept.entries[dept.entries.length - 1];
+    return entry?.fields?.[field];
   };
 
   // Financial KPIs
