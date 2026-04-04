@@ -260,7 +260,7 @@ const customerCareForm: DepartmentForm = {
           label: 'Average star rating of new Google Reviews (1–5, enter 0 if no reviews today)',
           type: 'number',
           required: true,
-          validation: { min: 0, max: 5 },
+          validation: { min: 0, max: 5, step: 0.1 },
         },
         {
           id: 'videoTestimonialsCollected',
