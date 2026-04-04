@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, CheckCircle, AlertTriangle, AlertCircle, Info, X, ChevronDown, ChevronUp, Shield, Zap } from 'lucide-react';
+import { MessageCircle, Send, CheckCircle, AlertTriangle, AlertCircle, Info, X, ChevronDown, ChevronUp, Shield, Zap, Terminal, Loader2 } from 'lucide-react';
 
 /* ── Types (client-side subset) ──────────────────────────────────── */
 
@@ -253,17 +253,90 @@ export default function FormChat({ slug, date, formData, sessionId, onClose, isG
     }
   }
 
+  // ── Slash command execution ──
+  const [commandLoading, setCommandLoading] = useState(false);
+
+  async function handleSlashCommand(text: string) {
+    setCommandLoading(true);
+    setError(null);
+
+    // Show the command itself as a user message
+    const cmdMsg: ChatMessage = {
+      id: `cmd-${Date.now()}`,
+      role: 'user',
+      content: text,
+      metadata: { source: 'slash-command' },
+    };
+    setMessages(prev => [...prev, cmdMsg]);
+
+    // Show a loading placeholder
+    const loadingId = `cmd-loading-${Date.now()}`;
+    const loadingMsg: ChatMessage = {
+      id: loadingId,
+      role: 'assistant',
+      content: 'Running command...',
+      metadata: { source: 'slash-command', loading: true },
+    };
+    setMessages(prev => [...prev, loadingMsg]);
+
+    try {
+      const res = await fetch('/api/ai-questions/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, slug, date }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Command failed');
+      }
+
+      const resultMsg: ChatMessage = {
+        id: `cmd-result-${Date.now()}`,
+        role: 'assistant',
+        content: data.response,
+        metadata: { source: 'slash-command', command: data.command, ...data.metadata },
+      };
+
+      setMessages(prev => prev.filter(m => m.id !== loadingId).concat(resultMsg));
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Command failed';
+      setMessages(prev =>
+        prev.filter(m => m.id !== loadingId).concat({
+          id: `cmd-err-${Date.now()}`,
+          role: 'assistant',
+          content: `Command error: ${errMsg}`,
+          metadata: { source: 'slash-command', error: true },
+        })
+      );
+    } finally {
+      setCommandLoading(false);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendReply();
+      if (replyText.trim().startsWith('/')) {
+        const text = replyText.trim();
+        setReplyText('');
+        handleSlashCommand(text);
+      } else {
+        handleSendReply();
+      }
     }
   }
 
   function handleGmKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendGmQuestion();
+      if (gmText.trim().startsWith('/')) {
+        const text = gmText.trim();
+        setGmText('');
+        handleSlashCommand(text);
+      } else {
+        handleSendGmQuestion();
+      }
     }
   }
 
@@ -391,9 +464,54 @@ export default function FormChat({ slug, date, formData, sessionId, onClose, isG
             {messages.map((msg) => {
               const isAssistant = msg.role === 'assistant';
               const isGmMsg = msg.metadata?.source === 'gm';
+              const isCmd = msg.metadata?.source === 'slash-command';
+              const isCmdLoading = isCmd && msg.metadata?.loading;
+              const isCmdError = isCmd && msg.metadata?.error;
               const severity = (msg.metadata?.severity as string) || 'medium';
               const sConf = severityConfig[severity as keyof typeof severityConfig] || severityConfig.medium;
-              const Icon = isGmMsg ? Shield : sConf.icon;
+              const Icon = isCmd ? Terminal : isGmMsg ? Shield : sConf.icon;
+
+              // Slash command user messages (the typed command)
+              if (!isAssistant && isCmd) {
+                return (
+                  <div key={msg.id} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-gray-800 text-green-300 font-mono">
+                      {msg.content}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Slash command responses (assistant)
+              if (isAssistant && isCmd) {
+                return (
+                  <div key={msg.id} className="flex justify-start">
+                    <div className={`max-w-[90%] rounded-lg px-4 py-3 text-sm border ${
+                      isCmdError
+                        ? 'bg-red-50 border-red-200'
+                        : isCmdLoading
+                          ? 'bg-gray-50 border-gray-200'
+                          : 'bg-teal-50 border-teal-200'
+                    }`}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        {isCmdLoading ? (
+                          <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />
+                        ) : (
+                          <Terminal className={`w-3.5 h-3.5 ${isCmdError ? 'text-red-500' : 'text-teal-600'}`} />
+                        )}
+                        <span className={`text-[10px] font-medium uppercase ${
+                          isCmdError ? 'text-red-600' : isCmdLoading ? 'text-gray-400' : 'text-teal-600'
+                        }`}>
+                          {isCmdLoading ? 'Running...' : isCmdError ? 'Error' : `/${msg.metadata?.command || 'command'}`}
+                        </span>
+                      </div>
+                      <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                        {msg.content}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div
@@ -464,15 +582,23 @@ export default function FormChat({ slug, date, formData, sessionId, onClose, isG
                   className="flex-1 resize-none rounded-lg border border-purple-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
                 />
                 <button
-                  onClick={handleSendGmQuestion}
-                  disabled={!gmText.trim() || gmSending}
+                  onClick={() => {
+                    if (gmText.trim().startsWith('/')) {
+                      const text = gmText.trim();
+                      setGmText('');
+                      handleSlashCommand(text);
+                    } else {
+                      handleSendGmQuestion();
+                    }
+                  }}
+                  disabled={!gmText.trim() || gmSending || commandLoading}
                   className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send className="w-4 h-4" />
                 </button>
               </div>
               <p className="text-[10px] text-purple-400 mt-1">
-                This question will appear in the department head&apos;s thread
+                This question will appear in the department head&apos;s thread · Type /help for commands
               </p>
             </div>
           )}
@@ -492,15 +618,23 @@ export default function FormChat({ slug, date, formData, sessionId, onClose, isG
                   className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                 />
                 <button
-                  onClick={handleSendReply}
-                  disabled={!replyText.trim() || sending}
+                  onClick={() => {
+                    if (replyText.trim().startsWith('/')) {
+                      const text = replyText.trim();
+                      setReplyText('');
+                      handleSlashCommand(text);
+                    } else {
+                      handleSendReply();
+                    }
+                  }}
+                  disabled={!replyText.trim() || sending || commandLoading}
                   className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send className="w-4 h-4" />
                 </button>
               </div>
               <p className="text-[10px] text-gray-400 mt-1">
-                Press Enter to send · Shift+Enter for new line
+                Press Enter to send · Shift+Enter for new line · Type /help for commands
               </p>
             </div>
           )}
