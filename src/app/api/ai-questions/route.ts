@@ -18,11 +18,22 @@ import {
   CLINICAL_LAB_FIELD_MAP,
   PATIENT_SAFETY_FIELD_MAP,
   FACILITY_FIELD_MAP,
+  BILLING_FIELD_MAP,
+  SUPPLY_CHAIN_FIELD_MAP,
+  PHARMACY_FIELD_MAP,
+  TRAINING_FIELD_MAP,
+  RADIOLOGY_FIELD_MAP,
+  OT_FIELD_MAP,
+  HR_MANPOWER_FIELD_MAP,
+  DIET_FIELD_MAP,
+  BIOMEDICAL_FIELD_MAP,
+  NURSING_FIELD_MAP,
+  IT_FIELD_MAP,
 } from '@/lib/ai-engine/historical-loader';
 
 export const dynamic = 'force-dynamic';
 
-/* ── Field mapping registry (expand as rubrics are added) ────────── */
+/* ── Field mapping registry (all 17 departments) ─────────────────── */
 const FIELD_MAPS: Record<string, Record<string, string[]>> = {
   'customer-care': CUSTOMER_CARE_FIELD_MAP,
   'emergency': EMERGENCY_FIELD_MAP,
@@ -30,6 +41,17 @@ const FIELD_MAPS: Record<string, Record<string, string[]>> = {
   'clinical-lab': CLINICAL_LAB_FIELD_MAP,
   'patient-safety': PATIENT_SAFETY_FIELD_MAP,
   'facility': FACILITY_FIELD_MAP,
+  'billing': BILLING_FIELD_MAP,
+  'supply-chain': SUPPLY_CHAIN_FIELD_MAP,
+  'pharmacy': PHARMACY_FIELD_MAP,
+  'training': TRAINING_FIELD_MAP,
+  'radiology': RADIOLOGY_FIELD_MAP,
+  'ot': OT_FIELD_MAP,
+  'hr-manpower': HR_MANPOWER_FIELD_MAP,
+  'diet': DIET_FIELD_MAP,
+  'biomedical': BIOMEDICAL_FIELD_MAP,
+  'nursing': NURSING_FIELD_MAP,
+  'it': IT_FIELD_MAP,
 };
 
 /* ── POST: Trigger anomaly detection ─────────────────────────────── */

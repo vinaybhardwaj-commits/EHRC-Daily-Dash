@@ -199,3 +199,135 @@ export const FACILITY_FIELD_MAP: Record<string, string[]> = {
   preventiveMaintenanceUpdate: ['preventive maintenance'],
   facilityOtherNotes: ['other notes', 'facility notes'],
 };
+
+/**
+ * Billing field mapping.
+ */
+export const BILLING_FIELD_MAP: Record<string, string[]> = {
+  pipelineCases: ['pipeline cases', 'active pipeline'],
+  otCasesAwaitingBilling: ['ot cases awaiting', 'ot billing clearance'],
+  damaLama: ['dama', 'lama', 'dama/lama'],
+  financialCounsellingDone: ['financial counselling', 'counselling done'],
+  highRiskAlerts: ['high-risk', 'high risk alert'],
+  surgeriesPlannedNextDay: ['surgeries planned', 'planned next day'],
+};
+
+/**
+ * Supply Chain & Procurement field mapping.
+ */
+export const SUPPLY_CHAIN_FIELD_MAP: Record<string, string[]> = {
+  criticalStockAvailability: ['critical stock', 'stock availability'],
+  itemsProcuredEmergency: ['emergency procurement', 'procured emergency', 'after 5pm'],
+  shortagesBackorders: ['shortage', 'backorder'],
+  highValuePurchaseAlerts: ['high-value purchase', 'high value'],
+  procurementEscalations: ['procurement escalation', 'escalation'],
+  grnProcessedToday: ['grn processed', 'goods received'],
+  poRaisedToday: ['po raised', 'purchase order'],
+};
+
+/**
+ * Pharmacy field mapping.
+ */
+export const PHARMACY_FIELD_MAP: Record<string, string[]> = {
+  pharmacyRevenueIpToday: ['ip revenue', 'inpatient revenue', 'ip pharmacy revenue'],
+  pharmacyRevenueOpToday: ['op revenue', 'outpatient revenue', 'op pharmacy revenue'],
+  pharmacyRevenueMtd: ['pharmacy revenue mtd', 'revenue mtd'],
+  stockoutsShortages: ['stockout', 'shortage', 'out of stock'],
+  itemsExpiringWithin3Months: ['expiring', 'expiry', 'items expiring'],
+};
+
+/**
+ * Training field mapping.
+ */
+export const TRAINING_FIELD_MAP: Record<string, string[]> = {
+  trainingConductedTopic: ['training conducted', 'topic', 'training topic'],
+  trainingParticipants: ['participant', 'attendees', 'number of participant'],
+  mtdTrainingsStatus: ['mtd training', 'mtd status', 'trainings completed mtd'],
+};
+
+/**
+ * Radiology field mapping.
+ */
+export const RADIOLOGY_FIELD_MAP: Record<string, string[]> = {
+  xrayCasesYesterday: ['x-ray', 'xray', 'x ray cases'],
+  usgCasesYesterday: ['usg', 'ultrasound'],
+  ctCasesYesterday: ['ct cases', 'ct scan'],
+  equipmentStatus: ['equipment status', 'machine status'],
+  reportsDoneInHouse: ['reports done', 'in-house reports'],
+  pendingReports: ['pending reports', 'reports pending'],
+  criticalResultsEscalated: ['critical results', 'critical finding', 'escalated'],
+  filmContrastStock: ['film', 'contrast stock', 'film/contrast'],
+  radiationSafetyLog: ['radiation safety', 'safety log'],
+};
+
+/**
+ * Operation Theatre field mapping.
+ */
+export const OT_FIELD_MAP: Record<string, string[]> = {
+  otCasesDoneYesterday: ['ot cases done', 'cases done yesterday', 'surgeries done'],
+  firstCaseDelayMinutes: ['first case delay', 'delay minutes'],
+  firstCaseDelayReason: ['delay reason', 'reason for delay'],
+  escalationsBySurgeon: ['surgeon escalation', 'escalation by surgeon'],
+  timesTeamLeftOt: ['team left ot', 'left before', 'left ot'],
+};
+
+/**
+ * HR & Manpower field mapping.
+ */
+export const HR_MANPOWER_FIELD_MAP: Record<string, string[]> = {
+  newJoinersToday: ['new joiner', 'joiners today'],
+  resignationsExitsToday: ['resignation', 'exits today', 'exit'],
+  replacementStatus: ['replacement status', 'replacement'],
+  mandatoryTrainingInduction: ['mandatory training', 'induction'],
+  doctorProfileCreation: ['doctor profile', 'profile creation'],
+  hrOtherNotes: ['hr other notes', 'hr notes'],
+};
+
+/**
+ * Diet & Nutrition field mapping.
+ */
+export const DIET_FIELD_MAP: Record<string, string[]> = {
+  dietPatientsCensus: ['diet patient', 'patient census', 'census'],
+  bcaDoneToday: ['bca done', 'bca today'],
+  bcaMtdTotal: ['bca mtd', 'mtd total'],
+  foodFeedbackSummary: ['food feedback', 'feedback summary'],
+  dischargePlanWithDiet: ['discharge plan', 'diet plan'],
+  kitchenUpdate: ['kitchen update', 'kitchen'],
+  delaysIncidents: ['delay', 'incident', 'kitchen incident'],
+};
+
+/**
+ * Biomedical Engineering field mapping.
+ */
+export const BIOMEDICAL_FIELD_MAP: Record<string, string[]> = {
+  equipmentReadiness: ['equipment readiness', 'readiness'],
+  breakdownUpdates: ['breakdown', 'breakdown update'],
+  pendingRepairs: ['pending repair', 'repairs pending'],
+  preventiveMaintenanceCompliance: ['preventive maintenance', 'pm compliance'],
+  biomedicalOtherNotes: ['biomedical notes', 'other notes'],
+};
+
+/**
+ * Nursing field mapping.
+ */
+export const NURSING_FIELD_MAP: Record<string, string[]> = {
+  midnightCensusNursing: ['midnight census', 'census'],
+  staffingMatrixNurses: ['staffing matrix', 'nurse staffing', 'staffing'],
+  escalationsConcerns: ['escalation', 'concern'],
+  dailyHaiIpcStatus: ['hai', 'ipc', 'infection'],
+  patientComplaintsSatisfaction: ['patient complaint', 'satisfaction'],
+  infectionControlUpdate: ['infection control', 'infection update'],
+  biomedicalWasteIncidents: ['biomedical waste', 'bmw incident'],
+  cafeteriaDialysisUpdate: ['cafeteria', 'dialysis'],
+};
+
+/**
+ * IT field mapping.
+ */
+export const IT_FIELD_MAP: Record<string, string[]> = {
+  hisUptimeDowntime: ['his uptime', 'his downtime', 'uptime/downtime'],
+  pendingItTickets: ['pending it ticket', 'it tickets', 'pending tickets'],
+  upgradesPatchesProgress: ['upgrade', 'patch', 'progress'],
+  integrationIssues: ['integration issue', 'integration'],
+  itOtherNotes: ['it other notes', 'it notes'],
+};
