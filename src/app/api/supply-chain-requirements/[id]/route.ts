@@ -10,7 +10,7 @@ interface RouteParams {
 /**
  * PATCH /api/supply-chain-requirements/[id]
  * Update a requirement's fields (status, notes, quantity, etc.)
- * Uses individual parameterized sql calls — no dynamic query building.
+ * Strategy: read existing → merge with body → write back with full parameterized UPDATE.
  */
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   try {
@@ -20,65 +20,114 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid requirement ID' }, { status: 400 });
     }
 
-    const body = await req.json();
+    // Handle empty or malformed body
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 });
+    }
 
-    // Validate status if provided
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Request body must be a JSON object' }, { status: 400 });
+    }
+
+    // Filter to only allowed fields
+    const allowedFields = new Set([
+      'item_name', 'quantity', 'priority', 'status', 'notes',
+      'requesting_department', 'expected_date', 'vendor', 'cost_estimate',
+    ]);
+    const updates: Record<string, unknown> = {};
+    for (const key of Object.keys(body)) {
+      if (allowedFields.has(key)) {
+        updates[key] = body[key];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
+    // ── Validation ──────────────────────────────────────────────
     const validStatuses = ['Requested', 'Approved', 'Ordered', 'Received', 'Closed'];
-    if (body.status !== undefined && !validStatuses.includes(body.status)) {
+    if (updates.status !== undefined && !validStatuses.includes(updates.status as string)) {
       return NextResponse.json(
         { error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') },
         { status: 400 }
       );
     }
 
-    // Validate priority if provided
-    if (body.priority !== undefined && !['Urgent', 'Normal'].includes(body.priority)) {
-      return NextResponse.json(
-        { error: 'Priority must be Urgent or Normal' },
-        { status: 400 }
-      );
+    if (updates.priority !== undefined && !['Urgent', 'Normal'].includes(updates.priority as string)) {
+      return NextResponse.json({ error: 'Priority must be Urgent or Normal' }, { status: 400 });
     }
 
-    // Validate quantity if provided
-    if (body.quantity !== undefined) {
-      const qty = Number(body.quantity);
-      if (isNaN(qty) || qty < 1) {
-        return NextResponse.json({ error: 'Quantity must be a positive integer' }, { status: 400 });
+    if (updates.quantity !== undefined) {
+      const qty = Number(updates.quantity);
+      if (isNaN(qty) || qty < 1 || !Number.isInteger(qty)) {
+        return NextResponse.json({ error: 'Quantity must be a positive whole number' }, { status: 400 });
       }
     }
 
-    // Validate cost_estimate if provided
-    if (body.cost_estimate !== undefined && body.cost_estimate !== null) {
-      const cost = Number(body.cost_estimate);
+    if (updates.cost_estimate !== undefined && updates.cost_estimate !== null) {
+      const cost = Number(updates.cost_estimate);
       if (isNaN(cost) || cost < 0) {
         return NextResponse.json({ error: 'Cost estimate must be a non-negative number' }, { status: 400 });
       }
     }
 
-    // Check requirement exists
+    if (updates.expected_date !== undefined && updates.expected_date !== null && updates.expected_date !== '') {
+      const dateCheck = new Date(String(updates.expected_date) + 'T00:00:00Z');
+      if (isNaN(dateCheck.getTime())) {
+        return NextResponse.json({ error: 'Invalid expected_date format. Use YYYY-MM-DD.' }, { status: 400 });
+      }
+    }
+
+    if (updates.item_name !== undefined) {
+      if (typeof updates.item_name !== 'string' || updates.item_name.trim() === '') {
+        return NextResponse.json({ error: 'Item name cannot be empty' }, { status: 400 });
+      }
+    }
+
+    // ── Read existing row ───────────────────────────────────────
     const existing = await sql`SELECT * FROM supply_chain_requirements WHERE id = ${reqId}`;
     if (existing.rows.length === 0) {
       return NextResponse.json({ error: 'Requirement not found' }, { status: 404 });
     }
+    const row = existing.rows[0];
 
-    // Determine closed_at value
-    const wasClosedBefore = existing.rows[0].status === 'Closed';
-    const isClosingNow = body.status === 'Closed';
-    const isReopening = body.status && body.status !== 'Closed' && wasClosedBefore;
+    // ── Merge: body values override existing row ────────────────
+    const merged = {
+      item_name: updates.item_name !== undefined ? String(updates.item_name).trim() : row.item_name,
+      quantity: updates.quantity !== undefined ? Number(updates.quantity) : row.quantity,
+      priority: updates.priority !== undefined ? String(updates.priority) : row.priority,
+      status: updates.status !== undefined ? String(updates.status) : row.status,
+      notes: updates.notes !== undefined ? String(updates.notes) : row.notes,
+      requesting_department: updates.requesting_department !== undefined ? String(updates.requesting_department) : row.requesting_department,
+      expected_date: updates.expected_date !== undefined
+        ? (updates.expected_date === '' || updates.expected_date === null ? null : String(updates.expected_date))
+        : row.expected_date,
+      vendor: updates.vendor !== undefined ? String(updates.vendor) : row.vendor,
+      cost_estimate: updates.cost_estimate !== undefined
+        ? (updates.cost_estimate === null ? null : Number(updates.cost_estimate))
+        : row.cost_estimate,
+    };
 
-    // Use a single parameterized UPDATE with COALESCE to only change provided fields
-    // This avoids dynamic SQL entirely — every field path is a parameterized template literal
+    // ── Determine closed_at ─────────────────────────────────────
+    const isClosingNow = merged.status === 'Closed' && row.status !== 'Closed';
+    const isReopening = merged.status !== 'Closed' && row.status === 'Closed';
+
+    // ── Write back: single fully-parameterized UPDATE ───────────
     const result = await sql`
       UPDATE supply_chain_requirements SET
-        item_name = COALESCE(${body.item_name ?? null}, item_name),
-        quantity = COALESCE(${body.quantity !== undefined ? Number(body.quantity) : null}, quantity),
-        priority = COALESCE(${body.priority ?? null}, priority),
-        status = COALESCE(${body.status ?? null}, status),
-        notes = COALESCE(${body.notes ?? null}, notes),
-        requesting_department = COALESCE(${body.requesting_department ?? null}, requesting_department),
-        expected_date = COALESCE(${body.expected_date ?? null}, expected_date),
-        vendor = COALESCE(${body.vendor ?? null}, vendor),
-        cost_estimate = COALESCE(${body.cost_estimate !== undefined ? Number(body.cost_estimate) : null}, cost_estimate),
+        item_name = ${merged.item_name},
+        quantity = ${merged.quantity},
+        priority = ${merged.priority},
+        status = ${merged.status},
+        notes = ${merged.notes},
+        requesting_department = ${merged.requesting_department},
+        expected_date = ${merged.expected_date},
+        vendor = ${merged.vendor},
+        cost_estimate = ${merged.cost_estimate},
         updated_at = NOW(),
         closed_at = CASE
           WHEN ${isClosingNow} THEN NOW()
@@ -101,7 +150,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
 /**
  * GET /api/supply-chain-requirements/[id]
- * Get a single requirement by ID.
  */
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
