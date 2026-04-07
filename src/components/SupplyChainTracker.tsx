@@ -166,7 +166,10 @@ export default function SupplyChainTracker() {
       };
       if (newReq.expected_date) body.expected_date = newReq.expected_date;
       if (newReq.vendor) body.vendor = newReq.vendor;
-      if (newReq.cost_estimate) body.cost_estimate = parseFloat(newReq.cost_estimate);
+      if (newReq.cost_estimate) {
+        const costVal = parseFloat(newReq.cost_estimate);
+        if (!isNaN(costVal) && costVal >= 0) body.cost_estimate = costVal;
+      }
 
       const res = await fetch('/api/supply-chain-requirements', {
         method: 'POST',
@@ -306,7 +309,7 @@ export default function SupplyChainTracker() {
                 type="number"
                 min={1}
                 value={newReq.quantity}
-                onChange={e => setNewReq(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
+                onChange={e => setNewReq(p => ({ ...p, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-300 focus:border-orange-400 outline-none"
               />
             </div>
@@ -413,8 +416,9 @@ export default function SupplyChainTracker() {
         {activeReqs.map(req => {
           const isExpanded = expandedId === req.id;
           const isUpdating = updatingId === req.id;
-          const isOverdue = req.expected_date && new Date(req.expected_date) < new Date() && !['Received', 'Closed'].includes(req.status);
-          const daysSinceCreated = Math.floor((Date.now() - new Date(req.created_at).getTime()) / 86400000);
+          const expectedDateValid = req.expected_date && !isNaN(new Date(req.expected_date).getTime());
+          const isOverdue = expectedDateValid && new Date(req.expected_date) < new Date() && !['Received', 'Closed'].includes(req.status);
+          const daysSinceCreated = req.created_at ? Math.max(0, Math.floor((Date.now() - new Date(req.created_at).getTime()) / 86400000)) : 0;
 
           return (
             <div key={req.id} className={`${isUpdating ? 'opacity-60' : ''} ${req.priority === 'Urgent' ? 'border-l-4 border-l-red-400' : ''}`}>
