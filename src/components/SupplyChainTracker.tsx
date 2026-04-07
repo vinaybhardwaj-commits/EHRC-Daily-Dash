@@ -137,8 +137,8 @@ export default function SupplyChainTracker() {
       setRequirements(data.requirements || []);
       setError(null);
     } catch (err) {
-      setError('Could not load requirements. Please refresh.');
-      console.error(err);
+      console.error('Supply chain fetch error:', err);
+      setError('Could not load requirements. Tap to retry.');
     } finally {
       setLoading(false);
     }
@@ -154,7 +154,7 @@ export default function SupplyChainTracker() {
 
   /* ── Add new requirement ── */
   const handleAdd = async () => {
-    if (!newReq.item_name.trim()) return;
+    if (!newReq.item_name.trim() || saving) return;
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
@@ -193,6 +193,7 @@ export default function SupplyChainTracker() {
 
   /* ── Update status ── */
   const handleStatusChange = async (id: number, newStatus: Requirement['status']) => {
+    if (updatingId !== null) return;
     setUpdatingId(id);
     try {
       const res = await fetch(`/api/supply-chain-requirements/${id}`, {
@@ -213,7 +214,7 @@ export default function SupplyChainTracker() {
   /* ── Save notes ── */
   const handleSaveNotes = async (id: number) => {
     const notes = editingNotes[id];
-    if (notes === undefined) return;
+    if (notes === undefined || updatingId !== null) return;
     setUpdatingId(id);
     try {
       const res = await fetch(`/api/supply-chain-requirements/${id}`, {
@@ -282,9 +283,10 @@ export default function SupplyChainTracker() {
 
       {/* Error message */}
       {error && (
-        <div className="mx-4 mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="mx-4 mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm cursor-pointer"
+             onClick={() => { setError(null); setLoading(true); fetchRequirements(); }}>
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline text-xs">dismiss</button>
+          <button className="ml-2 underline text-xs">tap to retry</button>
         </div>
       )}
 
@@ -308,8 +310,9 @@ export default function SupplyChainTracker() {
               <input
                 type="number"
                 min={1}
+                step={1}
                 value={newReq.quantity}
-                onChange={e => setNewReq(p => ({ ...p, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
+                onChange={e => setNewReq(p => ({ ...p, quantity: Math.max(1, Math.floor(parseInt(e.target.value) || 1)) }))}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-300 focus:border-orange-400 outline-none"
               />
             </div>
