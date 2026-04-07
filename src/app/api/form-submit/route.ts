@@ -68,16 +68,45 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate required fields (skip OT fields in nursing form if not reporting OT)
+    // Validate required fields with conditional logic
     const isNursingReportingOt = slug === 'nursing' && fields['alsoReportingOtData'] === 'Yes';
+    const isHrFillingPipeline = slug === 'hr-manpower' && fields['hiringPipelineApplicable'] === 'Yes';
+
+    // Fields that become required when their toggle is "Yes"
+    const conditionalRequired: Record<string, Record<string, boolean>> = {
+      'nursing': {
+        'otTotalCasesDoneToday': isNursingReportingOt,
+        'otFirstCaseOnTimeStart': isNursingReportingOt,
+        'otCancellationsToday': isNursingReportingOt,
+        // otDelayReason + otCancellationReasons stay optional (free-text follow-ups)
+      },
+      'hr-manpower': {
+        'openPositionsCount': isHrFillingPipeline,
+      },
+      'clinical-lab': {
+        'criticalValueDetails': fields['criticalValuesReportedToday'] === 'Yes',
+        'positiveCultureDetails': Number(fields['positiveCulturesToday']) > 0,
+      },
+    };
+
     const missingRequired: string[] = [];
     form.sections.forEach(section => {
       section.fields.forEach(field => {
-        if (field.type !== 'section' && field.required) {
-          // Skip OT-specific fields in nursing form if not reporting OT
-          const isOtField = ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id);
-          if (slug === 'nursing' && isOtField && !isNursingReportingOt) return;
+        if (field.type === 'section') return;
 
+        // Determine if this field is required
+        const isOtField = ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id);
+        const isHrPipelineField = ['openPositionsCount', 'openPositionsList', 'interviewsScheduledThisWeek', 'offersExtendedThisWeek', 'expectedJoinersThisWeek', 'criticalVacancies'].includes(field.id);
+
+        // Skip OT fields if not reporting OT, skip HR pipeline fields if not Monday
+        if (slug === 'nursing' && isOtField && !isNursingReportingOt) return;
+        if (slug === 'hr-manpower' && isHrPipelineField && !isHrFillingPipeline) return;
+
+        // Check if field is statically required OR conditionally required
+        const isConditionallyRequired = conditionalRequired[slug]?.[field.id] ?? false;
+        const isFieldRequired = field.required || isConditionallyRequired;
+
+        if (isFieldRequired) {
           const value = fields[field.id];
           if (value === '' || value === undefined || value === null) {
             missingRequired.push(field.label);
@@ -106,15 +135,15 @@ export async function POST(request: Request) {
 
           // Separate OT fields from nursing fields for dual-write
           if (slug === 'nursing' && ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id)) {
-            // Map nursing OT field labels to match the OT form's field labels
-            const otLabelMap: Record<string, string> = {
-              'Total OT cases done today': 'Total cases done today',
-              'First case on-time start?': 'First case on-time start?',
-              'If No: delay reason': 'If No: delay reason',
-              'OT cancellations today': 'Cancellations today',
-              'If any: OT cancellation reasons': 'If any: cancellation reasons',
+            // Map nursing OT field IDs to OT form's field labels (ID-based, not label-based)
+            const otIdToLabel: Record<string, string> = {
+              'otTotalCasesDoneToday': 'Total cases done today',
+              'otFirstCaseOnTimeStart': 'First case on-time start?',
+              'otDelayReason': 'If No: delay reason',
+              'otCancellationsToday': 'Cancellations today',
+              'otCancellationReasons': 'If any: cancellation reasons',
             };
-            otEntries.push({ key: otLabelMap[field.label] || field.label, value: String(fields[field.id]) });
+            otEntries.push({ key: otIdToLabel[field.id] || field.label, value: String(fields[field.id]) });
           } else {
             entries.push(entry);
           }
