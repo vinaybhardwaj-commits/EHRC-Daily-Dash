@@ -47,8 +47,14 @@ export async function GET() {
       WHERE status NOT IN ('Closed')
     `;
 
-    // Build summary
-    const byStatus: Record<string, number> = {};
+    // Build summary — initialize all statuses to 0
+    const byStatus: Record<string, number> = {
+      Requested: 0,
+      Approved: 0,
+      Ordered: 0,
+      Received: 0,
+      Closed: 0,
+    };
     for (const row of statusCounts.rows) {
       byStatus[row.status] = parseInt(row.count, 10);
     }
