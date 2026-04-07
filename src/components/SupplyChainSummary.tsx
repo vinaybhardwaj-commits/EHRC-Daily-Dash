@@ -20,7 +20,9 @@ export default function SupplyChainSummary() {
     fetch('/api/supply-chain-requirements/summary')
       .then(r => r.json())
       .then(data => setSummary(data.summary))
-      .catch(() => {})
+      .catch(err => {
+        console.error('Supply chain summary fetch failed:', err);
+      })
       .finally(() => setLoading(false));
   }, []);
 
