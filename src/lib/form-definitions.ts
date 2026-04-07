@@ -395,7 +395,7 @@ const patientSafetyForm: DepartmentForm = {
           ],
         },
         {
-          id: 'urinaryCathetherBundleCompliance',
+          id: 'urinaryCatheterBundleCompliance',
           label: 'Urinary Catheter bundle compliance today (CAUTI prevention)',
           type: 'radio',
           required: true,
