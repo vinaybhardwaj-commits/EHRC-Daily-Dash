@@ -37,8 +37,32 @@ const MIGRATIONS: Migration[] = [
   // Migrations 1-6 were applied directly on 2026-03-28.
   // They are recorded in schema_migrations but not re-runnable here
   // since they included data backfills that should only run once.
-  // Future migrations go here:
-  // { version: 7, name: 'next_migration', statements: ['...'] },
+  {
+    version: 7,
+    name: 'create_supply_chain_requirements',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS supply_chain_requirements (
+        id SERIAL PRIMARY KEY,
+        item_name TEXT NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        priority TEXT DEFAULT 'Normal' CHECK (priority IN ('Urgent', 'Normal')),
+        status TEXT DEFAULT 'Requested' CHECK (status IN ('Requested', 'Approved', 'Ordered', 'Received', 'Closed')),
+        notes TEXT,
+        requesting_department TEXT,
+        expected_date DATE,
+        vendor TEXT,
+        cost_estimate NUMERIC(12,2),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        closed_at TIMESTAMPTZ,
+        created_by TEXT,
+        facility_id INTEGER DEFAULT 1
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_scr_status ON supply_chain_requirements(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_scr_priority ON supply_chain_requirements(priority)`,
+      `CREATE INDEX IF NOT EXISTS idx_scr_closed_at ON supply_chain_requirements(closed_at)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
