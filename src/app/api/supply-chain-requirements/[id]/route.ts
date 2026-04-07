@@ -10,6 +10,7 @@ interface RouteParams {
 /**
  * PATCH /api/supply-chain-requirements/[id]
  * Update a requirement's fields (status, notes, quantity, etc.)
+ * Uses individual parameterized sql calls — no dynamic query building.
  */
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   try {
@@ -20,25 +21,38 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     }
 
     const body = await req.json();
-    const allowedFields = [
-      'item_name', 'quantity', 'priority', 'status', 'notes',
-      'requesting_department', 'expected_date', 'vendor', 'cost_estimate',
-    ];
 
     // Validate status if provided
-    if (body.status && !['Requested', 'Approved', 'Ordered', 'Received', 'Closed'].includes(body.status)) {
+    const validStatuses = ['Requested', 'Approved', 'Ordered', 'Received', 'Closed'];
+    if (body.status !== undefined && !validStatuses.includes(body.status)) {
       return NextResponse.json(
-        { error: 'Invalid status. Must be one of: Requested, Approved, Ordered, Received, Closed' },
+        { error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') },
         { status: 400 }
       );
     }
 
     // Validate priority if provided
-    if (body.priority && !['Urgent', 'Normal'].includes(body.priority)) {
+    if (body.priority !== undefined && !['Urgent', 'Normal'].includes(body.priority)) {
       return NextResponse.json(
         { error: 'Priority must be Urgent or Normal' },
         { status: 400 }
       );
+    }
+
+    // Validate quantity if provided
+    if (body.quantity !== undefined) {
+      const qty = Number(body.quantity);
+      if (isNaN(qty) || qty < 1) {
+        return NextResponse.json({ error: 'Quantity must be a positive integer' }, { status: 400 });
+      }
+    }
+
+    // Validate cost_estimate if provided
+    if (body.cost_estimate !== undefined && body.cost_estimate !== null) {
+      const cost = Number(body.cost_estimate);
+      if (isNaN(cost) || cost < 0) {
+        return NextResponse.json({ error: 'Cost estimate must be a non-negative number' }, { status: 400 });
+      }
     }
 
     // Check requirement exists
@@ -47,37 +61,33 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Requirement not found' }, { status: 404 });
     }
 
-    // Build dynamic update
-    const updates: string[] = [];
-    const values: (string | number | null)[] = [];
-    let paramIdx = 1;
+    // Determine closed_at value
+    const wasClosedBefore = existing.rows[0].status === 'Closed';
+    const isClosingNow = body.status === 'Closed';
+    const isReopening = body.status && body.status !== 'Closed' && wasClosedBefore;
 
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updates.push(`${field} = $${paramIdx}`);
-        values.push(body[field]);
-        paramIdx++;
-      }
-    }
-
-    if (updates.length === 0) {
-      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
-    }
-
-    // Always update updated_at
-    updates.push(`updated_at = NOW()`);
-
-    // Set closed_at when status changes to Closed
-    if (body.status === 'Closed') {
-      updates.push(`closed_at = NOW()`);
-    } else if (body.status && body.status !== 'Closed' && existing.rows[0].status === 'Closed') {
-      // Reopening: clear closed_at
-      updates.push(`closed_at = NULL`);
-    }
-
-    values.push(reqId);
-    const query = `UPDATE supply_chain_requirements SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING *`;
-    const result = await sql.query(query, values);
+    // Use a single parameterized UPDATE with COALESCE to only change provided fields
+    // This avoids dynamic SQL entirely — every field path is a parameterized template literal
+    const result = await sql`
+      UPDATE supply_chain_requirements SET
+        item_name = COALESCE(${body.item_name ?? null}, item_name),
+        quantity = COALESCE(${body.quantity !== undefined ? Number(body.quantity) : null}, quantity),
+        priority = COALESCE(${body.priority ?? null}, priority),
+        status = COALESCE(${body.status ?? null}, status),
+        notes = COALESCE(${body.notes ?? null}, notes),
+        requesting_department = COALESCE(${body.requesting_department ?? null}, requesting_department),
+        expected_date = COALESCE(${body.expected_date ?? null}, expected_date),
+        vendor = COALESCE(${body.vendor ?? null}, vendor),
+        cost_estimate = COALESCE(${body.cost_estimate !== undefined ? Number(body.cost_estimate) : null}, cost_estimate),
+        updated_at = NOW(),
+        closed_at = CASE
+          WHEN ${isClosingNow} THEN NOW()
+          WHEN ${isReopening} THEN NULL
+          ELSE closed_at
+        END
+      WHERE id = ${reqId}
+      RETURNING *
+    `;
 
     return NextResponse.json({ requirement: result.rows[0] });
   } catch (error) {
