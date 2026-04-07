@@ -19,7 +19,8 @@ const smartFormOverrides: Record<string, SmartFormConfig> = {};
 
 interface FieldPatch {
   fieldId: string;
-  showWhen: ConditionRule;
+  showWhen?: ConditionRule;
+  requireWhen?: ConditionRule;
 }
 
 interface FormPatch {
@@ -35,10 +36,12 @@ const conditionalPatches: FormPatch[] = [
       {
         fieldId: 'criticalValueDetails',
         showWhen: { field: 'criticalValuesReportedToday', operator: 'eq', value: 'Yes' },
+        requireWhen: { field: 'criticalValuesReportedToday', operator: 'eq', value: 'Yes' },
       },
       {
         fieldId: 'positiveCultureDetails',
         showWhen: { field: 'positiveCulturesToday', operator: 'gt', value: 0 },
+        requireWhen: { field: 'positiveCulturesToday', operator: 'gt', value: 0 },
       },
     ],
   },
@@ -59,10 +62,12 @@ const conditionalPatches: FormPatch[] = [
       {
         fieldId: 'otTotalCasesDoneToday',
         showWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
+        requireWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
       },
       {
         fieldId: 'otFirstCaseOnTimeStart',
         showWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
+        requireWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
       },
       {
         fieldId: 'otDelayReason',
@@ -77,6 +82,7 @@ const conditionalPatches: FormPatch[] = [
       {
         fieldId: 'otCancellationsToday',
         showWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
+        requireWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
       },
       {
         fieldId: 'otCancellationReasons',
@@ -97,6 +103,7 @@ const conditionalPatches: FormPatch[] = [
       {
         fieldId: 'openPositionsCount',
         showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
+        requireWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
       },
       {
         fieldId: 'openPositionsList',
@@ -136,7 +143,8 @@ function applyConditionalPatches(): void {
       for (const section of form.sections) {
         const field = section.fields.find((f: SmartFormField) => f.id === patch.fieldId);
         if (field) {
-          field.showWhen = patch.showWhen;
+          if (patch.showWhen) field.showWhen = patch.showWhen;
+          if (patch.requireWhen) field.requireWhen = patch.requireWhen;
           break;
         }
       }
