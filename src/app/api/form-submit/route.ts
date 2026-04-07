@@ -5,6 +5,7 @@ interface FormSubmissionBody {
   slug: string;
   date: string;
   fields: Record<string, string | number>;
+  submitted_by?: string;
 }
 
 interface DepartmentEntry {
@@ -28,7 +29,7 @@ function normalizeDate(dateStr: string): string {
     return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
   }
 
-  // Try DD-MM-YY format (2-digit year â assume 20xx)
+  // Try DD-MM-YY format (2-digit year \u2014 assume 20xx)
   const ddmmyy = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2})$/.exec(s);
   if (ddmmyy) {
     return `20${ddmmyy[3]}-${ddmmyy[2].padStart(2, '0')}-${ddmmyy[1].padStart(2, '0')}`;
@@ -40,7 +41,7 @@ function normalizeDate(dateStr: string): string {
 export async function POST(request: Request) {
   try {
     const body: FormSubmissionBody = await request.json();
-    const { slug, date, fields } = body;
+    const { slug, date, fields, submitted_by } = body;
 
     // Validate slug exists
     const form = FORMS_BY_SLUG[slug];
@@ -67,11 +68,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate required fields
+    // Validate required fields (skip OT fields in nursing form if not reporting OT)
+    const isNursingReportingOt = slug === 'nursing' && fields['alsoReportingOtData'] === 'Yes';
     const missingRequired: string[] = [];
     form.sections.forEach(section => {
       section.fields.forEach(field => {
         if (field.type !== 'section' && field.required) {
+          // Skip OT-specific fields in nursing form if not reporting OT
+          const isOtField = ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id);
+          if (slug === 'nursing' && isOtField && !isNursingReportingOt) return;
+
           const value = fields[field.id];
           if (value === '' || value === undefined || value === null) {
             missingRequired.push(field.label);
@@ -91,13 +97,27 @@ export async function POST(request: Request) {
 
     // Convert fields to DepartmentEntry format
     const entries: DepartmentEntry[] = [];
+    const otEntries: DepartmentEntry[] = []; // For DD.4 dual-write
+
     form.sections.forEach(section => {
       section.fields.forEach(field => {
         if (field.type !== 'section' && field.id in fields) {
-          entries.push({
-            key: field.label,
-            value: String(fields[field.id]),
-          });
+          const entry = { key: field.label, value: String(fields[field.id]) };
+
+          // Separate OT fields from nursing fields for dual-write
+          if (slug === 'nursing' && ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id)) {
+            // Map nursing OT field labels to match the OT form's field labels
+            const otLabelMap: Record<string, string> = {
+              'Total OT cases done today': 'Total cases done today',
+              'First case on-time start?': 'First case on-time start?',
+              'If No: delay reason': 'If No: delay reason',
+              'OT cancellations today': 'Cancellations today',
+              'If any: OT cancellation reasons': 'If any: cancellation reasons',
+            };
+            otEntries.push({ key: otLabelMap[field.label] || field.label, value: String(fields[field.id]) });
+          } else {
+            entries.push(entry);
+          }
         }
       });
     });
@@ -108,12 +128,31 @@ export async function POST(request: Request) {
     const istDate = new Date(now.getTime() + (istOffset * 60 * 1000) - (now.getTimezoneOffset() * 60 * 1000));
     const isoNow = istDate.toISOString();
 
-    // Insert/upsert department_data
+    const submittedBy = submitted_by || null;
+    const submittedVia = slug;
+
+    // Insert/upsert department_data for the primary form
     await sql`
-      INSERT INTO department_data (date, slug, name, tab, entries)
-      VALUES (${normalizedDate}, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb)
-      ON CONFLICT (date, slug) DO UPDATE SET entries = EXCLUDED.entries;
+      INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via)
+      VALUES (${normalizedDate}, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb, ${submittedBy}, ${submittedVia})
+      ON CONFLICT (date, slug) DO UPDATE SET
+        entries = EXCLUDED.entries,
+        submitted_by = EXCLUDED.submitted_by,
+        submitted_via = EXCLUDED.submitted_via;
     `;
+
+    // DD.4: If nursing is also reporting OT data, dual-write to OT department_data
+    if (slug === 'nursing' && isNursingReportingOt && otEntries.length > 0) {
+      const otForm = FORMS_BY_SLUG['ot'];
+      await sql`
+        INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via)
+        VALUES (${normalizedDate}, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'})
+        ON CONFLICT (date, slug) DO UPDATE SET
+          entries = EXCLUDED.entries,
+          submitted_by = EXCLUDED.submitted_by,
+          submitted_via = EXCLUDED.submitted_via;
+      `;
+    }
 
     // Upsert day_snapshots
     await sql`
@@ -126,6 +165,7 @@ export async function POST(request: Request) {
       success: true,
       message: `Form submitted successfully for ${form.department}`,
       date: normalizedDate,
+      dual_write: slug === 'nursing' && isNursingReportingOt ? 'OT data also saved' : undefined,
     });
   } catch (error) {
     console.error('Form submission error:', error);
