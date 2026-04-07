@@ -420,7 +420,7 @@ export default function SupplyChainTracker() {
           const isExpanded = expandedId === req.id;
           const isUpdating = updatingId === req.id;
           const expectedDateValid = req.expected_date && !isNaN(new Date(req.expected_date).getTime());
-          const isOverdue = expectedDateValid && new Date(req.expected_date) < new Date() && !['Received', 'Closed'].includes(req.status);
+          const isOverdue = expectedDateValid && new Date(req.expected_date!) < new Date() && !['Received', 'Closed'].includes(req.status);
           const daysSinceCreated = req.created_at ? Math.max(0, Math.floor((Date.now() - new Date(req.created_at).getTime()) / 86400000)) : 0;
 
           return (
