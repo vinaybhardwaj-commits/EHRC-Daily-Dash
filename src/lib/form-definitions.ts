@@ -47,7 +47,7 @@ const emergencyForm: DepartmentForm = {
   slug: 'emergency',
   title: 'EHRC Morning Meeting — Emergency Department',
   department: 'Emergency',
-  description: 'Fill this before the daily morning meeting — Dr. Gautham.\n★ Starred fields are mandatory.\nTakes under 3 minutes.\n\nSeparate genuine walk-in/ambulance emergencies from planned admissions routed through ED after hours.',
+  description: 'Fill this before the daily morning meeting.\n★ Starred fields are mandatory.\nTakes under 3 minutes.\n\nSeparate genuine walk-in/ambulance emergencies from planned admissions routed through ED after hours.',
   sections: [
     dateSection,
     {
@@ -140,7 +140,7 @@ const customerCareForm: DepartmentForm = {
   slug: 'customer-care',
   title: 'EHRC Morning Meeting — Customer Care',
   department: 'Customer Care',
-  description: 'Fill this before the daily morning meeting — Lavanya.\n★ Starred fields are mandatory.\nTakes under 3 minutes to complete.\n\nTIP: Keep a tally sheet at the front desk for patients who leave OPD without being seen.',
+  description: 'Fill this before the daily morning meeting.\n★ Starred fields are mandatory.\nTakes under 3 minutes to complete.\n\nTIP: Keep a tally sheet at the front desk for patients who leave OPD without being seen.',
   sections: [
     dateSection,
     {
@@ -302,7 +302,7 @@ const patientSafetyForm: DepartmentForm = {
   slug: 'patient-safety',
   title: 'EHRC Morning Meeting — Patient Safety & Quality',
   department: 'Patient Safety & Quality',
-  description: 'Fill this before the daily morning meeting — Dr. Ankita Priya.\n★ Starred fields are mandatory.\n\nThis form is a safety intelligence tool, not just a compliance checklist.\nAccurate daily data here directly supports NABH accreditation and drives RCA follow-through.',
+  description: 'Fill this before the daily morning meeting.\n★ Starred fields are mandatory.\n\nThis form is a safety intelligence tool, not just a compliance checklist.\nAccurate daily data here directly supports NABH accreditation and drives RCA follow-through.',
   sections: [
     dateSection,
     {
@@ -342,7 +342,7 @@ const patientSafetyForm: DepartmentForm = {
         {
           id: 'underReportingFlag',
           label: 'Under-reporting flag — any incident type you suspect was not reported today? (write NIL if none)',
-          description: 'Mandatory — not about naming individuals. About identifying where the culture of hiding exists.\ne.g. \'Likely medication error in ICU not reported\' or \'OT team may have had a near miss\'\nThis field is reviewed only by V and Dr. Ankita.',
+          description: 'Mandatory — not about naming individuals. About identifying where the culture of hiding exists.\ne.g. \'Likely medication error in ICU not reported\' or \'OT team may have had a near miss\'\nThis field is reviewed only by hospital leadership.',
           type: 'text',
           required: true,
         },
@@ -771,6 +771,26 @@ const facilityForm: DepartmentForm = {
         },
       ],
     },
+    {
+      title: 'MAJOR BREAKDOWNS & INCIDENTS',
+      description: 'Report any major equipment or system breakdowns today.',
+      fields: [
+        {
+          id: 'majorBreakdownToday',
+          label: 'Any major breakdown today?',
+          type: 'radio',
+          required: true,
+          options: ['Yes', 'No'],
+        },
+        {
+          id: 'breakdownDetails',
+          label: 'Breakdown details (equipment/system, impact, status, estimated repair timeline)',
+          description: 'Enter one breakdown per line. Format: Equipment | Impact (Patient Safety Risk / Service Disruption / Cost Impact / Minor) | Status (Active / Contained / Resolved) | Timeline',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
   ],
 };
 
@@ -931,6 +951,40 @@ const clinicalLabForm: DepartmentForm = {
         },
       ],
     },
+    {
+      title: 'CRITICAL VALUES & ALERTS',
+      description: 'Report any critical values or positive cultures from today.',
+      fields: [
+        {
+          id: 'criticalValuesReportedToday',
+          label: 'Were any critical values reported today?',
+          type: 'radio',
+          required: true,
+          options: ['Yes', 'No'],
+        },
+        {
+          id: 'criticalValueDetails',
+          label: 'Critical value details (patient UHID, test, value, normal range, time reported, time communicated to physician, physician name, acknowledgment status)',
+          description: 'Enter one critical value per line. Format: UHID | Test | Value | Normal Range | Time Reported | Time Communicated | Physician | Ack (Yes/No)',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'positiveCulturesToday',
+          label: '# of positive cultures today',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'positiveCultureDetails',
+          label: 'Positive culture details (organism, specimen type, patient UHID)',
+          description: 'Enter one culture per line. Format: Organism | Specimen Type | UHID',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
   ],
 };
 
@@ -1009,50 +1063,48 @@ const radiologyForm: DepartmentForm = {
   ],
 };
 
-// 12. OT
+// 12. OT (Simplified — DD.4, 7 Apr 2026)
 const otForm: DepartmentForm = {
   slug: 'ot',
-  title: 'EHRC Morning Meeting — OT',
+  title: 'EHRC Morning Meeting — OT Daily Summary',
   department: 'OT',
-  description: 'Fill this before the daily morning meeting.\nStarred fields (★) are mandatory — should take under 2 minutes.\nDepartment: OT',
+  description: 'Fill this before the daily morning meeting.\nShould take under 2 minutes.\nDepartment: OT',
   sections: [
     dateSection,
     {
-      title: 'MANDATORY FIELDS',
+      title: 'OT DAILY SUMMARY',
       fields: [
         {
-          id: 'otCasesDoneYesterday',
-          label: '# of OT cases done (yesterday)',
+          id: 'totalCasesDoneToday',
+          label: 'Total cases done today',
           type: 'number',
           required: true,
+          validation: { min: 0 },
         },
         {
-          id: 'firstCaseDelayMinutes',
-          label: 'First case delay — time in minutes',
+          id: 'firstCaseOnTimeStart',
+          label: 'First case on-time start?',
+          type: 'radio',
+          required: true,
+          options: ['Yes', 'No'],
+        },
+        {
+          id: 'delayReason',
+          label: 'If No: delay reason',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'cancellationsToday',
+          label: 'Cancellations today',
           type: 'number',
           required: true,
+          validation: { min: 0 },
         },
         {
-          id: 'firstCaseDelayReason',
-          label: 'First case delay — reason',
-          type: 'text',
-          required: true,
-        },
-        {
-          id: 'escalationsBySurgeon',
-          label: '# of Escalations by surgeon',
-          type: 'number',
-          required: true,
-        },
-      ],
-    },
-    {
-      title: 'OPTIONAL FIELDS',
-      fields: [
-        {
-          id: 'timesTeamLeftOt',
-          label: '# of times team left OT for consumables',
-          type: 'number',
+          id: 'cancellationReasons',
+          label: 'If any: cancellation reasons',
+          type: 'paragraph',
           required: false,
         },
       ],
@@ -1293,6 +1345,85 @@ const nursingForm: DepartmentForm = {
           id: 'cafeteriaDialysisUpdate',
           label: 'Cafeteria / dialysis update',
           type: 'text',
+          required: false,
+        },
+      ],
+    },
+    {
+      title: 'OT SUPPORT',
+      description: 'OT metrics captured by nursing. Fill the OT section below if you are also reporting OT data today.',
+      fields: [
+        {
+          id: 'otCasesAssistedToday',
+          label: 'OT cases assisted today',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'preOpChecklistsCompleted',
+          label: 'Pre-op checklists completed',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'postOpHandoffsCompleted',
+          label: 'Post-op handoffs completed',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'otTurnaroundIssues',
+          label: 'OT turnaround issues (delays, equipment, staffing)',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
+    {
+      title: 'ALSO REPORTING OT DATA TODAY?',
+      description: 'If the OT coordinator is unavailable, you can report OT daily summary data here. This will count as the OT submission for today.',
+      fields: [
+        {
+          id: 'alsoReportingOtData',
+          label: 'Are you also reporting OT data today?',
+          type: 'radio',
+          required: true,
+          options: ['Yes', 'No'],
+        },
+        {
+          id: 'otTotalCasesDoneToday',
+          label: 'Total OT cases done today',
+          type: 'number',
+          required: false,
+          validation: { min: 0 },
+        },
+        {
+          id: 'otFirstCaseOnTimeStart',
+          label: 'First case on-time start?',
+          type: 'radio',
+          required: false,
+          options: ['Yes', 'No'],
+        },
+        {
+          id: 'otDelayReason',
+          label: 'If No: delay reason',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'otCancellationsToday',
+          label: 'OT cancellations today',
+          type: 'number',
+          required: false,
+          validation: { min: 0 },
+        },
+        {
+          id: 'otCancellationReasons',
+          label: 'If any: OT cancellation reasons',
+          type: 'paragraph',
           required: false,
         },
       ],
