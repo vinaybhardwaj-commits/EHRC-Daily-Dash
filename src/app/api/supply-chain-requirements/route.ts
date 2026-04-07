@@ -92,11 +92,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate quantity
+    // Validate quantity — must be a positive whole number
     const qty = Number(quantity);
-    if (isNaN(qty) || qty < 1) {
+    if (isNaN(qty) || qty < 1 || !Number.isInteger(qty)) {
       return NextResponse.json(
-        { error: 'Quantity must be a positive integer (>= 1)' },
+        { error: 'Quantity must be a positive whole number (1, 2, 3...)' },
         { status: 400 }
       );
     }
