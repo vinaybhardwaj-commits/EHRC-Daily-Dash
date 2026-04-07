@@ -1166,6 +1166,61 @@ const hrManpowerForm: DepartmentForm = {
         },
       ],
     },
+    {
+      title: 'WEEKLY HIRING PIPELINE (Mondays only)',
+      description: 'Update open positions and hiring status. Fill this section on Mondays only — skip on other days.',
+      fields: [
+        {
+          id: 'hiringPipelineApplicable',
+          label: 'Is today Monday? (Fill hiring pipeline)',
+          type: 'radio',
+          required: true,
+          options: ['Yes', 'No'],
+        },
+        {
+          id: 'openPositionsCount',
+          label: 'Total open positions',
+          type: 'number',
+          required: false,
+          validation: { min: 0 },
+        },
+        {
+          id: 'openPositionsList',
+          label: 'Open positions list (role, department, days open, status)',
+          description: 'One position per line. Format: Role | Department | Days Open | Status (Sourcing / Interviewing / Offer / On Hold)',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'interviewsScheduledThisWeek',
+          label: 'Interviews scheduled this week',
+          type: 'number',
+          required: false,
+          validation: { min: 0 },
+        },
+        {
+          id: 'offersExtendedThisWeek',
+          label: 'Offers extended this week',
+          type: 'number',
+          required: false,
+          validation: { min: 0 },
+        },
+        {
+          id: 'expectedJoinersThisWeek',
+          label: 'Expected joiners this week (name, role, date)',
+          description: 'One joiner per line. Format: Name | Role | Expected Join Date',
+          type: 'paragraph',
+          required: false,
+        },
+        {
+          id: 'criticalVacancies',
+          label: 'Critical vacancies (impacting patient care or operations)',
+          description: 'List any vacancy that is urgent or impacting service delivery.',
+          type: 'paragraph',
+          required: false,
+        },
+      ],
+    },
   ],
 };
 
