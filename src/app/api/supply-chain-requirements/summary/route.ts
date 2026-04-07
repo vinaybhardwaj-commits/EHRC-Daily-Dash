@@ -24,20 +24,20 @@ export async function GET() {
       WHERE priority = 'Urgent' AND status NOT IN ('Received', 'Closed')
     `;
 
-    // Overdue items (expected_date in the past, not yet Received/Closed)
+    // Overdue items (expected_date in the past per IST, not yet Received/Closed)
     const overdue = await sql`
       SELECT COUNT(*) as count
       FROM supply_chain_requirements
-      WHERE expected_date < CURRENT_DATE
+      WHERE expected_date < (NOW() AT TIME ZONE 'Asia/Kolkata')::date
         AND status NOT IN ('Received', 'Closed')
     `;
 
-    // Closed this week
+    // Closed this week (IST boundary: UTC+5:30)
     const closedThisWeek = await sql`
       SELECT COUNT(*) as count
       FROM supply_chain_requirements
       WHERE status = 'Closed'
-        AND closed_at >= DATE_TRUNC('week', CURRENT_DATE)
+        AND closed_at >= DATE_TRUNC('week', (NOW() AT TIME ZONE 'Asia/Kolkata')::date::timestamp)
     `;
 
     // Total active (not Closed)
