@@ -6,6 +6,7 @@ import { getFormConfig } from '@/lib/form-engine/registry';
 import { SmartForm } from '@/components/form-engine';
 import { FORMS_BY_SLUG } from '@/lib/form-definitions';
 import FormChat from '@/components/FormChat';
+import SupplyChainTracker from '@/components/SupplyChainTracker';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -110,6 +111,18 @@ export default function FormPage({ params }: PageProps) {
 
   return (
     <>
+      {/* DD.1: Supply Chain Requirement Tracker */}
+      {slug === 'supply-chain' && (
+        <div className="max-w-2xl mx-auto px-4 mb-6">
+          <SupplyChainTracker />
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <p className="text-xs text-slate-500 text-center mb-2">
+              Daily operational metrics (fill below as usual)
+            </p>
+          </div>
+        </div>
+      )}
+
       <SmartForm
         config={config}
         slug={slug}
