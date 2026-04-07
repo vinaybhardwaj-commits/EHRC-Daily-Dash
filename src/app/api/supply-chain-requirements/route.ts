@@ -92,6 +92,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate quantity
+    const qty = Number(quantity);
+    if (isNaN(qty) || qty < 1) {
+      return NextResponse.json(
+        { error: 'Quantity must be a positive integer (>= 1)' },
+        { status: 400 }
+      );
+    }
+
+    // Validate cost_estimate if provided
+    if (cost_estimate !== null && cost_estimate !== undefined) {
+      const cost = Number(cost_estimate);
+      if (isNaN(cost) || cost < 0) {
+        return NextResponse.json(
+          { error: 'Cost estimate must be a non-negative number' },
+          { status: 400 }
+        );
+      }
+    }
+
     const result = await sql`
       INSERT INTO supply_chain_requirements
         (item_name, quantity, priority, status, notes, requesting_department, expected_date, vendor, cost_estimate, created_by)
