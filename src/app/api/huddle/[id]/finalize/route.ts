@@ -67,6 +67,22 @@ export async function POST(
       );
     }
 
+    // Fire-and-forget: trigger transcription asynchronously
+    // Use the full URL so this works on Vercel (can't use relative URLs in server-side fetch)
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_BASE_URL || 'https://ehrc-daily-dash.vercel.app';
+
+    fetch(`${baseUrl}/api/huddle/${huddleId}/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-trigger-type': 'auto-finalize',
+      },
+    }).catch((err) => {
+      console.error('Auto-transcription trigger failed (will retry):', err);
+    });
+
     return NextResponse.json({
       success: true,
       huddle_id: huddleId,

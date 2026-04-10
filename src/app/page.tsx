@@ -16,6 +16,7 @@ import MonthlyOverview from '@/components/MonthlyOverview';
 import WhatsAppInsights from '@/components/WhatsAppInsights';
 import HKFacilityCard from '@/components/HKFacilityCard';
 import SupplyChainSummary from '@/components/SupplyChainSummary';
+import TodaysBriefCard from '@/components/huddle/TodaysBriefCard';
 // FinanceOverview is now embedded inside DepartmentAccordion
 
 function todayStr() {
@@ -307,6 +308,11 @@ export default function Home() {
           </div>
         </div>
       </nav>
+
+      {/* Today's Brief Card — shown across all views */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <TodaysBriefCard />
+      </div>
 
       {/* Overview View */}
       {view === 'overview' && (
