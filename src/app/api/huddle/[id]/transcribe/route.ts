@@ -37,7 +37,9 @@ export async function POST(
 
     // Check admin key for manual triggers
     const key = req.headers.get('x-admin-key') || req.nextUrl.searchParams.get('key') || '';
-    const triggerType = req.headers.get('x-trigger-type') || 'manual';
+    const rawTrigger = req.headers.get('x-trigger-type') || 'manual';
+    // Normalize to allowed CHECK constraint values: 'auto', 'manual', 'cron'
+    const triggerType = rawTrigger.includes('auto') ? 'auto' : rawTrigger === 'cron' ? 'cron' : 'manual';
 
     // Verify Deepgram API key exists
     const deepgramKey = process.env.DEEPGRAM_API_KEY;

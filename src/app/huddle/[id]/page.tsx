@@ -97,7 +97,7 @@ export default function HuddleDetailPage() {
     try {
       const res = await fetch(`/api/huddle/${huddle.id}/transcribe`, {
         method: 'POST',
-        headers: { 'x-trigger-type': 'manual-retry' },
+        headers: { 'x-trigger-type': 'manual' },
       });
       if (!res.ok) {
         const errData = await res.json();

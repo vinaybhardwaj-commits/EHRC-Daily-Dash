@@ -111,9 +111,14 @@ export default function HuddlePage() {
     fetchHuddle();
   }, []);
 
-  // Poll for transcription completion when in transcribing state
+  // Poll for transcription completion when in transcribing or uploaded state
+  // Also self-heals: if transcript_status is 'pending' (never attempted), triggers transcription
+  const selfHealAttempted = useRef(false);
   useEffect(() => {
-    if (huddleState !== 'transcribing' && huddleState !== 'uploaded') return;
+    if (huddleState !== 'transcribing' && huddleState !== 'uploaded') {
+      selfHealAttempted.current = false;
+      return;
+    }
 
     transcriptionPollRef.current = setInterval(async () => {
       try {
@@ -135,6 +140,39 @@ export default function HuddlePage() {
           if (transcriptionPollRef.current) clearInterval(transcriptionPollRef.current);
         } else if (h.recording_status === 'transcribing') {
           setHuddleState('transcribing');
+        } else if (
+          (h.transcript_status === 'pending' || h.transcript_status === null) &&
+          h.recording_status === 'uploaded' &&
+          !selfHealAttempted.current
+        ) {
+          // Self-heal: transcription was never attempted, trigger it now
+          selfHealAttempted.current = true;
+          setHuddleState('transcribing');
+          try {
+            const txRes = await fetch(`/api/huddle/${h.id}/transcribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'auto' },
+            });
+            if (txRes.ok) {
+              const refetch = await fetch('/api/huddle/today');
+              if (refetch.ok) {
+                const d2 = await refetch.json();
+                if (d2.huddle?.transcript_status === 'completed' && d2.huddle?.transcript_json) {
+                  setHuddle(d2.huddle);
+                  setElapsedSeconds(d2.huddle.duration_seconds || 0);
+                  setHuddleState('transcribed');
+                  if (transcriptionPollRef.current) clearInterval(transcriptionPollRef.current);
+                }
+              }
+            } else {
+              const errData = await txRes.json().catch(() => ({}));
+              setError(errData.error || 'Auto-transcription failed');
+              setHuddleState('uploaded');
+              if (transcriptionPollRef.current) clearInterval(transcriptionPollRef.current);
+            }
+          } catch {
+            setHuddleState('uploaded');
+          }
         }
       } catch {
         // Ignore poll errors
@@ -305,7 +343,7 @@ export default function HuddlePage() {
       try {
         const txRes = await fetch(`/api/huddle/${currentHuddle.id}/transcribe`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'client-interrupted' },
+          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'auto' },
         });
         if (txRes.ok) {
           const todayRes = await fetch('/api/huddle/today');
@@ -360,7 +398,7 @@ export default function HuddlePage() {
       try {
         const txRes = await fetch(`/api/huddle/${huddle.id}/transcribe`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'client-auto' },
+          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'auto' },
         });
         if (txRes.ok) {
           // Transcription completed — refresh huddle data
@@ -409,7 +447,7 @@ export default function HuddlePage() {
     try {
       const res = await fetch(`/api/huddle/${huddle.id}/transcribe`, {
         method: 'POST',
-        headers: { 'x-trigger-type': 'manual-retry' },
+        headers: { 'x-trigger-type': 'manual' },
       });
       if (!res.ok) {
         const errData = await res.json();

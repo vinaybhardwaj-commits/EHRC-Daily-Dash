@@ -77,7 +77,7 @@ export async function POST(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-trigger-type': 'auto-finalize',
+        'x-trigger-type': 'auto',
       },
     }).catch((err) => {
       console.error('Auto-transcription trigger failed (will retry):', err);
