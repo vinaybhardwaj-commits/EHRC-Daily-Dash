@@ -30,10 +30,13 @@ export default function HuddlePage() {
   const [adminKey, setAdminKey] = useState<string>('');
   const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   const [tmpKeyInput, setTmpKeyInput] = useState('');
+  const [reRecordConfirm, setReRecordConfirm] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  // Use a ref for chunk counter so the ondataavailable closure always sees the latest value
+  const chunkCountRef = useRef(0);
 
   // Fetch today's huddle on mount
   useEffect(() => {
@@ -50,12 +53,16 @@ export default function HuddlePage() {
         if (data.huddle) {
           setHuddle(data.huddle);
           setChunkCount(data.huddle.chunk_count || 0);
+          chunkCountRef.current = data.huddle.chunk_count || 0;
           setRecordingSessionId(data.huddle.recording_session_id || '');
 
           if (data.huddle.recording_status === 'recording') {
-            // Recording is already in progress from a previous page load
             setHuddleState('recording');
           } else if (data.huddle.recording_status === 'completed' || data.huddle.recording_status === 'uploaded') {
+            // Set elapsed seconds from DB so duration displays correctly on reload
+            if (data.huddle.duration_seconds) {
+              setElapsedSeconds(data.huddle.duration_seconds);
+            }
             setHuddleState('uploaded');
           } else {
             setHuddleState('no-huddle');
@@ -90,21 +97,28 @@ export default function HuddlePage() {
     };
   }, [huddleState]);
 
-  const handleStartHuddle = useCallback(async () => {
-    let keyToUse = adminKey;
-
-    // If no key stored, prompt for it
-    if (!keyToUse) {
-      setShowKeyPrompt(true);
-      return;
-    }
-
+  // Helper: start recording with a given key and optionally an existing huddle to abandon
+  const startRecording = useCallback(async (keyToUse: string, abandonHuddleId?: string) => {
     try {
       setHuddleState('loading');
 
+      // If re-recording, abandon the existing huddle first
+      if (abandonHuddleId) {
+        const abandonRes = await fetch(`/api/huddle/${abandonHuddleId}/abandon`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': keyToUse },
+          body: JSON.stringify({ reason: 'Re-recording initiated by recorder' }),
+        });
+        if (!abandonRes.ok) {
+          const errData = await abandonRes.json();
+          throw new Error(errData.error || 'Failed to abandon previous huddle');
+        }
+      }
+
       // Call POST /api/huddle/start
-      const res = await fetch(`/api/huddle/start?key=${encodeURIComponent(keyToUse)}`, {
+      const res = await fetch(`/api/huddle/start`, {
         method: 'POST',
+        headers: { 'x-admin-key': keyToUse },
       });
 
       if (!res.ok) {
@@ -122,6 +136,7 @@ export default function HuddlePage() {
       setHuddle(newHuddle);
       setRecordingSessionId(data.recording_session_id);
       setChunkCount(0);
+      chunkCountRef.current = 0;
       setElapsedSeconds(0);
       setLastFlush('');
       setError(null);
@@ -153,14 +168,16 @@ export default function HuddlePage() {
         audioBitsPerSecond: 32000,
       });
 
-      // Handle chunk data
+      // Handle chunk data — uses ref for chunk index so closure always has latest value
       mediaRecorder.ondataavailable = async (event) => {
         if (event.data.size === 0) return;
 
+        const currentChunkIndex = chunkCountRef.current;
+
         const formData = new FormData();
         formData.append('audio', event.data);
-        formData.append('chunk_index', String(chunkCount));
-        formData.append('recording_session_id', recordingSessionId);
+        formData.append('chunk_index', String(currentChunkIndex));
+        formData.append('recording_session_id', data.recording_session_id);
         formData.append('mime_type', mimeType);
 
         try {
@@ -170,7 +187,8 @@ export default function HuddlePage() {
           });
 
           if (chunkRes.ok) {
-            setChunkCount((prev) => prev + 1);
+            chunkCountRef.current += 1;
+            setChunkCount(chunkCountRef.current);
             setLastFlush(new Date().toLocaleTimeString());
           } else {
             console.error('Chunk upload failed:', await chunkRes.json());
@@ -191,7 +209,19 @@ export default function HuddlePage() {
       setHuddleState('error');
       console.error('Start huddle error:', err);
     }
-  }, [adminKey, chunkCount, recordingSessionId]);
+  }, []);
+
+  const handleStartHuddle = useCallback(async () => {
+    let keyToUse = adminKey;
+
+    // If no key stored, prompt for it
+    if (!keyToUse) {
+      setShowKeyPrompt(true);
+      return;
+    }
+
+    await startRecording(keyToUse);
+  }, [adminKey, startRecording]);
 
   const handleKeySubmit = useCallback(() => {
     if (!tmpKeyInput.trim()) {
@@ -204,99 +234,21 @@ export default function HuddlePage() {
     setShowKeyPrompt(false);
     setTmpKeyInput('');
 
-    // Now proceed with start huddle
-    setHuddleState('loading');
-    const startWithKey = async () => {
-      try {
-        const res = await fetch(`/api/huddle/start?key=${encodeURIComponent(tmpKeyInput)}`, {
-          method: 'POST',
-        });
+    startRecording(tmpKeyInput);
+  }, [tmpKeyInput, startRecording]);
 
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || 'Failed to start huddle');
-        }
+  const handleReRecord = useCallback(async () => {
+    if (!huddle) return;
 
-        const data = await res.json();
-        const newHuddle: Huddle = {
-          id: data.huddle_id,
-          date: data.date,
-          recording_status: 'recording',
-          recording_session_id: data.recording_session_id,
-        };
-        setHuddle(newHuddle);
-        setRecordingSessionId(data.recording_session_id);
-        setChunkCount(0);
-        setElapsedSeconds(0);
-        setLastFlush('');
-        setError(null);
+    let keyToUse = adminKey;
+    if (!keyToUse) {
+      setShowKeyPrompt(true);
+      return;
+    }
 
-        // Request screen wake lock
-        try {
-          if (navigator.wakeLock) {
-            wakeLockRef.current = await navigator.wakeLock.request('screen');
-          }
-        } catch (wlErr) {
-          console.warn('Wake lock request failed:', wlErr);
-        }
-
-        // Initialize MediaRecorder
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        let mimeType = '';
-        const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', ''];
-        for (const candidate of candidates) {
-          if (MediaRecorder.isTypeSupported(candidate)) {
-            mimeType = candidate;
-            break;
-          }
-        }
-
-        const mediaRecorder = new MediaRecorder(stream, {
-          mimeType,
-          audioBitsPerSecond: 32000,
-        });
-
-        mediaRecorder.ondataavailable = async (event) => {
-          if (event.data.size === 0) return;
-
-          const formData = new FormData();
-          formData.append('audio', event.data);
-          formData.append('chunk_index', String(chunkCount));
-          formData.append('recording_session_id', data.recording_session_id);
-          formData.append('mime_type', mimeType);
-
-          try {
-            const chunkRes = await fetch(`/api/huddle/${newHuddle.id}/chunk`, {
-              method: 'POST',
-              body: formData,
-            });
-
-            if (chunkRes.ok) {
-              setChunkCount((prev) => prev + 1);
-              setLastFlush(new Date().toLocaleTimeString());
-            } else {
-              console.error('Chunk upload failed:', await chunkRes.json());
-            }
-          } catch (chunkErr) {
-            console.error('Chunk upload error:', chunkErr);
-          }
-        };
-
-        mediaRecorder.start(30000);
-        mediaRecorderRef.current = mediaRecorder;
-
-        setHuddleState('recording');
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : 'Unknown error';
-        setError(errMsg);
-        setHuddleState('error');
-        console.error('Start huddle error:', err);
-      }
-    };
-
-    startWithKey();
-  }, [tmpKeyInput, chunkCount]);
+    setReRecordConfirm(false);
+    await startRecording(keyToUse, huddle.id);
+  }, [adminKey, huddle, startRecording]);
 
   const handleEndHuddle = useCallback(async () => {
     if (!mediaRecorderRef.current || !huddle) return;
@@ -307,8 +259,11 @@ export default function HuddlePage() {
       // Stop the MediaRecorder
       mediaRecorderRef.current.stop();
 
-      // Wait for final chunk
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Stop all tracks on the stream to release the mic
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+
+      // Wait for final chunk to upload
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
       // Release wake lock
       if (wakeLockRef.current) {
@@ -426,6 +381,34 @@ export default function HuddlePage() {
       );
     }
 
+    // Re-record confirmation dialog
+    if (reRecordConfirm) {
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-lg">
+            <h2 className="text-lg font-bold text-slate-900">Re-record Today&apos;s Huddle?</h2>
+            <p className="text-sm text-slate-600 mt-2">
+              This will discard the current recording ({formatTime(elapsedSeconds)}, {chunkCount} chunks) and start fresh.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setReRecordConfirm(false)}
+                className="flex-1 px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                Keep Current
+              </button>
+              <button
+                onClick={handleReRecord}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                Re-record
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900 p-4 sm:p-6">
         <div className="max-w-2xl mx-auto">
@@ -455,8 +438,7 @@ export default function HuddlePage() {
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
-                      <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"></path>
-                      <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1V5a1 1 0 00-1-1H3zm11 3a1 1 0 10-2 0v3.076a1 1 0 001 1h.154a1 1 0 001-1V7zm-9 3a1 1 0 10-2 0v3.076a1 1 0 001 1h.154a1 1 0 001-1V10z"></path>
+                      <path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"></path>
                     </svg>
                   </button>
                 </div>
@@ -495,8 +477,8 @@ export default function HuddlePage() {
 
                 {/* Status info */}
                 <div className="text-xs text-slate-500 space-y-1">
-                  <p>Recording to chunk {chunkCount} · Last flush {lastFlush || 'pending'}</p>
-                  <p className="text-yellow-600 font-medium">⚠ Keep screen on</p>
+                  <p>Chunks uploaded: {chunkCount} · Last flush {lastFlush || 'pending'}</p>
+                  <p className="text-yellow-600 font-medium">Keep screen on</p>
                 </div>
               </div>
             )}
@@ -527,6 +509,16 @@ export default function HuddlePage() {
                 <p className="mt-4 text-xs text-slate-500">
                   Transcription coming in Sprint 1.2.
                 </p>
+
+                {/* Re-record button for recorders */}
+                {isRecorder && (
+                  <button
+                    onClick={() => setReRecordConfirm(true)}
+                    className="mt-6 px-4 py-2 text-sm text-slate-500 border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                  >
+                    Re-record
+                  </button>
+                )}
               </div>
             )}
 
