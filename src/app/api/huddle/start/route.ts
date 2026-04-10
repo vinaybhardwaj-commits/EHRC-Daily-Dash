@@ -32,10 +32,11 @@ export async function POST(req: NextRequest) {
     const recordingSessionId = randomUUID();
 
     // Insert new huddle_recordings row
+    // recording_session_id lives on huddle_audio_chunks, not here
     const result = await sql`
-      INSERT INTO huddle_recordings (date, recording_status, recorded_by_user_id, recording_session_id)
-      VALUES (CURRENT_DATE, 'recording', 1, ${recordingSessionId})
-      RETURNING id, date, recording_session_id
+      INSERT INTO huddle_recordings (date, recording_status, recorded_by_user_id)
+      VALUES (CURRENT_DATE, 'recording', 1)
+      RETURNING id, date
     `;
 
     const huddle = result.rows[0];
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       huddle_id: huddle.id,
       date: huddle.date,
-      recording_session_id: huddle.recording_session_id,
+      recording_session_id: recordingSessionId,
     });
   } catch (error) {
     console.error('Huddle start error:', error);
