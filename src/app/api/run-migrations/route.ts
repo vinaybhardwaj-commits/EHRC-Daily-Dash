@@ -107,9 +107,9 @@ const MIGRATIONS: Migration[] = [
         abandoned_at TIMESTAMPTZ,
         abandoned_reason TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT unique_huddle_per_day UNIQUE (date) WHERE (deleted_at IS NULL)
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_huddle_per_day ON huddle_recordings(date) WHERE (deleted_at IS NULL)`,
       `CREATE INDEX IF NOT EXISTS idx_huddle_recordings_date ON huddle_recordings(date DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_huddle_recordings_status ON huddle_recordings(recording_status)`,
 
