@@ -25,13 +25,6 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File | null;
     const dateStr = formData.get('date') as string | null;
-    const adminKey = formData.get('key') as string | null;
-
-    // --- Validate auth ---
-    const expectedKey = process.env.ADMIN_KEY || process.env.BACKUP_SECRET || '';
-    if (!adminKey || adminKey !== expectedKey) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // --- Validate inputs ---
     if (!audioFile) {

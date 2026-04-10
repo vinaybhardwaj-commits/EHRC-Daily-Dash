@@ -31,12 +31,8 @@ interface UploadResult {
 }
 
 export default function HuddleUploadPage() {
-  const [key, setKey] = useState('');
-  const [authenticated, setAuthenticated] = useState(false);
-  const [authError, setAuthError] = useState('');
-
   const [huddles, setHuddles] = useState<HuddleRecord[]>([]);
-  const [loadingList, setLoadingList] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
@@ -47,35 +43,18 @@ export default function HuddleUploadPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Load huddle list on mount
+  useEffect(() => {
+    fetchHuddles();
+  }, []);
+
   // Try to extract date from filename (e.g., "2026-03-15 morning huddle.mp3")
   const extractDateFromFilename = (filename: string): string => {
-    // Try YYYY-MM-DD
     const isoMatch = filename.match(/(\d{4}-\d{2}-\d{2})/);
     if (isoMatch) return isoMatch[1];
-    // Try DD-MM-YYYY or DD.MM.YYYY
     const dmyMatch = filename.match(/(\d{2})[-.](\d{2})[-.](\d{4})/);
     if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
     return '';
-  };
-
-  // Auth
-  const handleAuth = async () => {
-    try {
-      const res = await fetch('/api/admin/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
-      });
-      if (res.ok) {
-        setAuthenticated(true);
-        setAuthError('');
-        fetchHuddles();
-      } else {
-        setAuthError('Invalid admin key');
-      }
-    } catch {
-      setAuthError('Connection error');
-    }
   };
 
   // Fetch huddle list
@@ -100,7 +79,6 @@ export default function HuddleUploadPage() {
     setUploadResult(null);
     setUploadError('');
 
-    // Try to auto-detect date from filename
     if (!selectedDate) {
       const detected = extractDateFromFilename(file.name);
       if (detected) setSelectedDate(detected);
@@ -127,7 +105,6 @@ export default function HuddleUploadPage() {
       const formData = new FormData();
       formData.append('audio', selectedFile);
       formData.append('date', selectedDate);
-      formData.append('key', key);
 
       const res = await fetch('/api/huddle/upload-audio', {
         method: 'POST',
@@ -146,7 +123,6 @@ export default function HuddleUploadPage() {
       setSelectedDate('');
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      // Refresh list
       fetchHuddles();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
@@ -181,33 +157,6 @@ export default function HuddleUploadPage() {
       </span>
     );
   };
-
-  // ─── Auth screen ──────────────────────────────────────────────────
-  if (!authenticated) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-full max-w-sm">
-          <h1 className="text-lg font-bold text-slate-900 mb-4">Huddle Upload</h1>
-          <p className="text-sm text-slate-500 mb-4">Enter admin key to upload audio files.</p>
-          <input
-            type="password"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
-            placeholder="Admin key"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {authError && <p className="text-xs text-red-600 mb-2">{authError}</p>}
-          <button
-            onClick={handleAuth}
-            className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600"
-          >
-            Enter
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // ─── Main page ────────────────────────────────────────────────────
   return (
@@ -372,30 +321,27 @@ export default function HuddleUploadPage() {
 
           {huddles.length === 0 ? (
             <div className="px-5 py-8 text-center text-sm text-slate-400">
-              No huddles yet. Upload your first recording above.
+              {loadingList ? 'Loading...' : 'No huddles yet. Upload your first recording above.'}
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
               {huddles.map((h) => (
                 <div key={h.id} className="px-5 py-3 flex items-center gap-3">
-                  {/* Date & ID */}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-slate-800">
                       {formatDate(h.date)}
                     </div>
                     <div className="text-xs text-slate-400 mt-0.5">
                       ID {h.id} · {formatDuration(h.duration_seconds)}
-                      {h.detected_speaker_count && ` · ${h.detected_speaker_count} speakers`}
-                      {h.transcript_length > 0 && ` · ${h.transcript_length} chars`}
+                      {h.detected_speaker_count ? ` · ${h.detected_speaker_count} speakers` : ''}
+                      {h.transcript_length > 0 ? ` · ${h.transcript_length} chars` : ''}
                     </div>
                   </div>
 
-                  {/* Status */}
                   <div className="flex-shrink-0">
                     {statusBadge(h.transcript_status)}
                   </div>
 
-                  {/* Actions */}
                   <div className="flex gap-2 flex-shrink-0">
                     <Link
                       href={`/huddle/${h.id}`}
