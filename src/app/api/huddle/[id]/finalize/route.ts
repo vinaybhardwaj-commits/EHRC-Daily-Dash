@@ -14,6 +14,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const huddleId = parseInt(id, 10);
+
+    if (isNaN(huddleId)) {
+      return NextResponse.json(
+        { error: 'Invalid huddle ID' },
+        { status: 400 }
+      );
+    }
+
     const body: FinalizeBody = await req.json();
 
     let durationSeconds = body.duration_seconds;
@@ -22,7 +31,7 @@ export async function POST(
     if (body.compute_from_server || !durationSeconds) {
       const huddleResult = await sql`
         SELECT started_at FROM huddle_recordings
-        WHERE id = ${id} AND deleted_at IS NULL
+        WHERE id = ${huddleId} AND deleted_at IS NULL
         LIMIT 1
       `;
 
@@ -35,6 +44,9 @@ export async function POST(
       }
     }
 
+    // Build audio URL in JS to avoid SQL parameter type ambiguity
+    const audioUrl = `/api/huddle/${huddleId}/audio`;
+
     // Update huddle_recordings: mark as uploaded and set duration
     // Accept huddles in 'recording' status (normal end or crash recovery)
     const result = await sql`
@@ -43,8 +55,8 @@ export async function POST(
         recording_status = 'uploaded',
         ended_at = NOW(),
         duration_seconds = ${durationSeconds},
-        audio_url = CONCAT('/api/huddle/', ${id}, '/audio')
-      WHERE id = ${id} AND recording_status = 'recording' AND deleted_at IS NULL
+        audio_url = ${audioUrl}
+      WHERE id = ${huddleId} AND recording_status = 'recording' AND deleted_at IS NULL
       RETURNING id, duration_seconds
     `;
 
@@ -57,7 +69,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      huddle_id: id,
+      huddle_id: huddleId,
       duration_seconds: result.rows[0].duration_seconds,
     });
   } catch (error) {

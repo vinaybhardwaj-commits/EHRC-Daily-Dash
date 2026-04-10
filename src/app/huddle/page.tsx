@@ -269,9 +269,8 @@ export default function HuddlePage() {
   }, [adminKey, huddle, startRecording]);
 
   // Finalize an interrupted huddle (no live MediaRecorder — just call finalize API)
+  // Re-fetches today's huddle first to prevent stale-data issues across devices
   const finalizeInterrupted = useCallback(async (keyOverride?: string) => {
-    if (!huddle) return;
-
     const keyToUse = keyOverride || adminKey;
     if (!keyToUse) {
       setKeyPromptAction('save-interrupted');
@@ -282,7 +281,33 @@ export default function HuddlePage() {
     try {
       setHuddleState('uploading');
 
-      const res = await fetch(`/api/huddle/${huddle.id}/finalize`, {
+      // Re-fetch today's huddle to get the latest state (prevents multi-device race)
+      const todayRes = await fetch('/api/huddle/today');
+      if (!todayRes.ok) {
+        throw new Error('Could not check current huddle status');
+      }
+      const todayData = await todayRes.json();
+
+      if (!todayData.huddle) {
+        throw new Error('No active huddle found for today. It may have been discarded from another device.');
+      }
+
+      const currentHuddle = todayData.huddle;
+
+      if (currentHuddle.recording_status !== 'recording') {
+        // Already finalized or in another state — just show the result
+        if (currentHuddle.recording_status === 'uploaded' || currentHuddle.recording_status === 'completed') {
+          setHuddle(currentHuddle);
+          setChunkCount(currentHuddle.chunk_count || 0);
+          setElapsedSeconds(currentHuddle.duration_seconds || 0);
+          setHuddleState('uploaded');
+          return;
+        }
+        throw new Error(`Huddle is in "${currentHuddle.recording_status}" status and cannot be finalized.`);
+      }
+
+      // Finalize the huddle
+      const res = await fetch(`/api/huddle/${currentHuddle.id}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_seconds: 0, compute_from_server: true }),
@@ -290,10 +315,12 @@ export default function HuddlePage() {
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Failed to finalize huddle');
+        throw new Error(errData.details || errData.error || 'Failed to finalize huddle');
       }
 
       const data = await res.json();
+      setHuddle(currentHuddle);
+      setChunkCount(currentHuddle.chunk_count || 0);
       if (data.duration_seconds) {
         setElapsedSeconds(data.duration_seconds);
       }
@@ -306,7 +333,7 @@ export default function HuddlePage() {
       setHuddleState('error');
       console.error('Finalize interrupted error:', err);
     }
-  }, [huddle, adminKey]);
+  }, [adminKey]);
 
   const handleEndHuddle = useCallback(async () => {
     if (!huddle) return;
