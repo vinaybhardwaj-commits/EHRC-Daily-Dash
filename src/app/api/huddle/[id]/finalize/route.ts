@@ -4,7 +4,8 @@ import { sql } from '@vercel/postgres';
 export const dynamic = 'force-dynamic';
 
 interface FinalizeBody {
-  duration_seconds: number;
+  duration_seconds?: number;
+  compute_from_server?: boolean;
 }
 
 export async function POST(
@@ -14,25 +15,37 @@ export async function POST(
   try {
     const { id } = await params;
     const body: FinalizeBody = await req.json();
-    const { duration_seconds } = body;
 
-    if (duration_seconds === undefined || duration_seconds === null) {
-      return NextResponse.json(
-        { error: 'Missing required field: duration_seconds' },
-        { status: 400 }
-      );
+    let durationSeconds = body.duration_seconds;
+
+    // If compute_from_server is true OR duration is 0/missing, compute from started_at
+    if (body.compute_from_server || !durationSeconds) {
+      const huddleResult = await sql`
+        SELECT started_at FROM huddle_recordings
+        WHERE id = ${id} AND deleted_at IS NULL
+        LIMIT 1
+      `;
+
+      if (huddleResult.rows.length > 0 && huddleResult.rows[0].started_at) {
+        const startedAt = new Date(huddleResult.rows[0].started_at).getTime();
+        const now = Date.now();
+        durationSeconds = Math.floor((now - startedAt) / 1000);
+      } else {
+        durationSeconds = durationSeconds || 0;
+      }
     }
 
     // Update huddle_recordings: mark as uploaded and set duration
+    // Accept huddles in 'recording' status (normal end or crash recovery)
     const result = await sql`
       UPDATE huddle_recordings
       SET
         recording_status = 'uploaded',
         ended_at = NOW(),
-        duration_seconds = ${duration_seconds},
-        audio_url = '/api/huddle/' || ${id} || '/audio'
-      WHERE id = ${id} AND recording_status = 'recording'
-      RETURNING id
+        duration_seconds = ${durationSeconds},
+        audio_url = CONCAT('/api/huddle/', ${id}, '/audio')
+      WHERE id = ${id} AND recording_status = 'recording' AND deleted_at IS NULL
+      RETURNING id, duration_seconds
     `;
 
     if (result.rows.length === 0) {
@@ -45,6 +58,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       huddle_id: id,
+      duration_seconds: result.rows[0].duration_seconds,
     });
   } catch (error) {
     console.error('Huddle finalize error:', error);

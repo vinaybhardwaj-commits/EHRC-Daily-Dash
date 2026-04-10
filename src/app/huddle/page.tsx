@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-type HuddleState = 'loading' | 'no-huddle' | 'recording' | 'uploading' | 'uploaded' | 'error';
+type HuddleState = 'loading' | 'no-huddle' | 'recording' | 'uploading' | 'uploaded' | 'interrupted' | 'error';
 
 interface Huddle {
   id: string;
@@ -12,6 +12,7 @@ interface Huddle {
   duration_seconds?: number;
   chunk_count?: number;
   created_at?: string;
+  started_at?: string;
   ended_at?: string;
   transcript_status?: string;
   transcript_text?: string;
@@ -25,18 +26,21 @@ export default function HuddlePage() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [chunkCount, setChunkCount] = useState(0);
   const [lastFlush, setLastFlush] = useState<string>('');
-  const [recordingSessionId, setRecordingSessionId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [adminKey, setAdminKey] = useState<string>('');
   const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   const [tmpKeyInput, setTmpKeyInput] = useState('');
   const [reRecordConfirm, setReRecordConfirm] = useState(false);
+  // Track what the key prompt should do after submission
+  const [keyPromptAction, setKeyPromptAction] = useState<'start' | 'rerecord' | 'save-interrupted'>('start');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   // Use a ref for chunk counter so the ondataavailable closure always sees the latest value
   const chunkCountRef = useRef(0);
+  // Track whether we have a live MediaRecorder (i.e., we started recording in THIS page session)
+  const isLiveRecording = useRef(false);
 
   // Fetch today's huddle on mount
   useEffect(() => {
@@ -54,12 +58,18 @@ export default function HuddlePage() {
           setHuddle(data.huddle);
           setChunkCount(data.huddle.chunk_count || 0);
           chunkCountRef.current = data.huddle.chunk_count || 0;
-          setRecordingSessionId(data.huddle.recording_session_id || '');
 
           if (data.huddle.recording_status === 'recording') {
-            setHuddleState('recording');
+            // Huddle is in 'recording' status but we have no live MediaRecorder.
+            // This means the browser was closed/crashed during recording.
+            // Calculate how long it was recording before the crash.
+            if (data.huddle.started_at) {
+              const startTime = new Date(data.huddle.started_at).getTime();
+              const elapsed = Math.floor((Date.now() - startTime) / 1000);
+              setElapsedSeconds(elapsed);
+            }
+            setHuddleState('interrupted');
           } else if (data.huddle.recording_status === 'completed' || data.huddle.recording_status === 'uploaded') {
-            // Set elapsed seconds from DB so duration displays correctly on reload
             if (data.huddle.duration_seconds) {
               setElapsedSeconds(data.huddle.duration_seconds);
             }
@@ -84,9 +94,9 @@ export default function HuddlePage() {
     fetchHuddle();
   }, []);
 
-  // Timer effect during recording
+  // Timer effect during LIVE recording only
   useEffect(() => {
-    if (huddleState !== 'recording') return;
+    if (huddleState !== 'recording' || !isLiveRecording.current) return;
 
     timerIntervalRef.current = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
@@ -134,7 +144,6 @@ export default function HuddlePage() {
         recording_session_id: data.recording_session_id,
       };
       setHuddle(newHuddle);
-      setRecordingSessionId(data.recording_session_id);
       setChunkCount(0);
       chunkCountRef.current = 0;
       setElapsedSeconds(0);
@@ -201,6 +210,7 @@ export default function HuddlePage() {
       // Start recording with 30 second timeslice
       mediaRecorder.start(30000);
       mediaRecorderRef.current = mediaRecorder;
+      isLiveRecording.current = true;
 
       setHuddleState('recording');
     } catch (err) {
@@ -212,14 +222,12 @@ export default function HuddlePage() {
   }, []);
 
   const handleStartHuddle = useCallback(async () => {
-    let keyToUse = adminKey;
-
-    // If no key stored, prompt for it
+    const keyToUse = adminKey;
     if (!keyToUse) {
+      setKeyPromptAction('start');
       setShowKeyPrompt(true);
       return;
     }
-
     await startRecording(keyToUse);
   }, [adminKey, startRecording]);
 
@@ -229,19 +237,29 @@ export default function HuddlePage() {
       return;
     }
 
-    setAdminKey(tmpKeyInput);
-    localStorage.setItem('ehrc_admin_key', tmpKeyInput);
+    const key = tmpKeyInput;
+    setAdminKey(key);
+    localStorage.setItem('ehrc_admin_key', key);
     setShowKeyPrompt(false);
     setTmpKeyInput('');
 
-    startRecording(tmpKeyInput);
-  }, [tmpKeyInput, startRecording]);
+    if (keyPromptAction === 'start') {
+      startRecording(key);
+    } else if (keyPromptAction === 'rerecord' && huddle) {
+      setReRecordConfirm(false);
+      startRecording(key, huddle.id);
+    } else if (keyPromptAction === 'save-interrupted' && huddle) {
+      // Finalize the interrupted huddle
+      finalizeInterrupted(key);
+    }
+  }, [tmpKeyInput, keyPromptAction, huddle]);
 
   const handleReRecord = useCallback(async () => {
     if (!huddle) return;
 
-    let keyToUse = adminKey;
+    const keyToUse = adminKey;
     if (!keyToUse) {
+      setKeyPromptAction('rerecord');
       setShowKeyPrompt(true);
       return;
     }
@@ -250,8 +268,54 @@ export default function HuddlePage() {
     await startRecording(keyToUse, huddle.id);
   }, [adminKey, huddle, startRecording]);
 
+  // Finalize an interrupted huddle (no live MediaRecorder — just call finalize API)
+  const finalizeInterrupted = useCallback(async (keyOverride?: string) => {
+    if (!huddle) return;
+
+    const keyToUse = keyOverride || adminKey;
+    if (!keyToUse) {
+      setKeyPromptAction('save-interrupted');
+      setShowKeyPrompt(true);
+      return;
+    }
+
+    try {
+      setHuddleState('uploading');
+
+      const res = await fetch(`/api/huddle/${huddle.id}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration_seconds: 0, compute_from_server: true }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to finalize huddle');
+      }
+
+      const data = await res.json();
+      if (data.duration_seconds) {
+        setElapsedSeconds(data.duration_seconds);
+      }
+
+      setError(null);
+      setHuddleState('uploaded');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      setError(errMsg);
+      setHuddleState('error');
+      console.error('Finalize interrupted error:', err);
+    }
+  }, [huddle, adminKey]);
+
   const handleEndHuddle = useCallback(async () => {
-    if (!mediaRecorderRef.current || !huddle) return;
+    if (!huddle) return;
+
+    // If no live MediaRecorder, this is a stale/interrupted recording
+    if (!mediaRecorderRef.current || !isLiveRecording.current) {
+      await finalizeInterrupted();
+      return;
+    }
 
     try {
       setHuddleState('uploading');
@@ -261,6 +325,7 @@ export default function HuddlePage() {
 
       // Stop all tracks on the stream to release the mic
       mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      isLiveRecording.current = false;
 
       // Wait for final chunk to upload
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -297,7 +362,7 @@ export default function HuddlePage() {
       setHuddleState('error');
       console.error('End huddle error:', err);
     }
-  }, [huddle, elapsedSeconds]);
+  }, [huddle, elapsedSeconds, finalizeInterrupted]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -347,7 +412,7 @@ export default function HuddlePage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-lg">
             <h2 className="text-lg font-bold text-slate-900">Admin Key Required</h2>
-            <p className="text-sm text-slate-600 mt-2">Enter your admin key to start the huddle:</p>
+            <p className="text-sm text-slate-600 mt-2">Enter your admin key to continue:</p>
             <input
               type="password"
               value={tmpKeyInput}
@@ -419,6 +484,9 @@ export default function HuddlePage() {
               {huddleState === 'recording' && (
                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
               )}
+              {huddleState === 'interrupted' && (
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+              )}
             </h1>
             <p className="text-blue-100 text-sm mt-1">{dateStr}</p>
           </div>
@@ -451,6 +519,48 @@ export default function HuddlePage() {
                 <p className="text-slate-600 text-sm">
                   No recording yet today — check back after the morning meeting.
                 </p>
+              </div>
+            )}
+
+            {/* INTERRUPTED: browser crashed or page was closed during recording */}
+            {huddleState === 'interrupted' && (
+              <div className="text-center">
+                <div className="inline-block p-3 bg-amber-100 rounded-full mb-4">
+                  <svg className="w-6 h-6 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"></path>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900">Recording Interrupted</h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  The browser was closed while recording was in progress.
+                </p>
+                <div className="mt-4 text-sm text-slate-600 space-y-1">
+                  <p><span className="font-medium">Chunks saved:</span> {chunkCount}</p>
+                  {chunkCount > 0 && (
+                    <p><span className="font-medium">Audio captured:</span> ~{formatTime(chunkCount * 30)}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                  {chunkCount > 0 && (
+                    <button
+                      onClick={() => finalizeInterrupted()}
+                      className="flex-1 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition-all active:scale-95"
+                    >
+                      Save What We Have
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (huddle) {
+                        setReRecordConfirm(true);
+                      }
+                    }}
+                    className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all active:scale-95"
+                  >
+                    Discard &amp; Re-record
+                  </button>
+                </div>
               </div>
             )}
 
