@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { identifySpeakers } from '@/lib/huddle/speaker-identifier';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // Allow up to 2 minutes for transcription
@@ -209,6 +210,53 @@ export async function POST(
       WHERE huddle_id = ${huddleId} AND attempt_number = ${attemptNumber}
     `;
 
+    // --- Auto-identify speakers from content ---
+    let autoIdResults: { saved: number; total: number } = { saved: 0, total: 0 };
+    try {
+      const contactsResult = await sql`
+        SELECT department_slug, department_name, head_name
+        FROM department_contacts
+        ORDER BY department_name
+      `;
+      const contacts = contactsResult.rows.map((r) => ({
+        head_name: r.head_name as string,
+        department_name: r.department_name as string,
+        department_slug: r.department_slug as string,
+      }));
+
+      const identifications = identifySpeakers(segments, contacts);
+      autoIdResults.total = identifications.length;
+
+      for (const ident of identifications) {
+        try {
+          await sql`
+            INSERT INTO huddle_speakers (
+              huddle_id, speaker_index, display_name, department_slug,
+              confidence, source, created_at, updated_at
+            ) VALUES (
+              ${huddleId}, ${ident.speaker_index}, ${ident.display_name},
+              ${ident.department_slug}, ${ident.confidence}, 'auto',
+              NOW(), NOW()
+            )
+            ON CONFLICT (huddle_id, speaker_index)
+            DO UPDATE SET
+              display_name = ${ident.display_name},
+              department_slug = ${ident.department_slug},
+              confidence = ${ident.confidence},
+              source = 'auto',
+              updated_at = NOW()
+            WHERE huddle_speakers.source != 'manual'
+          `;
+          autoIdResults.saved++;
+        } catch (speakerErr) {
+          console.error(`Failed to save speaker ${ident.speaker_index}:`, speakerErr);
+        }
+      }
+    } catch (idErr) {
+      // Auto-ID is best-effort — don't fail the transcription
+      console.error('Speaker auto-identification error:', idErr);
+    }
+
     return NextResponse.json({
       success: true,
       huddle_id: huddleId,
@@ -216,6 +264,7 @@ export async function POST(
       speakers: detectedSpeakerCount,
       latency_ms: latencyMs,
       plain_text_length: plainText.length,
+      auto_identified: autoIdResults,
     });
   } catch (error) {
     console.error('Transcription error:', error);

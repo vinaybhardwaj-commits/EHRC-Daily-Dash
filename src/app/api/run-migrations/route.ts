@@ -183,6 +183,18 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_huddle_recorder_audit_target ON huddle_recorder_audit(target_user_id, changed_at DESC)`,
     ],
   },
+  {
+    version: 9,
+    name: 'add_speaker_auto_id_columns',
+    statements: [
+      // Add confidence score (0.0–1.0) for auto-identification
+      `ALTER TABLE huddle_speakers ADD COLUMN IF NOT EXISTS confidence REAL DEFAULT NULL`,
+      // Source of mapping: 'auto' (rule engine), 'manual' (user override), 'llm' (future)
+      `ALTER TABLE huddle_speakers ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual' CHECK (source IN ('auto', 'manual', 'llm'))`,
+      // Timestamp for manual overrides
+      `ALTER TABLE huddle_speakers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {

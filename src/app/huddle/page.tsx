@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import TranscriptViewer from '@/components/huddle/TranscriptViewer';
+import SpeakerMappingBanner from '@/components/huddle/SpeakerMappingBanner';
 
 type HuddleState = 'loading' | 'no-huddle' | 'recording' | 'uploading' | 'uploaded' | 'interrupted' | 'transcribing' | 'transcribed' | 'error';
 
@@ -11,6 +12,13 @@ interface TranscriptSegment {
   text: string;
   speaker: number;
   speaker_confidence: number;
+}
+
+interface SpeakerMap {
+  display_name: string;
+  department_slug?: string;
+  confidence?: number;
+  source?: string;
 }
 
 interface Huddle {
@@ -44,6 +52,7 @@ export default function HuddlePage() {
   const [reRecordConfirm, setReRecordConfirm] = useState(false);
   const [keyPromptAction, setKeyPromptAction] = useState<'start' | 'rerecord' | 'save-interrupted'>('start');
   const [retrying, setRetrying] = useState(false);
+  const [speakerMappings, setSpeakerMappings] = useState<Record<number, SpeakerMap>>({});
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -58,6 +67,28 @@ export default function HuddlePage() {
     const hash = window.location.hash;
     const match = hash.match(/^#t=(\d+)$/);
     return match ? parseInt(match[1], 10) : 0;
+  };
+
+  // Fetch speaker mappings for a huddle
+  const fetchSpeakerMappings = async (huddleId: string | number) => {
+    try {
+      const res = await fetch(`/api/huddle/${huddleId}/speakers`);
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<number, SpeakerMap> = {};
+        data.speakers?.forEach((s: any) => {
+          map[s.speaker_index] = {
+            display_name: s.display_name,
+            department_slug: s.department_slug,
+            confidence: s.confidence,
+            source: s.source,
+          };
+        });
+        setSpeakerMappings(map);
+      }
+    } catch {
+      // Ignore speaker fetch errors
+    }
   };
 
   // Fetch today's huddle on mount
@@ -87,6 +118,8 @@ export default function HuddlePage() {
           } else if (h.transcript_status === 'completed' && h.transcript_json) {
             if (h.duration_seconds) setElapsedSeconds(h.duration_seconds);
             setHuddleState('transcribed');
+            // Fetch speaker mappings
+            fetchSpeakerMappings(h.id);
           } else if (h.transcript_status === 'processing' || h.recording_status === 'transcribing') {
             if (h.duration_seconds) setElapsedSeconds(h.duration_seconds);
             setHuddleState('transcribing');
@@ -132,6 +165,7 @@ export default function HuddlePage() {
           setHuddle(h);
           setElapsedSeconds(h.duration_seconds || 0);
           setHuddleState('transcribed');
+          fetchSpeakerMappings(h.id);
           if (transcriptionPollRef.current) clearInterval(transcriptionPollRef.current);
         } else if (h.transcript_status === 'failed') {
           setHuddle(h);
@@ -702,12 +736,68 @@ export default function HuddlePage() {
               )}
             </div>
 
+            {/* Speaker Mapping Banner */}
+            {huddle.transcript_json && huddle.transcript_json.length > 0 && (
+              (() => {
+                const detectedIndices = new Set(huddle.transcript_json.map(seg => seg.speaker));
+                const hasUnmapped = Array.from(detectedIndices).some(idx => !speakerMappings[idx]);
+                const hasAutoMappings = Object.values(speakerMappings).some(m => m.source === 'auto');
+
+                // Show banner if unmapped speakers or auto-IDs need review
+                if (hasUnmapped || hasAutoMappings || Object.keys(speakerMappings).length > 0) {
+                  const SC = [
+                    'bg-blue-50 border-blue-200',
+                    'bg-emerald-50 border-emerald-200',
+                    'bg-purple-50 border-purple-200',
+                    'bg-amber-50 border-amber-200',
+                    'bg-rose-50 border-rose-200',
+                    'bg-cyan-50 border-cyan-200',
+                  ];
+                  const STC = [
+                    'text-blue-700',
+                    'text-emerald-700',
+                    'text-purple-700',
+                    'text-amber-700',
+                    'text-rose-700',
+                    'text-cyan-700',
+                  ];
+                  const detectedSpeakers = Array.from(detectedIndices).sort().map(idx => ({
+                    index: idx,
+                    color: SC[idx % SC.length],
+                    textColor: STC[idx % STC.length],
+                  }));
+
+                  return (
+                    <SpeakerMappingBanner
+                      huddleId={huddle.id}
+                      detectedSpeakers={detectedSpeakers}
+                      existingMappings={speakerMappings}
+                      onMappingSaved={(newMappings) => {
+                        const newMap: Record<number, SpeakerMap> = { ...speakerMappings };
+                        newMappings.forEach((m: any) => {
+                          newMap[m.speaker_index] = {
+                            display_name: m.display_name,
+                            department_slug: m.department_slug,
+                            confidence: m.confidence ?? 1.0,
+                            source: m.source ?? 'manual',
+                          };
+                        });
+                        setSpeakerMappings(newMap);
+                      }}
+                    />
+                  );
+                }
+                return null;
+              })()
+            )}
+
             {/* Transcript */}
             <TranscriptViewer
               huddleId={huddle.id}
               segments={huddle.transcript_json || []}
               audioUrl={`/api/huddle/${huddle.id}/audio`}
               initialSeekSeconds={getInitialSeek()}
+              speakerMap={speakerMappings}
             />
           </div>
         )}

@@ -10,11 +10,17 @@ interface TranscriptSegment {
   speaker_confidence: number;
 }
 
+interface SpeakerMap {
+  display_name: string;
+  department_slug?: string;
+}
+
 interface TranscriptViewerProps {
   huddleId: string | number;
   segments: TranscriptSegment[];
   audioUrl: string;
   initialSeekSeconds?: number;
+  speakerMap?: Record<number, SpeakerMap>;
 }
 
 const SPEAKER_COLORS = [
@@ -42,6 +48,7 @@ export default function TranscriptViewer({
   segments,
   audioUrl,
   initialSeekSeconds,
+  speakerMap,
 }: TranscriptViewerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -122,6 +129,40 @@ export default function TranscriptViewer({
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  const getDepartmentName = (slug?: string): string => {
+    if (!slug) return '';
+    // Simple lookup for common departments
+    const deptNames: Record<string, string> = {
+      admin: 'Admin',
+      nursing: 'Nursing',
+      hr: 'HR',
+      finance: 'Finance',
+      it: 'IT',
+      operations: 'Operations',
+      medical: 'Medical',
+      lab: 'Lab',
+      imaging: 'Imaging',
+      pharmacy: 'Pharmacy',
+      reception: 'Reception',
+      housekeeping: 'Housekeeping',
+      security: 'Security',
+      transport: 'Transport',
+      catering: 'Catering',
+      maintenance: 'Maintenance',
+      ot: 'OT',
+    };
+    return deptNames[slug] || slug.charAt(0).toUpperCase() + slug.slice(1);
+  };
+
+  const getSpeakerLabel = (speakerIndex: number): string => {
+    if (speakerMap && speakerMap[speakerIndex]) {
+      const mapped = speakerMap[speakerIndex];
+      const deptName = getDepartmentName(mapped.department_slug);
+      return deptName ? `${mapped.display_name} (${deptName})` : mapped.display_name;
+    }
+    return `Speaker ${speakerIndex}`;
+  };
+
   return (
     <div className="space-y-4">
       {/* Audio Player */}
@@ -174,7 +215,7 @@ export default function TranscriptViewer({
                   {formatTime(segment.start)}
                 </button>
                 <span className={`text-xs font-semibold ${SPEAKER_TEXT_COLORS[colorIdx]}`}>
-                  Speaker {segment.speaker}
+                  {getSpeakerLabel(segment.speaker)}
                 </span>
               </div>
               <p className="text-sm text-slate-800 leading-relaxed">{segment.text}</p>
