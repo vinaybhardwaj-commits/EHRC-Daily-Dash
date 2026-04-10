@@ -224,6 +224,13 @@ export default function Home() {
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 hidden sm:inline-block" />
               WA Insights
             </button>
+            <a
+              href="/huddle"
+              className="px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-blue-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 hidden sm:inline-block" />
+              Daily Brief
+            </a>
           </div>
           <a
             href="/form"
