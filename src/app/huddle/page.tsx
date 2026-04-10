@@ -299,7 +299,29 @@ export default function HuddlePage() {
       setChunkCount(currentHuddle.chunk_count || 0);
       if (data.duration_seconds) setElapsedSeconds(data.duration_seconds);
       setError(null);
-      setHuddleState('uploaded');
+      setHuddleState('transcribing');
+
+      // Trigger transcription from client
+      try {
+        const txRes = await fetch(`/api/huddle/${currentHuddle.id}/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'client-interrupted' },
+        });
+        if (txRes.ok) {
+          const todayRes = await fetch('/api/huddle/today');
+          if (todayRes.ok) {
+            const todayData2 = await todayRes.json();
+            if (todayData2.huddle?.transcript_status === 'completed' && todayData2.huddle?.transcript_json) {
+              setHuddle(todayData2.huddle);
+              setElapsedSeconds(todayData2.huddle.duration_seconds || 0);
+              setHuddleState('transcribed');
+              return;
+            }
+          }
+        }
+      } catch (txErr) {
+        console.error('Client transcription trigger error:', txErr);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setHuddleState('error');
@@ -332,8 +354,48 @@ export default function HuddlePage() {
       }
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       setError(null);
-      // Go to transcribing state — auto-transcription is triggered by finalize
       setHuddleState('transcribing');
+
+      // Trigger transcription from client (fire-and-forget on server is unreliable on Vercel)
+      try {
+        const txRes = await fetch(`/api/huddle/${huddle.id}/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'client-auto' },
+        });
+        if (txRes.ok) {
+          // Transcription completed — refresh huddle data
+          const todayRes = await fetch('/api/huddle/today');
+          if (todayRes.ok) {
+            const data = await todayRes.json();
+            if (data.huddle) {
+              setHuddle(data.huddle);
+              if (data.huddle.transcript_status === 'completed' && data.huddle.transcript_json) {
+                setElapsedSeconds(data.huddle.duration_seconds || 0);
+                setHuddleState('transcribed');
+                return;
+              }
+            }
+          }
+        } else {
+          const errData = await txRes.json().catch(() => ({ error: 'Unknown transcription error' }));
+          console.error('Client transcription trigger failed:', errData);
+          setError(errData.error || 'Transcription failed');
+          // Refresh huddle to get actual DB state
+          const todayRes2 = await fetch('/api/huddle/today');
+          if (todayRes2.ok) {
+            const data2 = await todayRes2.json();
+            if (data2.huddle) {
+              setHuddle(data2.huddle);
+              setElapsedSeconds(data2.huddle.duration_seconds || 0);
+            }
+          }
+          setHuddleState('uploaded');
+        }
+      } catch (txErr) {
+        console.error('Client transcription trigger error:', txErr);
+        setError(txErr instanceof Error ? txErr.message : 'Transcription request failed');
+        setHuddleState('uploaded');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setHuddleState('error');
