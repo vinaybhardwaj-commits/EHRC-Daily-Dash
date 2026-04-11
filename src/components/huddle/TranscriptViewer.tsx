@@ -174,6 +174,65 @@ export default function TranscriptViewer({
     return `Speaker ${speakerIndex}`;
   };
 
+  // ─── Copy/share handlers ───────────────────────────────────────────
+
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const copySegment = async (index: number) => {
+    const seg = segments[index];
+    const label = getSpeakerLabel(seg.speaker);
+    const text = `[${formatTime(seg.start)}] ${label}: ${seg.text}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 1500);
+    } catch {
+      // Fallback for older browsers
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 1500);
+    }
+  };
+
+  const copyFullTranscript = async () => {
+    const text = segments
+      .map((seg) => `[${formatTime(seg.start)}] ${getSpeakerLabel(seg.speaker)}: ${seg.text}`)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    }
+  };
+
+  const shareSegmentLink = async (index: number) => {
+    const seg = segments[index];
+    const secs = Math.floor(seg.start);
+    const url = `${window.location.origin}/huddle/${huddleId}#t=${secs}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
   // ─── Edit handlers ────────────────────────────────────────────────
 
   const startEditing = (index: number) => {
@@ -286,6 +345,27 @@ export default function TranscriptViewer({
         </div>
       </div>
 
+      {/* Transcript toolbar */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={copyFullTranscript}
+          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+            copiedAll
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          {copiedAll ? '✓ Copied!' : 'Copy All'}
+        </button>
+        <a
+          href={`/api/huddle/${huddleId}/transcript-download?format=named`}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg border bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+        >
+          Download TXT
+        </a>
+        <span className="text-xs text-slate-400 ml-auto">{segments.length} segments</span>
+      </div>
+
       {/* Transcript Segments */}
       <div className="space-y-2">
         {segments.map((segment, index) => {
@@ -320,9 +400,9 @@ export default function TranscriptViewer({
                 {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* Edit indicator + button */}
+                {/* Actions: copy, share, edit, history */}
                 {!isEditing && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-0.5">
                     {hasEdits && (
                       <button
                         onClick={() => toggleHistory(index)}
@@ -335,6 +415,32 @@ export default function TranscriptViewer({
                       >
                         edited
                       </button>
+                    )}
+                    {copiedIndex === index ? (
+                      <span className="text-xs text-emerald-600 px-1">✓</span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); copySegment(index); }}
+                          className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-white/50"
+                          title="Copy segment text"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); shareSegmentLink(index); }}
+                          className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-white/50"
+                          title="Copy link to this moment"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                          </svg>
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => startEditing(index)}
