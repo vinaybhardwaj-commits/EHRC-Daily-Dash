@@ -132,17 +132,21 @@ export async function GET(
     if (segmentParam !== null) {
       const segIndex = parseInt(segmentParam, 10);
       result = await sql`
-        SELECT id, segment_index, original_text, edited_text, edited_at
-        FROM huddle_transcript_edits
-        WHERE huddle_id = ${id} AND segment_index = ${segIndex}
-        ORDER BY edited_at DESC
+        SELECT e.id, e.segment_index, e.original_text, e.edited_text, e.edited_at,
+               COALESCE(u.display_name, 'Unknown') AS edited_by
+        FROM huddle_transcript_edits e
+        LEFT JOIN users u ON u.id = e.edited_by_user_id
+        WHERE e.huddle_id = ${id} AND e.segment_index = ${segIndex}
+        ORDER BY e.edited_at DESC
       `;
     } else {
       result = await sql`
-        SELECT id, segment_index, original_text, edited_text, edited_at
-        FROM huddle_transcript_edits
-        WHERE huddle_id = ${id}
-        ORDER BY edited_at DESC
+        SELECT e.id, e.segment_index, e.original_text, e.edited_text, e.edited_at,
+               COALESCE(u.display_name, 'Unknown') AS edited_by
+        FROM huddle_transcript_edits e
+        LEFT JOIN users u ON u.id = e.edited_by_user_id
+        WHERE e.huddle_id = ${id}
+        ORDER BY e.edited_at DESC
         LIMIT 200
       `;
     }

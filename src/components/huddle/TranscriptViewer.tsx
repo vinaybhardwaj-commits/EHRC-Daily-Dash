@@ -21,6 +21,7 @@ interface EditRecord {
   original_text: string;
   edited_text: string;
   edited_at: string;
+  edited_by?: string;
 }
 
 interface TranscriptViewerProps {
@@ -182,13 +183,14 @@ export default function TranscriptViewer({
   const copySegment = async (index: number) => {
     const seg = segments[index];
     const label = getSpeakerLabel(seg.speaker);
-    const text = `[${formatTime(seg.start)}] ${label}: ${seg.text}`;
+    const ts = formatTime(seg.start);
+    const deepLink = `${window.location.origin}/huddle/${huddleId}#t=${Math.floor(seg.start)}`;
+    const text = `[${ts}] ${label}: ${seg.text}\n— EHRC Daily Brief · ${deepLink}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopiedIndex(index);
       setTimeout(() => setCopiedIndex(null), 1500);
     } catch {
-      // Fallback for older browsers
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
@@ -511,7 +513,10 @@ export default function TranscriptViewer({
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {historyEdits.map((edit) => (
                         <div key={edit.id} className="text-xs space-y-1">
-                          <div className="text-slate-400">{formatEditTime(edit.edited_at)}</div>
+                          <div className="text-slate-400">
+                            {formatEditTime(edit.edited_at)}
+                            {edit.edited_by && <span className="ml-1">by {edit.edited_by}</span>}
+                          </div>
                           <div className="flex gap-2">
                             <div className="flex-1 p-1.5 bg-red-50 rounded text-red-700 line-through">
                               {edit.original_text.length > 120

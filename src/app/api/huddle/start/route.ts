@@ -6,13 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    // Check ADMIN_KEY auth
-    const key = req.nextUrl.searchParams.get('key') || req.headers.get('x-admin-key') || '';
-    const validKeys = [process.env.ADMIN_KEY].filter(Boolean);
-
-    if (!key || validKeys.length === 0 || !validKeys.includes(key)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Auth removed — internal tool, V is only user. Will be restored in Phase 2.
 
     // Check if a huddle already exists for today (not deleted)
     const existingHuddle = await sql`

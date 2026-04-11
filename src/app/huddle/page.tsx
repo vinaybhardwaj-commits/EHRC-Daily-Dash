@@ -41,16 +41,12 @@ interface Huddle {
 export default function HuddlePage() {
   const [huddleState, setHuddleState] = useState<HuddleState>('loading');
   const [huddle, setHuddle] = useState<Huddle | null>(null);
-  const [isRecorder] = useState(true);
+  const [isRecorder] = useState(true); // TODO: Phase 2 — check is_huddle_recorder via auth
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [chunkCount, setChunkCount] = useState(0);
   const [lastFlush, setLastFlush] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [adminKey, setAdminKey] = useState<string>('');
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
-  const [tmpKeyInput, setTmpKeyInput] = useState('');
   const [reRecordConfirm, setReRecordConfirm] = useState(false);
-  const [keyPromptAction, setKeyPromptAction] = useState<'start' | 'rerecord' | 'save-interrupted'>('start');
   const [retrying, setRetrying] = useState(false);
   const [speakerMappings, setSpeakerMappings] = useState<Record<number, SpeakerMap>>({});
 
@@ -139,8 +135,6 @@ export default function HuddlePage() {
       }
     };
 
-    const storedKey = localStorage.getItem('ehrc_admin_key') || '';
-    setAdminKey(storedKey);
     fetchHuddle();
   }, []);
 
@@ -229,13 +223,13 @@ export default function HuddlePage() {
     };
   }, [huddleState]);
 
-  const startRecording = useCallback(async (keyToUse: string, abandonHuddleId?: string) => {
+  const startRecording = useCallback(async (abandonHuddleId?: string) => {
     try {
       setHuddleState('loading');
       if (abandonHuddleId) {
         const abandonRes = await fetch(`/api/huddle/${abandonHuddleId}/abandon`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-admin-key': keyToUse },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason: 'Re-recording initiated by recorder' }),
         });
         if (!abandonRes.ok) {
@@ -246,7 +240,6 @@ export default function HuddlePage() {
 
       const res = await fetch(`/api/huddle/start`, {
         method: 'POST',
-        headers: { 'x-admin-key': keyToUse },
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -314,32 +307,16 @@ export default function HuddlePage() {
   }, []);
 
   const handleStartHuddle = useCallback(async () => {
-    if (!adminKey) { setKeyPromptAction('start'); setShowKeyPrompt(true); return; }
-    await startRecording(adminKey);
-  }, [adminKey, startRecording]);
-
-  const handleKeySubmit = useCallback(() => {
-    if (!tmpKeyInput.trim()) { setError('Admin key cannot be empty'); return; }
-    const key = tmpKeyInput;
-    setAdminKey(key);
-    localStorage.setItem('ehrc_admin_key', key);
-    setShowKeyPrompt(false);
-    setTmpKeyInput('');
-    if (keyPromptAction === 'start') startRecording(key);
-    else if (keyPromptAction === 'rerecord' && huddle) { setReRecordConfirm(false); startRecording(key, huddle.id); }
-    else if (keyPromptAction === 'save-interrupted' && huddle) finalizeInterrupted(key);
-  }, [tmpKeyInput, keyPromptAction, huddle]);
+    await startRecording();
+  }, [startRecording]);
 
   const handleReRecord = useCallback(async () => {
     if (!huddle) return;
-    if (!adminKey) { setKeyPromptAction('rerecord'); setShowKeyPrompt(true); return; }
     setReRecordConfirm(false);
-    await startRecording(adminKey, huddle.id);
-  }, [adminKey, huddle, startRecording]);
+    await startRecording(huddle.id);
+  }, [huddle, startRecording]);
 
-  const finalizeInterrupted = useCallback(async (keyOverride?: string) => {
-    const keyToUse = keyOverride || adminKey;
-    if (!keyToUse) { setKeyPromptAction('save-interrupted'); setShowKeyPrompt(true); return; }
+  const finalizeInterrupted = useCallback(async () => {
     try {
       setHuddleState('uploading');
       const todayRes = await fetch('/api/huddle/today');
@@ -398,7 +375,7 @@ export default function HuddlePage() {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setHuddleState('error');
     }
-  }, [adminKey]);
+  }, []);
 
   const handleEndHuddle = useCallback(async () => {
     if (!huddle) return;
@@ -518,27 +495,6 @@ export default function HuddlePage() {
   const dateStr = today.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   // --- DIALOGS ---
-  if (showKeyPrompt) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-lg">
-          <h2 className="text-lg font-bold text-slate-900">Admin Key Required</h2>
-          <p className="text-sm text-slate-600 mt-2">Enter your admin key to continue:</p>
-          <input type="password" value={tmpKeyInput} onChange={(e) => setTmpKeyInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleKeySubmit(); }}
-            placeholder="Enter admin key"
-            className="w-full mt-4 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
-          <div className="flex gap-3 mt-6">
-            <button onClick={() => { setShowKeyPrompt(false); setTmpKeyInput(''); }}
-              className="flex-1 px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
-            <button onClick={handleKeySubmit}
-              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Submit</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (reRecordConfirm) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

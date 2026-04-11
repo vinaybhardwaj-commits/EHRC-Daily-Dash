@@ -14,16 +14,7 @@ export async function POST(
   try {
     const { id } = await params;
 
-    // Check ADMIN_KEY auth
-    const key =
-      req.nextUrl.searchParams.get('key') ||
-      req.headers.get('x-admin-key') ||
-      '';
-    const validKeys = [process.env.ADMIN_KEY].filter(Boolean);
-
-    if (!key || validKeys.length === 0 || !validKeys.includes(key)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Auth removed — internal tool. Will be restored in Phase 2.
 
     const body: AbandonBody = await req.json().catch(() => ({}));
     const reason = body.reason || 'Abandoned by recorder';
