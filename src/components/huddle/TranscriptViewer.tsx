@@ -105,15 +105,28 @@ export default function TranscriptViewer({
     fetchEditedSegments();
   }, [huddleId]);
 
-  // Handle initial seek from URL hash
+  // Handle initial seek from URL hash — must wait for audio metadata
   useEffect(() => {
-    if (initialSeekSeconds !== undefined && initialSeekSeconds > 0 && audioRef.current) {
-      audioRef.current.currentTime = initialSeekSeconds;
+    if (initialSeekSeconds === undefined || initialSeekSeconds <= 0 || !audioRef.current) return;
+
+    const audio = audioRef.current;
+
+    const doSeek = () => {
+      audio.currentTime = initialSeekSeconds;
       const targetIdx = segments.findIndex(
         (seg) => seg.start <= initialSeekSeconds && seg.end >= initialSeekSeconds
       );
       if (targetIdx >= 0) scrollToSegment(targetIdx);
+    };
+
+    // If metadata already loaded, seek immediately; otherwise wait for it
+    if (audio.readyState >= 1) {
+      doSeek();
+    } else {
+      audio.addEventListener('loadedmetadata', doSeek, { once: true });
+      return () => audio.removeEventListener('loadedmetadata', doSeek);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSeekSeconds, segments]);
 
   // Track current time during playback
