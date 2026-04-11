@@ -35,6 +35,18 @@ export async function GET(
     `;
 
     if (chunksResult.rows.length === 0) {
+      // Check if blobs were cleaned up (retention policy)
+      const allChunks = await sql`
+        SELECT COUNT(*) as total, COUNT(blob_deleted_at) as deleted
+        FROM huddle_audio_chunks
+        WHERE huddle_id = ${huddleId}
+      `;
+      if (allChunks.rows[0].total > 0 && allChunks.rows[0].deleted > 0) {
+        return NextResponse.json(
+          { error: 'Audio has been removed per retention policy (7-day limit)' },
+          { status: 410 }
+        );
+      }
       return NextResponse.json({ error: 'No audio chunks found' }, { status: 404 });
     }
 

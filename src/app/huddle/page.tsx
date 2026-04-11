@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import TranscriptViewer from '@/components/huddle/TranscriptViewer';
 import SpeakerMappingBanner from '@/components/huddle/SpeakerMappingBanner';
+import { enqueueChunk, drainQueue, getQueueCount, clearQueue } from '@/lib/huddle/offline-queue';
 
 type HuddleState = 'loading' | 'no-huddle' | 'recording' | 'uploading' | 'uploaded' | 'interrupted' | 'transcribing' | 'transcribed' | 'error';
 
@@ -50,12 +51,31 @@ export default function HuddlePage() {
   const [retrying, setRetrying] = useState(false);
   const [speakerMappings, setSpeakerMappings] = useState<Record<number, SpeakerMap>>({});
 
+  // 1.4a: iOS Safari backgrounding
+  const [backgroundBanner, setBackgroundBanner] = useState<{
+    type: 'yellow' | 'red';
+    message: string;
+  } | null>(null);
+
+  // 1.4b: Network loss queue
+  const [isOffline, setIsOffline] = useState(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [isDraining, setIsDraining] = useState(false);
+  const [showDrainConfirm, setShowDrainConfirm] = useState(false);
+
+  // 1.4c: Crash recovery
+  const [showCrashRecovery, setShowCrashRecovery] = useState(false);
+  const [crashHuddle, setCrashHuddle] = useState<Huddle | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const chunkCountRef = useRef(0);
   const isLiveRecording = useRef(false);
   const transcriptionPollRef = useRef<NodeJS.Timeout | null>(null);
+  const backgroundedAtRef = useRef<number | null>(null);
+  const recordingSessionIdRef = useRef<string>('');
+  const currentHuddleIdRef = useRef<string>('');
 
   // Parse URL hash for initial seek time
   const getInitialSeek = (): number => {
@@ -223,6 +243,337 @@ export default function HuddlePage() {
     };
   }, [huddleState]);
 
+  // 1.4a: iOS Safari backgrounding — visibilitychange handler
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden && isLiveRecording.current && mediaRecorderRef.current) {
+        // Tab backgrounded while recording — stop MediaRecorder to prevent iOS mic revocation
+        backgroundedAtRef.current = Date.now();
+        try {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+        } catch {
+          // Already stopped
+        }
+        isLiveRecording.current = false;
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      } else if (!document.hidden && backgroundedAtRef.current && huddleState === 'recording') {
+        // Tab returned — calculate gap and show banner
+        const gapSeconds = Math.round((Date.now() - backgroundedAtRef.current) / 1000);
+        const gapTime = new Date(backgroundedAtRef.current).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        backgroundedAtRef.current = null;
+
+        if (gapSeconds > 60) {
+          setBackgroundBanner({
+            type: 'red',
+            message: `Tab was backgrounded at ${gapTime} for ${Math.floor(gapSeconds / 60)}m ${gapSeconds % 60}s. Audio may have a gap.`,
+          });
+        } else {
+          setBackgroundBanner({
+            type: 'yellow',
+            message: `Tab was backgrounded at ${gapTime}. Recording resumed.`,
+          });
+        }
+
+        // Restart recording with the same huddle
+        const restartRecording = async () => {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            let mimeType = '';
+            for (const candidate of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', '']) {
+              if (MediaRecorder.isTypeSupported(candidate)) { mimeType = candidate; break; }
+            }
+
+            // Generate a new recording_session_id for the resumed segment
+            const newSessionId = crypto.randomUUID();
+            recordingSessionIdRef.current = newSessionId;
+
+            const mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 });
+            mediaRecorder.ondataavailable = async (event) => {
+              if (event.data.size === 0) return;
+              const currentChunkIndex = chunkCountRef.current;
+              const formData = new FormData();
+              formData.append('audio', event.data);
+              formData.append('chunk_index', String(currentChunkIndex));
+              formData.append('recording_session_id', newSessionId);
+              formData.append('mime_type', mimeType);
+              try {
+                const chunkRes = await fetch(`/api/huddle/${currentHuddleIdRef.current}/chunk`, { method: 'POST', body: formData });
+                if (chunkRes.ok) {
+                  chunkCountRef.current += 1;
+                  setChunkCount(chunkCountRef.current);
+                  setLastFlush(new Date().toLocaleTimeString());
+                }
+              } catch {
+                // Queue for offline upload
+                await enqueueChunk({
+                  huddle_id: currentHuddleIdRef.current,
+                  chunk_index: currentChunkIndex,
+                  recording_session_id: newSessionId,
+                  mime_type: mimeType,
+                  blob: event.data,
+                  queued_at: Date.now(),
+                  retry_count: 0,
+                });
+                setOfflineQueueCount((prev) => prev + 1);
+              }
+            };
+
+            mediaRecorder.start(30000);
+            mediaRecorderRef.current = mediaRecorder;
+            isLiveRecording.current = true;
+
+            // Resume timer
+            timerIntervalRef.current = setInterval(() => {
+              setElapsedSeconds((prev) => prev + 1);
+            }, 1000);
+          } catch (err) {
+            console.error('Failed to restart recording after backgrounding:', err);
+            setBackgroundBanner({
+              type: 'red',
+              message: 'Could not restart recording after backgrounding. Microphone access was lost.',
+            });
+          }
+        };
+
+        restartRecording();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [huddleState]);
+
+  // 1.4b: Network online/offline detection
+  useEffect(() => {
+    setIsOffline(!navigator.onLine);
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    const handleOnline = async () => {
+      setIsOffline(false);
+      // Auto-drain queue when back online
+      const count = await getQueueCount();
+      if (count > 0 && !isDraining) {
+        setIsDraining(true);
+        try {
+          const uploaded = await drainQueue((done, remaining) => {
+            setOfflineQueueCount(remaining);
+          });
+          if (uploaded > 0) {
+            setOfflineQueueCount(await getQueueCount());
+          }
+        } finally {
+          setIsDraining(false);
+        }
+      }
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDraining]);
+
+  // 1.4c: Crash recovery — check localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('ehrc_huddle_active');
+    if (!saved) return;
+
+    try {
+      const state = JSON.parse(saved);
+      if (state.huddle_id && state.started_at) {
+        // Check if huddle is still in 'recording' state on server
+        fetch('/api/huddle/today')
+          .then((res) => res.json())
+          .then((data) => {
+            if (
+              data.huddle &&
+              String(data.huddle.id) === String(state.huddle_id) &&
+              data.huddle.recording_status === 'recording'
+            ) {
+              setCrashHuddle(data.huddle);
+              setChunkCount(data.huddle.chunk_count || 0);
+              chunkCountRef.current = data.huddle.chunk_count || 0;
+              setShowCrashRecovery(true);
+            } else {
+              // Stale state — clear it
+              localStorage.removeItem('ehrc_huddle_active');
+            }
+          })
+          .catch(() => {
+            localStorage.removeItem('ehrc_huddle_active');
+          });
+      }
+    } catch {
+      localStorage.removeItem('ehrc_huddle_active');
+    }
+  }, []);
+
+  // Helper: save recording state to localStorage for crash recovery
+  const saveRecordingState = (huddleId: string, sessionId: string) => {
+    localStorage.setItem(
+      'ehrc_huddle_active',
+      JSON.stringify({ huddle_id: huddleId, recording_session_id: sessionId, started_at: Date.now() })
+    );
+  };
+
+  const clearRecordingState = () => {
+    localStorage.removeItem('ehrc_huddle_active');
+  };
+
+  // Crash recovery handlers
+  const handleCrashResume = useCallback(async () => {
+    if (!crashHuddle) return;
+    setShowCrashRecovery(false);
+
+    // Start a new MediaRecorder session for the same huddle
+    try {
+      setHuddleState('recording');
+      setHuddle(crashHuddle);
+      currentHuddleIdRef.current = String(crashHuddle.id);
+
+      if (crashHuddle.started_at) {
+        const elapsed = Math.floor((Date.now() - new Date(crashHuddle.started_at).getTime()) / 1000);
+        setElapsedSeconds(elapsed);
+      }
+
+      try {
+        if (navigator.wakeLock) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+        }
+      } catch {}
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let mimeType = '';
+      for (const candidate of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', '']) {
+        if (MediaRecorder.isTypeSupported(candidate)) { mimeType = candidate; break; }
+      }
+
+      const newSessionId = crypto.randomUUID();
+      recordingSessionIdRef.current = newSessionId;
+      saveRecordingState(String(crashHuddle.id), newSessionId);
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 });
+      mediaRecorder.ondataavailable = async (event) => {
+        if (event.data.size === 0) return;
+        const currentChunkIndex = chunkCountRef.current;
+        const formData = new FormData();
+        formData.append('audio', event.data);
+        formData.append('chunk_index', String(currentChunkIndex));
+        formData.append('recording_session_id', newSessionId);
+        formData.append('mime_type', mimeType);
+        try {
+          const chunkRes = await fetch(`/api/huddle/${crashHuddle.id}/chunk`, { method: 'POST', body: formData });
+          if (chunkRes.ok) {
+            chunkCountRef.current += 1;
+            setChunkCount(chunkCountRef.current);
+            setLastFlush(new Date().toLocaleTimeString());
+          }
+        } catch {
+          await enqueueChunk({
+            huddle_id: String(crashHuddle.id),
+            chunk_index: currentChunkIndex,
+            recording_session_id: newSessionId,
+            mime_type: mimeType,
+            blob: event.data,
+            queued_at: Date.now(),
+            retry_count: 0,
+          });
+          setOfflineQueueCount((prev) => prev + 1);
+        }
+      };
+
+      mediaRecorder.start(30000);
+      mediaRecorderRef.current = mediaRecorder;
+      isLiveRecording.current = true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resume recording');
+      setHuddleState('interrupted');
+    }
+  }, [crashHuddle]);
+
+  const handleCrashEnd = useCallback(async () => {
+    if (!crashHuddle) return;
+    setShowCrashRecovery(false);
+    clearRecordingState();
+
+    // Finalize the huddle
+    setHuddle(crashHuddle);
+    setHuddleState('uploading');
+    try {
+      const res = await fetch(`/api/huddle/${crashHuddle.id}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration_seconds: 0, compute_from_server: true }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to finalize huddle');
+      }
+      setHuddleState('transcribing');
+
+      // Trigger transcription
+      try {
+        await fetch(`/api/huddle/${crashHuddle.id}/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-trigger-type': 'auto' },
+        });
+        const todayRes = await fetch('/api/huddle/today');
+        if (todayRes.ok) {
+          const data = await todayRes.json();
+          if (data.huddle?.transcript_status === 'completed' && data.huddle?.transcript_json) {
+            setHuddle(data.huddle);
+            setElapsedSeconds(data.huddle.duration_seconds || 0);
+            setHuddleState('transcribed');
+            return;
+          }
+        }
+      } catch {}
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to finalize');
+      setHuddleState('error');
+    }
+  }, [crashHuddle]);
+
+  const handleCrashView = useCallback(() => {
+    if (!crashHuddle) return;
+    setShowCrashRecovery(false);
+    clearRecordingState();
+    setHuddle(crashHuddle);
+    setHuddleState('interrupted');
+  }, [crashHuddle]);
+
+  // Force-process handler for abandoned huddles
+  const handleForceProcess = useCallback(async () => {
+    if (!huddle) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/huddle/${huddle.id}/force-process`, { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Force-process failed');
+      }
+      // Refresh huddle state
+      const todayRes = await fetch('/api/huddle/today');
+      if (todayRes.ok) {
+        const data = await todayRes.json();
+        if (data.huddle) {
+          setHuddle(data.huddle);
+          setHuddleState('uploaded');
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Force-process failed');
+    }
+  }, [huddle]);
+
   const startRecording = useCallback(async (abandonHuddleId?: string) => {
     try {
       setHuddleState('loading');
@@ -259,6 +610,11 @@ export default function HuddlePage() {
       setElapsedSeconds(0);
       setLastFlush('');
       setError(null);
+      setBackgroundBanner(null);
+      setOfflineQueueCount(0);
+      currentHuddleIdRef.current = String(data.huddle_id);
+      recordingSessionIdRef.current = data.recording_session_id;
+      saveRecordingState(String(data.huddle_id), data.recording_session_id);
 
       try {
         if (navigator.wakeLock) {
@@ -290,9 +646,24 @@ export default function HuddlePage() {
             chunkCountRef.current += 1;
             setChunkCount(chunkCountRef.current);
             setLastFlush(new Date().toLocaleTimeString());
+          } else {
+            throw new Error('Upload failed');
           }
-        } catch (chunkErr) {
-          console.error('Chunk upload error:', chunkErr);
+        } catch {
+          // Network loss or server error — queue to IndexedDB
+          console.warn('Chunk upload failed, queuing offline:', currentChunkIndex);
+          await enqueueChunk({
+            huddle_id: String(newHuddle.id),
+            chunk_index: currentChunkIndex,
+            recording_session_id: data.recording_session_id,
+            mime_type: mimeType,
+            blob: event.data,
+            queued_at: Date.now(),
+            retry_count: 0,
+          });
+          chunkCountRef.current += 1;
+          setChunkCount(chunkCountRef.current);
+          setOfflineQueueCount((prev) => prev + 1);
         }
       };
 
@@ -319,6 +690,7 @@ export default function HuddlePage() {
   const finalizeInterrupted = useCallback(async () => {
     try {
       setHuddleState('uploading');
+      clearRecordingState();
       const todayRes = await fetch('/api/huddle/today');
       if (!todayRes.ok) throw new Error('Could not check current huddle status');
       const todayData = await todayRes.json();
@@ -383,11 +755,33 @@ export default function HuddlePage() {
       await finalizeInterrupted();
       return;
     }
+
+    // Check for queued chunks before ending
+    const queuedCount = await getQueueCount();
+    if (queuedCount > 0 && !showDrainConfirm) {
+      setShowDrainConfirm(true);
+      return;
+    }
+
     try {
+      setShowDrainConfirm(false);
       setHuddleState('uploading');
+      setBackgroundBanner(null);
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
       isLiveRecording.current = false;
+      clearRecordingState();
+
+      // Drain any remaining offline chunks before finalizing
+      if (queuedCount > 0) {
+        setIsDraining(true);
+        try {
+          await drainQueue((done, remaining) => setOfflineQueueCount(remaining));
+        } finally {
+          setIsDraining(false);
+        }
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 1500));
       if (wakeLockRef.current) {
         try { await wakeLockRef.current.release(); } catch {}
@@ -514,6 +908,62 @@ export default function HuddlePage() {
     );
   }
 
+  // --- CRASH RECOVERY MODAL (1.4c) ---
+  if (showCrashRecovery && crashHuddle) {
+    const crashTime = crashHuddle.started_at
+      ? new Date(crashHuddle.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'earlier';
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-lg">
+          <div className="inline-block p-3 bg-amber-100 rounded-full mb-4">
+            <svg className="w-6 h-6 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">Unfinished Huddle</h2>
+          <p className="text-sm text-slate-600 mt-2">
+            A recording started at {crashTime} was interrupted. {chunkCount > 0 ? `${chunkCount} chunks (~${formatTime(chunkCount * 30)}) were saved.` : 'No audio was captured yet.'}
+          </p>
+          <div className="flex flex-col gap-2 mt-6">
+            <button onClick={handleCrashResume}
+              className="w-full px-4 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-all">
+              Resume Recording</button>
+            {chunkCount > 0 && (
+              <button onClick={handleCrashEnd}
+                className="w-full px-4 py-3 bg-emerald-500 text-white font-semibold rounded-lg hover:bg-emerald-600 transition-all">
+                End Huddle Now</button>
+            )}
+            <button onClick={handleCrashView}
+              className="w-full px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">
+              View What We Have</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- DRAIN CONFIRMATION MODAL (1.4b) ---
+  if (showDrainConfirm) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-lg">
+          <h2 className="text-lg font-bold text-slate-900">Queued Chunks</h2>
+          <p className="text-sm text-slate-600 mt-2">
+            {offlineQueueCount} chunk{offlineQueueCount !== 1 ? 's' : ''} are queued locally and haven&apos;t been uploaded yet.
+            Ending the huddle will attempt to upload them first.
+          </p>
+          <div className="flex gap-3 mt-6">
+            <button onClick={() => setShowDrainConfirm(false)}
+              className="flex-1 px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button onClick={handleEndHuddle}
+              className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">End Anyway</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // --- MAIN PAGE ---
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900 p-4 sm:p-6">
@@ -597,6 +1047,11 @@ export default function HuddlePage() {
                 className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all active:scale-95">
                 Discard &amp; Re-record</button>
             </div>
+            {huddle?.recording_status === 'abandoned' && chunkCount > 0 && (
+              <button onClick={handleForceProcess}
+                className="mt-3 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors w-full">
+                Force-process Abandoned Huddle</button>
+            )}
           </div>
         )}
 
@@ -613,8 +1068,33 @@ export default function HuddlePage() {
               End Huddle</button>
             <div className="text-xs text-slate-500 space-y-1">
               <p>Chunks uploaded: {chunkCount} · Last flush {lastFlush || 'pending'}</p>
+              {offlineQueueCount > 0 && (
+                <p className="text-amber-600 font-medium">
+                  {offlineQueueCount} chunk{offlineQueueCount !== 1 ? 's' : ''} queued locally
+                  {isDraining && ' — uploading...'}
+                </p>
+              )}
               <p className="text-yellow-600 font-medium">Keep screen on</p>
             </div>
+
+            {/* 1.4a: Backgrounding banner */}
+            {backgroundBanner && (
+              <div className={`mt-4 p-3 rounded-lg text-xs font-medium ${
+                backgroundBanner.type === 'red'
+                  ? 'bg-red-50 border border-red-200 text-red-700'
+                  : 'bg-yellow-50 border border-yellow-200 text-yellow-700'
+              }`}>
+                {backgroundBanner.message}
+                <button onClick={() => setBackgroundBanner(null)} className="ml-2 underline">Dismiss</button>
+              </div>
+            )}
+
+            {/* 1.4b: Offline banner */}
+            {isOffline && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700">
+                Offline — chunks queued locally. They&apos;ll upload when connection returns.
+              </div>
+            )}
           </div>
         )}
 
