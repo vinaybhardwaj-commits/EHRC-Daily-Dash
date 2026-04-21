@@ -14,6 +14,11 @@ import { emergencySmartForm } from './smart-forms/emergency';
 import { billingSmartForm } from './smart-forms/billing';
 import { supplyChainSmartForm } from './smart-forms/supply-chain';
 import { pharmacySmartForm } from './smart-forms/pharmacy';
+// S3c — native smart-form overrides (wave 3)
+import { trainingSmartForm } from './smart-forms/training';
+import { customerCareSmartForm } from './smart-forms/customer-care';
+import { patientSafetySmartForm } from './smart-forms/patient-safety';
+import { financeSmartForm } from './smart-forms/finance';
 
 // Convert all legacy forms once at module load
 const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
@@ -22,6 +27,7 @@ const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
 // and it takes priority over the legacy-adapted version.
 // S3a (21 Apr 2026): wave 1 — nursing, clinical-lab, ot.
 // S3b (21 Apr 2026): wave 2 — emergency, billing, supply-chain, pharmacy.
+// S3c (21 Apr 2026): wave 3 — training, customer-care, patient-safety, finance.
 const smartFormOverrides: Record<string, SmartFormConfig> = {
   nursing: nursingSmartForm,
   'clinical-lab': clinicalLabSmartForm,
@@ -30,6 +36,10 @@ const smartFormOverrides: Record<string, SmartFormConfig> = {
   billing: billingSmartForm,
   'supply-chain': supplyChainSmartForm,
   pharmacy: pharmacySmartForm,
+  training: trainingSmartForm,
+  'customer-care': customerCareSmartForm,
+  'patient-safety': patientSafetySmartForm,
+  finance: financeSmartForm,
 };
 
 /* ── Conditional Show/Hide Patches ─────────────────────────────────── */
