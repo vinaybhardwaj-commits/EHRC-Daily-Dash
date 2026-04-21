@@ -187,7 +187,8 @@ export interface SmartFormSection {
 
 /* ── Form Layout ─────────────────────────────────────────────────── */
 
-export type FormLayout = 'scroll' | 'wizard';
+export type FormLayout = 'scroll' | 'wizard' | 'responsive';
+// 'responsive' = scroll on desktop (>= 640px), wizard on mobile (< 640px). HOD can flip with the header toggle.
 
 /* ── Top-Level Form Config ───────────────────────────────────────── */
 

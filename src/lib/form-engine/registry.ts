@@ -5,13 +5,22 @@
 import { FORMS_BY_SLUG } from '../form-definitions';
 import { adaptAllLegacyForms } from './legacy-adapter';
 import type { SmartFormConfig, SmartFormField, ConditionRule } from './types';
+// S3a — native smart-form overrides (wave 1)
+import { nursingSmartForm } from './smart-forms/nursing';
+import { clinicalLabSmartForm } from './smart-forms/clinical-lab';
+import { otSmartForm } from './smart-forms/ot';
 
 // Convert all legacy forms once at module load
 const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
 
-// Future: smart form overrides will be registered here.
-// When a department form is upgraded, add it to this map and it takes priority.
-const smartFormOverrides: Record<string, SmartFormConfig> = {};
+// Smart form overrides — when a department form is upgraded, its slug is added here
+// and it takes priority over the legacy-adapted version.
+// S3a (21 Apr 2026): wave 1 — nursing, clinical-lab, ot.
+const smartFormOverrides: Record<string, SmartFormConfig> = {
+  nursing: nursingSmartForm,
+  'clinical-lab': clinicalLabSmartForm,
+  ot: otSmartForm,
+};
 
 /* ── Conditional Show/Hide Patches ─────────────────────────────────── */
 // These add showWhen conditions to fields that should only appear
@@ -29,22 +38,7 @@ interface FormPatch {
 }
 
 const conditionalPatches: FormPatch[] = [
-  // DD.2: Clinical Lab — show critical value details only when "Yes"
-  {
-    slug: 'clinical-lab',
-    patches: [
-      {
-        fieldId: 'criticalValueDetails',
-        showWhen: { field: 'criticalValuesReportedToday', operator: 'eq', value: 'Yes' },
-        requireWhen: { field: 'criticalValuesReportedToday', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'positiveCultureDetails',
-        showWhen: { field: 'positiveCulturesToday', operator: 'gt', value: 0 },
-        requireWhen: { field: 'positiveCulturesToday', operator: 'gt', value: 0 },
-      },
-    ],
-  },
+  // S3a: clinical-lab conditionals migrated into ./smart-forms/clinical-lab.ts
   // DD.5: Facilities — show breakdown details only when "Yes"
   {
     slug: 'facility',
@@ -55,47 +49,7 @@ const conditionalPatches: FormPatch[] = [
       },
     ],
   },
-  // DD.4: Nursing — show OT fields only when "Yes" to also reporting OT
-  {
-    slug: 'nursing',
-    patches: [
-      {
-        fieldId: 'otTotalCasesDoneToday',
-        showWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-        requireWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'otFirstCaseOnTimeStart',
-        showWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-        requireWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'otDelayReason',
-        showWhen: {
-          logic: 'and',
-          conditions: [
-            { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-            { field: 'otFirstCaseOnTimeStart', operator: 'eq', value: 'No' },
-          ],
-        },
-      },
-      {
-        fieldId: 'otCancellationsToday',
-        showWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-        requireWhen: { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'otCancellationReasons',
-        showWhen: {
-          logic: 'and',
-          conditions: [
-            { field: 'alsoReportingOtData', operator: 'eq', value: 'Yes' },
-            { field: 'otCancellationsToday', operator: 'gt', value: 0 },
-          ],
-        },
-      },
-    ],
-  },
+  // S3a: nursing conditionals migrated into ./smart-forms/nursing.ts
   // DD.3: HR — show hiring pipeline fields only on Mondays (when toggle is "Yes")
   {
     slug: 'hr-manpower',

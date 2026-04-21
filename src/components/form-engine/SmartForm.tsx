@@ -32,9 +32,20 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Wizard state
-  const isWizard = config.layout === 'wizard';
+  // Layout / wizard state
+  // 'responsive' picks wizard on first render when viewport < 640px; HOD can flip any time.
+  const computeInitialMode = (): 'scroll' | 'wizard' => {
+    if (config.layout === 'wizard') return 'wizard';
+    if (config.layout === 'responsive') {
+      if (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches) return 'wizard';
+      return 'scroll';
+    }
+    return 'scroll';
+  };
+  const [viewMode, setViewMode] = useState<'scroll' | 'wizard'>(computeInitialMode);
+  const isWizard = viewMode === 'wizard';
   const [currentStep, setCurrentStep] = useState(0);
+  const isResponsive = config.layout === 'responsive';
 
   // Analytics state
   const sessionId = useRef(generateSessionId());
@@ -285,11 +296,17 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     sectionsSeen.current.clear();
   }, [formData.date]);
 
+  // ── Layout toggle ──
+  const toggleMode = useCallback(() => {
+    setViewMode(prev => (prev === 'wizard' ? 'scroll' : 'wizard'));
+    setCurrentStep(0);
+  }, []);
+
   // ── Render: Success ──
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <FormHeader title={config.title} subtitle={config.department} />
+        <FormHeader title={config.title} subtitle={config.department} viewMode={viewMode} onToggleMode={toggleMode} showToggle={isResponsive} />
         <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
             <CheckCircle className="w-14 h-14 text-green-600 mx-auto mb-4" />
@@ -320,7 +337,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     const progress = ((currentStep + 1) / totalSteps) * 100;
     return (
       <div className="min-h-screen bg-gray-50">
-        <FormHeader title={config.title} subtitle={config.department} />
+        <FormHeader title={config.title} subtitle={config.department} viewMode={viewMode} onToggleMode={toggleMode} showToggle={isResponsive} />
 
         {/* Progress bar */}
         <div className="max-w-2xl mx-auto px-4 pt-6">
@@ -400,7 +417,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
   // ── Render: Scroll layout (default) ──
   return (
     <div className="min-h-screen bg-gray-50">
-      <FormHeader title={config.title} subtitle={config.department} />
+      <FormHeader title={config.title} subtitle={config.department} viewMode={viewMode} onToggleMode={toggleMode} showToggle={isResponsive} />
 
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Description */}
@@ -448,12 +465,30 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
 /* ── Sub-components ───────────────────────────────────────────────── */
 
-function FormHeader({ title, subtitle }: { title: string; subtitle: string }) {
+function FormHeader({ title, subtitle, viewMode, onToggleMode, showToggle }: {
+  title: string;
+  subtitle: string;
+  viewMode?: 'scroll' | 'wizard';
+  onToggleMode?: () => void;
+  showToggle?: boolean;
+}) {
   return (
     <div className="bg-gradient-to-r from-[#1e40af] to-[#3b82f6] text-white py-5 px-4">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-xl font-bold mb-0.5">{title}</h1>
-        <p className="text-blue-200 text-sm">{subtitle}</p>
+      <div className="max-w-2xl mx-auto flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold mb-0.5">{title}</h1>
+          <p className="text-blue-200 text-sm">{subtitle}</p>
+        </div>
+        {showToggle && onToggleMode && (
+          <button
+            type="button"
+            onClick={onToggleMode}
+            aria-label={`Switch to ${viewMode === 'wizard' ? 'scroll' : 'wizard'} mode`}
+            className="shrink-0 bg-white/15 hover:bg-white/25 border border-white/30 text-white text-xs font-medium rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap"
+          >
+            {viewMode === 'wizard' ? 'Scroll' : 'Wizard'} mode
+          </button>
+        )}
       </div>
     </div>
   );
