@@ -195,6 +195,15 @@ const MIGRATIONS: Migration[] = [
       `ALTER TABLE huddle_speakers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
     ],
   },
+{
+    version: 10,
+    name: 'no_op_lane_check_s0',
+    statements: [
+      // S0 backup-drill no-op: proves the migration lane works end-to-end.
+      // Touches no existing data; no schema change beyond schema_migrations row insert.
+      `SELECT 1`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
