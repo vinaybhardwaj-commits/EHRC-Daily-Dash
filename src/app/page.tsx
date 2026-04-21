@@ -177,134 +177,83 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50">
       {/* Top Navigation Bar */}
       <nav className="bg-gradient-to-r from-blue-900 to-blue-950 text-white sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-2 grid grid-cols-3 items-center">
+          {/* Left: Logo */}
           <div className="flex items-center gap-2">
             <svg className="w-6 h-6 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
             <span className="font-bold text-sm sm:text-base tracking-tight">EHRC</span>
           </div>
-          <div className="flex items-center gap-1 bg-white/10 rounded-lg p-0.5">
-            <a
-              href="/portal"
-              className="px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-blue-500 text-white hover:bg-blue-400 shadow-sm flex items-center gap-1.5"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-              <span className="hidden sm:inline">Staff Portal</span>
-            </a>
-            <button
-              onClick={() => setView('overview')}
-              className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                view === 'overview'
-                  ? 'bg-white text-blue-900 shadow-sm'
-                  : 'text-blue-200 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => setView('dashboard')}
-              className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                view === 'dashboard'
-                  ? 'bg-white text-blue-900 shadow-sm'
-                  : 'text-blue-200 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Daily Dashboard
-            </button>
-            <button
-              onClick={() => setView('whatsapp')}
-              className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 ${
-                view === 'whatsapp'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-blue-200 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 hidden sm:inline-block" />
-              WA Insights
-            </button>
-            <a
-              href="/huddle"
-              className="px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-blue-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 hidden sm:inline-block" />
-              Daily Brief
-            </a>
-          </div>
-          <a
-            href="/form"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-teal-500 hover:bg-teal-400 text-white shadow-sm flex items-center gap-1.5"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-            </svg>
-            <span className="hidden sm:inline">Forms</span>
-          </a>
-          {/* Admin Gear */}
-          <a
-            href="/admin"
-            className="p-1.5 rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition-all"
-            title="Admin Panel"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </a>
-          {/* HK Dashboard */}
-          <a
-            href="/hk/dashboard"
-            className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-teal-500 transition-colors flex items-center gap-1.5"
-          >
-            <span className="text-sm">🧹</span>
-            <span className="hidden sm:inline">HK</span>
-          </a>
-          {/* Sewa Dropdown */}
-          <div className="relative group">
-            <button className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-orange-700 transition-colors flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-              Sewa
-              <svg className="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60]">
-              <div className="py-1.5">
-                <a href="/sewa" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-orange-50 transition-colors">
-                  <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div>
-                    <div className="font-semibold text-xs">File Complaint</div>
-                    <div className="text-[10px] text-slate-400">Submit a new service request</div>
-                  </div>
-                </a>
-                <a href="/sewa/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors">
-                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  <div>
-                    <div className="font-semibold text-xs">Dashboard</div>
-                    <div className="text-[10px] text-slate-400">Overview &amp; manage complaints</div>
-                  </div>
-                </a>
-                <a href="/sewa/queue" className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors">
-                  <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  <div>
-                    <div className="font-semibold text-xs">Dept Login</div>
-                    <div className="text-[10px] text-slate-400">Respond to your dept complaints</div>
-                  </div>
-                </a>
-              </div>
+
+          {/* Center: 3-tab pill — Overview / Daily Dashboard / Forms
+              S1 (R2): removed buttons — Staff Portal (/portal), WA Insights, HK (/hk/dashboard),
+              Sewa (/sewa + /sewa/dashboard + /sewa/queue), Daily Brief (/huddle).
+              Routes remain reachable by direct URL; imports retained for future re-linking. */}
+          <div className="flex justify-center">
+            <div className="flex items-center gap-1 bg-white/10 rounded-lg p-0.5">
+              <button
+                onClick={() => setView('overview')}
+                title="Overview"
+                aria-label="Overview"
+                className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 ${
+                  view === 'overview'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-blue-200 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {/* chart-bar icon (mobile only) */}
+                <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="hidden sm:inline">Overview</span>
+              </button>
+              <button
+                onClick={() => setView('dashboard')}
+                title="Daily Dashboard"
+                aria-label="Daily Dashboard"
+                className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 ${
+                  view === 'dashboard'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-blue-200 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {/* calendar-days icon (mobile only) */}
+                <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="hidden sm:inline">Daily Dashboard</span>
+              </button>
+              <a
+                href="/form"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Forms"
+                aria-label="Forms"
+                className="px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-blue-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5"
+              >
+                {/* document-text icon (mobile only) */}
+                <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="hidden sm:inline">Forms</span>
+              </a>
             </div>
+          </div>
+
+          {/* Right: Admin gear */}
+          <div className="flex justify-end">
+            <a
+              href="/admin"
+              className="p-1.5 rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition-all"
+              title="Admin Panel"
+              aria-label="Admin Panel"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </a>
           </div>
         </div>
       </nav>
