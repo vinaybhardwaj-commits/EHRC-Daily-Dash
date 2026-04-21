@@ -204,6 +204,36 @@ const MIGRATIONS: Migration[] = [
       `SELECT 1`,
     ],
   },
+  {
+    version: 11,
+    name: 'form_fillers',
+    statements: [
+      // S2 R3: identity capture — who filled which form, per-device.
+      // Additive only. department_data columns are nullable (backfill handled in runtime).
+      `CREATE TABLE IF NOT EXISTS form_fillers (
+         device_id TEXT PRIMARY KEY,
+         name TEXT NOT NULL,
+         first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         submission_count INTEGER NOT NULL DEFAULT 0
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_form_fillers_name ON form_fillers (LOWER(name))`,
+      `CREATE TABLE IF NOT EXISTS form_filler_audit (
+         id BIGSERIAL PRIMARY KEY,
+         device_id TEXT NOT NULL,
+         old_name TEXT,
+         new_name TEXT NOT NULL,
+         changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         user_agent TEXT,
+         ip_hash TEXT
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_form_filler_audit_device ON form_filler_audit (device_id, changed_at DESC)`,
+      `ALTER TABLE department_data ADD COLUMN IF NOT EXISTS filler_name TEXT`,
+      `ALTER TABLE department_data ADD COLUMN IF NOT EXISTS filler_device_id TEXT`,
+      `ALTER TABLE department_data ADD COLUMN IF NOT EXISTS filler_claimed_at TIMESTAMPTZ`,
+      `CREATE INDEX IF NOT EXISTS idx_department_data_filler_device ON department_data (filler_device_id)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
