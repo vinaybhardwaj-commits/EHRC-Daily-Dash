@@ -9,6 +9,11 @@ import type { SmartFormConfig, SmartFormField, ConditionRule } from './types';
 import { nursingSmartForm } from './smart-forms/nursing';
 import { clinicalLabSmartForm } from './smart-forms/clinical-lab';
 import { otSmartForm } from './smart-forms/ot';
+// S3b — native smart-form overrides (wave 2)
+import { emergencySmartForm } from './smart-forms/emergency';
+import { billingSmartForm } from './smart-forms/billing';
+import { supplyChainSmartForm } from './smart-forms/supply-chain';
+import { pharmacySmartForm } from './smart-forms/pharmacy';
 
 // Convert all legacy forms once at module load
 const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
@@ -16,10 +21,15 @@ const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
 // Smart form overrides — when a department form is upgraded, its slug is added here
 // and it takes priority over the legacy-adapted version.
 // S3a (21 Apr 2026): wave 1 — nursing, clinical-lab, ot.
+// S3b (21 Apr 2026): wave 2 — emergency, billing, supply-chain, pharmacy.
 const smartFormOverrides: Record<string, SmartFormConfig> = {
   nursing: nursingSmartForm,
   'clinical-lab': clinicalLabSmartForm,
   ot: otSmartForm,
+  emergency: emergencySmartForm,
+  billing: billingSmartForm,
+  'supply-chain': supplyChainSmartForm,
+  pharmacy: pharmacySmartForm,
 };
 
 /* ── Conditional Show/Hide Patches ─────────────────────────────────── */
