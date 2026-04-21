@@ -7,6 +7,7 @@ import { SmartForm } from '@/components/form-engine';
 import { FORMS_BY_SLUG } from '@/lib/form-definitions';
 import FormChat from '@/components/FormChat';
 import SupplyChainTracker from '@/components/SupplyChainTracker';
+import FormFillerBadge, { getDeviceId, getFillerName } from '@/components/FormFillerBadge';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -78,6 +79,9 @@ export default function FormPage({ params }: PageProps) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const legacyForm = FORMS_BY_SLUG[slug];
 
+      const fillerName = getFillerName();
+      const fillerDeviceId = getDeviceId();
+
       const response = await fetch('/api/form-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -85,6 +89,8 @@ export default function FormPage({ params }: PageProps) {
           slug,
           date: formData.date as string,
           fields: formData,
+          filler_name: fillerName || undefined,
+          filler_device_id: fillerDeviceId || undefined,
         }),
       });
 
@@ -111,6 +117,9 @@ export default function FormPage({ params }: PageProps) {
 
   return (
     <>
+      <div className="max-w-2xl mx-auto px-4 pt-4 flex justify-end">
+        <FormFillerBadge />
+      </div>
       {/* DD.1: Supply Chain Requirement Tracker */}
       {slug === 'supply-chain' && (
         <div className="max-w-2xl mx-auto px-4 mb-6">

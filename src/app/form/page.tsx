@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DEPARTMENT_FORMS } from '@/lib/form-definitions';
 import { ArrowRight } from 'lucide-react';
+import FormFillerBadge from '@/components/FormFillerBadge';
 
 export const metadata = {
   title: 'Department Forms | EHRC Daily Dashboard',
@@ -12,9 +13,14 @@ export default function FormIndexPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-gradient-to-r from-[#1e40af] to-[#3b82f6] text-white py-8 px-4">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold mb-2">EHRC Daily Reporting</h1>
-          <p className="text-blue-100">Select your department to fill the daily form</p>
+        <div className="max-w-4xl mx-auto flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">EHRC Daily Reporting</h1>
+            <p className="text-blue-100">Select your department to fill the daily form</p>
+          </div>
+          <div className="bg-white/90 rounded-full">
+            <FormFillerBadge />
+          </div>
         </div>
       </div>
 

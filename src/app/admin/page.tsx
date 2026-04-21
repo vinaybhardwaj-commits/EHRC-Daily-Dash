@@ -25,11 +25,20 @@ interface DeptContact {
   google_sheet_url: string;
 }
 
+interface FormFiller {
+  device_id: string;
+  name: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  submission_count: number;
+  stamped_30d: number;
+}
+
 export default function AdminPage() {
   const [key, setKey] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [activeTab, setActiveTab] = useState<'backup' | 'schema' | 'contacts' | 'sync'>('backup');
+  const [activeTab, setActiveTab] = useState<'backup' | 'schema' | 'contacts' | 'sync' | 'fillers'>('backup');
 
   // Backup state
   const [backupLoading, setBackupLoading] = useState(false);
@@ -51,6 +60,10 @@ export default function AdminPage() {
   // Sync state
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncResult, setSyncResult] = useState('');
+
+  // Fillers state
+  const [fillers, setFillers] = useState<FormFiller[]>([]);
+  const [fillersLoading, setFillersLoading] = useState(false);
 
   // Read key from URL on mount
   useEffect(() => {
@@ -159,12 +172,28 @@ export default function AdminPage() {
     }
   };
 
+  const loadFillers = useCallback(async () => {
+    setFillersLoading(true);
+    try {
+      const res = await fetch(`/api/form-filler?key=${encodeURIComponent(key)}&limit=200`);
+      if (res.ok) {
+        const data = await res.json();
+        setFillers(data.fillers || []);
+      }
+    } catch {
+      // silent
+    } finally {
+      setFillersLoading(false);
+    }
+  }, [key]);
+
   // Load data when tab changes
   useEffect(() => {
     if (!authenticated) return;
     if (activeTab === 'schema') loadSchema();
     if (activeTab === 'contacts') loadContacts();
-  }, [activeTab, authenticated, loadSchema, loadContacts]);
+    if (activeTab === 'fillers') loadFillers();
+  }, [activeTab, authenticated, loadSchema, loadContacts, loadFillers]);
 
   const startEdit = (c: DeptContact) => {
     setEditingId(c.id);
@@ -234,6 +263,7 @@ export default function AdminPage() {
     { id: 'schema' as const, label: 'Schema', icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4' },
     { id: 'contacts' as const, label: 'Contacts', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
     { id: 'sync' as const, label: 'Sync', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
+    { id: 'fillers' as const, label: 'Form Fillers', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
   ];
 
   return (
@@ -518,6 +548,61 @@ export default function AdminPage() {
                 <p className={`mt-3 text-sm ${syncResult.includes('error') || syncResult.includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
                   {syncResult}
                 </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* FILLERS TAB (S2 R3) */}
+        {activeTab === 'fillers' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 mb-1">Form Fillers</h2>
+                  <p className="text-sm text-slate-500">
+                    Who is filling forms (by device). Read-only. <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">stamped_30d</code> counts rows on <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">department_data</code> in the last 30 days.
+                  </p>
+                </div>
+                <button
+                  onClick={loadFillers}
+                  disabled={fillersLoading}
+                  className="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50"
+                >
+                  {fillersLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              {fillers.length === 0 && !fillersLoading && (
+                <p className="text-sm text-slate-500">No form fillers captured yet.</p>
+              )}
+              {fillers.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
+                        <th className="py-2 pr-3">Name</th>
+                        <th className="py-2 pr-3">Device ID</th>
+                        <th className="py-2 pr-3 text-right">Total submits</th>
+                        <th className="py-2 pr-3 text-right">Stamped (30d)</th>
+                        <th className="py-2 pr-3">First seen</th>
+                        <th className="py-2 pr-0">Last seen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fillers.map(f => (
+                        <tr key={f.device_id} className="border-b border-slate-100">
+                          <td className="py-2 pr-3 font-medium text-slate-900">{f.name}</td>
+                          <td className="py-2 pr-3 text-xs text-slate-500 font-mono">{f.device_id.slice(0, 8)}…</td>
+                          <td className="py-2 pr-3 text-right tabular-nums">{f.submission_count}</td>
+                          <td className="py-2 pr-3 text-right tabular-nums">{f.stamped_30d}</td>
+                          <td className="py-2 pr-3 text-slate-500">{new Date(f.first_seen_at).toLocaleDateString('en-IN')}</td>
+                          <td className="py-2 pr-0 text-slate-500">{new Date(f.last_seen_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="mt-3 text-xs text-slate-400">Showing {fillers.length} filler{fillers.length === 1 ? '' : 's'}, sorted by most recent activity.</p>
+                </div>
               )}
             </div>
           </div>

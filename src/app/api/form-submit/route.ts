@@ -6,6 +6,8 @@ interface FormSubmissionBody {
   date: string;
   fields: Record<string, string | number>;
   submitted_by?: string;
+  filler_name?: string;
+  filler_device_id?: string;
 }
 
 interface DepartmentEntry {
@@ -41,7 +43,7 @@ function normalizeDate(dateStr: string): string {
 export async function POST(request: Request) {
   try {
     const body: FormSubmissionBody = await request.json();
-    const { slug, date, fields, submitted_by } = body;
+    const { slug, date, fields, submitted_by, filler_name, filler_device_id } = body;
 
     // Validate slug exists
     const form = FORMS_BY_SLUG[slug];
@@ -160,26 +162,37 @@ export async function POST(request: Request) {
     const submittedBy = submitted_by || null;
     const submittedVia = slug;
 
+    // Normalize filler identity (S2 R3)
+    const fillerName = (filler_name || '').trim().slice(0, 80) || null;
+    const fillerDeviceId = (filler_device_id || '').trim().slice(0, 64) || null;
+    const fillerClaimedAt = fillerName && fillerDeviceId ? isoNow : null;
+
     // Insert/upsert department_data for the primary form
     await sql`
-      INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via)
-      VALUES (${normalizedDate}, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb, ${submittedBy}, ${submittedVia})
+      INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
+      VALUES (${normalizedDate}, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb, ${submittedBy}, ${submittedVia}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
       ON CONFLICT (date, slug) DO UPDATE SET
         entries = EXCLUDED.entries,
         submitted_by = EXCLUDED.submitted_by,
-        submitted_via = EXCLUDED.submitted_via;
+        submitted_via = EXCLUDED.submitted_via,
+        filler_name = COALESCE(EXCLUDED.filler_name, department_data.filler_name),
+        filler_device_id = COALESCE(EXCLUDED.filler_device_id, department_data.filler_device_id),
+        filler_claimed_at = COALESCE(EXCLUDED.filler_claimed_at, department_data.filler_claimed_at);
     `;
 
     // DD.4: If nursing is also reporting OT data, dual-write to OT department_data
     if (slug === 'nursing' && isNursingReportingOt && otEntries.length > 0) {
       const otForm = FORMS_BY_SLUG['ot'];
       await sql`
-        INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via)
-        VALUES (${normalizedDate}, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'})
+        INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
+        VALUES (${normalizedDate}, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
         ON CONFLICT (date, slug) DO UPDATE SET
           entries = EXCLUDED.entries,
           submitted_by = EXCLUDED.submitted_by,
-          submitted_via = EXCLUDED.submitted_via;
+          submitted_via = EXCLUDED.submitted_via,
+          filler_name = COALESCE(EXCLUDED.filler_name, department_data.filler_name),
+          filler_device_id = COALESCE(EXCLUDED.filler_device_id, department_data.filler_device_id),
+          filler_claimed_at = COALESCE(EXCLUDED.filler_claimed_at, department_data.filler_claimed_at);
       `;
     }
 
@@ -189,6 +202,18 @@ export async function POST(request: Request) {
       VALUES (${normalizedDate}, ${isoNow})
       ON CONFLICT (date) DO UPDATE SET updated_at = ${isoNow};
     `;
+
+    // S2 R3: bump form_fillers.submission_count + last_seen_at if identity provided
+    if (fillerDeviceId && fillerName) {
+      await sql`
+        INSERT INTO form_fillers (device_id, name, first_seen_at, last_seen_at, submission_count)
+        VALUES (${fillerDeviceId}, ${fillerName}, NOW(), NOW(), 1)
+        ON CONFLICT (device_id) DO UPDATE SET
+          last_seen_at = NOW(),
+          submission_count = form_fillers.submission_count + 1,
+          name = COALESCE(form_fillers.name, EXCLUDED.name);
+      `;
+    }
 
     return Response.json({
       success: true,
