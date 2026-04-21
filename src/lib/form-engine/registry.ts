@@ -19,6 +19,13 @@ import { trainingSmartForm } from './smart-forms/training';
 import { customerCareSmartForm } from './smart-forms/customer-care';
 import { patientSafetySmartForm } from './smart-forms/patient-safety';
 import { financeSmartForm } from './smart-forms/finance';
+// S3d — native smart-form overrides (wave 4)
+import { radiologySmartForm } from './smart-forms/radiology';
+import { facilitySmartForm } from './smart-forms/facility';
+import { itSmartForm } from './smart-forms/it';
+import { dietSmartForm } from './smart-forms/diet';
+import { hrManpowerSmartForm } from './smart-forms/hr-manpower';
+import { biomedicalSmartForm } from './smart-forms/biomedical';
 
 // Convert all legacy forms once at module load
 const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
@@ -28,6 +35,8 @@ const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
 // S3a (21 Apr 2026): wave 1 — nursing, clinical-lab, ot.
 // S3b (21 Apr 2026): wave 2 — emergency, billing, supply-chain, pharmacy.
 // S3c (21 Apr 2026): wave 3 — training, customer-care, patient-safety, finance.
+// S3d (21 Apr 2026): wave 4 — radiology, facility, it, diet, hr-manpower, biomedical.
+//                    All 17 dept slugs now serve native SmartFormConfigs; legacy-adapter remains as fallback only.
 const smartFormOverrides: Record<string, SmartFormConfig> = {
   nursing: nursingSmartForm,
   'clinical-lab': clinicalLabSmartForm,
@@ -40,6 +49,12 @@ const smartFormOverrides: Record<string, SmartFormConfig> = {
   'customer-care': customerCareSmartForm,
   'patient-safety': patientSafetySmartForm,
   finance: financeSmartForm,
+  radiology: radiologySmartForm,
+  facility: facilitySmartForm,
+  it: itSmartForm,
+  diet: dietSmartForm,
+  'hr-manpower': hrManpowerSmartForm,
+  biomedical: biomedicalSmartForm,
 };
 
 /* ── Conditional Show/Hide Patches ─────────────────────────────────── */
@@ -58,49 +73,11 @@ interface FormPatch {
 }
 
 const conditionalPatches: FormPatch[] = [
-  // S3a: clinical-lab conditionals migrated into ./smart-forms/clinical-lab.ts
-  // DD.5: Facilities — show breakdown details only when "Yes"
-  {
-    slug: 'facility',
-    patches: [
-      {
-        fieldId: 'breakdownDetails',
-        showWhen: { field: 'majorBreakdownToday', operator: 'eq', value: 'Yes' },
-      },
-    ],
-  },
-  // S3a: nursing conditionals migrated into ./smart-forms/nursing.ts
-  // DD.3: HR — show hiring pipeline fields only on Mondays (when toggle is "Yes")
-  {
-    slug: 'hr-manpower',
-    patches: [
-      {
-        fieldId: 'openPositionsCount',
-        showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-        requireWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'openPositionsList',
-        showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'interviewsScheduledThisWeek',
-        showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'offersExtendedThisWeek',
-        showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'expectedJoinersThisWeek',
-        showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-      },
-      {
-        fieldId: 'criticalVacancies',
-        showWhen: { field: 'hiringPipelineApplicable', operator: 'eq', value: 'Yes' },
-      },
-    ],
-  },
+  // S3a: clinical-lab + nursing conditionals migrated into ./smart-forms/{clinical-lab,nursing}.ts
+  // S3d: facility + hr-manpower conditionals migrated into ./smart-forms/{facility,hr-manpower}.ts
+  // All legacy conditional patches have now been inlined into their native SmartFormConfigs.
+  // This array is intentionally empty — applyConditionalPatches() is retained as a no-op scaffold
+  // in case future legacy-adapted forms need conditional overrides before migration.
 ];
 
 /**
