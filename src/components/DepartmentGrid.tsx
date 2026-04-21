@@ -77,6 +77,24 @@ function fmtDate(dateStr: string | null): string {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
+// S4 R4 B4: submission-lag badge color/label from last-submission ISO date (YYYY-MM-DD) vs today (IST).
+// Returns null if there is no submission yet this month.
+function submissionLag(lastDate: string | null): { label: string; className: string } | null {
+  if (!lastDate) return null;
+  // Today in IST (UTC+5:30)
+  const now = new Date();
+  const ist = new Date(now.getTime() + (5.5 * 60 - now.getTimezoneOffset()) * 60 * 1000);
+  const todayStr = ist.toISOString().slice(0, 10);
+  // Parse both dates as UTC midnight to get a clean day diff.
+  const a = Date.parse(todayStr + 'T00:00:00Z');
+  const b = Date.parse(lastDate + 'T00:00:00Z');
+  if (isNaN(a) || isNaN(b)) return null;
+  const days = Math.floor((a - b) / 86400000);
+  if (days <= 0) return { label: 'Today', className: 'bg-emerald-100 text-emerald-700' };
+  if (days === 1) return { label: 'Yesterday', className: 'bg-amber-100 text-amber-700' };
+  return { label: days + 'd ago', className: 'bg-red-100 text-red-700' };
+}
+
 function TrendArrow({ trend, invert }: { trend: 'up' | 'down' | 'flat'; invert: boolean }) {
   if (trend === 'flat') return <span className="text-slate-400 text-xs">{'→'}</span>;
   const isUp = trend === 'up';
@@ -206,6 +224,17 @@ export default function DepartmentGrid({ departments, deptAlerts, sewaKpis, onNa
                         {alerts.length}
                       </span>
                     )}
+                    {(() => {
+                      const lag = submissionLag(lastDate);
+                      return lag ? (
+                        <span
+                          className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full " + lag.className}
+                          title={lastDate ? 'Last submission: ' + fmtDate(lastDate) : undefined}
+                        >
+                          {lag.label}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className={"text-[10px] font-medium px-1.5 py-0.5 rounded " + badgeColor}>
                       {dept.submissionCount}/{dept.totalDays}d
                     </span>

@@ -16,8 +16,8 @@ export async function saveDaySnapshot(snapshot: DaySnapshot): Promise<void> {
   // Upsert each department
   for (const dept of snapshot.departments) {
     await sql`
-      INSERT INTO department_data (date, slug, name, tab, entries)
-      VALUES (${snapshot.date}, ${dept.slug}, ${dept.name}, ${dept.tab}, ${JSON.stringify(dept.entries)}::jsonb)
+      INSERT INTO department_data (date, date_d, slug, name, tab, entries)
+      VALUES (${snapshot.date}, ${snapshot.date}::date, ${dept.slug}, ${dept.name}, ${dept.tab}, ${JSON.stringify(dept.entries)}::jsonb)
       ON CONFLICT (date, slug) DO UPDATE SET
         name = EXCLUDED.name,
         tab = EXCLUDED.tab,
@@ -101,8 +101,8 @@ export async function upsertDepartmentData(date: string, deptData: DepartmentDat
 
   // Upsert the department data
   await sql`
-    INSERT INTO department_data (date, slug, name, tab, entries)
-    VALUES (${date}, ${deptData.slug}, ${deptData.name}, ${deptData.tab}, ${JSON.stringify(deptData.entries)}::jsonb)
+    INSERT INTO department_data (date, date_d, slug, name, tab, entries)
+    VALUES (${date}, ${date}::date, ${deptData.slug}, ${deptData.name}, ${deptData.tab}, ${JSON.stringify(deptData.entries)}::jsonb)
     ON CONFLICT (date, slug) DO UPDATE SET
       name = EXCLUDED.name,
       tab = EXCLUDED.tab,

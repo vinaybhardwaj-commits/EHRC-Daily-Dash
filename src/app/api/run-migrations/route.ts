@@ -234,6 +234,29 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_department_data_filler_device ON department_data (filler_device_id)`,
     ],
   },
+  {
+    version: 12,
+    name: 'backfill_department_data_date_d',
+    statements: [
+      // S4 R4 B1: populate date_d (typed) from date (text) for all historical rows.
+      // Well-formed dates -> real cast. Malformed legacy rows (e.g. '2026-00-11')
+      // get a sentinel of 1900-01-01 so they don't break the NOT NULL guard and
+      // are trivially filterable later.
+      `UPDATE department_data
+         SET date_d = CASE
+           WHEN date ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+             THEN date::date
+           ELSE DATE '1900-01-01'
+         END
+         WHERE date_d IS NULL`,
+      // Future guard: stop accepting NULL date_d on new writes. All 5 INSERT
+      // sites (form-submit x2, storage.ts x2, sheets-sync x1) now populate
+      // date_d alongside date, so this constraint should never fire in normal
+      // flow.
+      `ALTER TABLE department_data
+         ALTER COLUMN date_d SET NOT NULL`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {

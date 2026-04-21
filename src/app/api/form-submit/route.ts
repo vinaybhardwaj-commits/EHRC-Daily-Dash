@@ -169,8 +169,8 @@ export async function POST(request: Request) {
 
     // Insert/upsert department_data for the primary form
     await sql`
-      INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
-      VALUES (${normalizedDate}, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb, ${submittedBy}, ${submittedVia}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
+      INSERT INTO department_data (date, date_d, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
+      VALUES (${normalizedDate}, ${normalizedDate}::date, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb, ${submittedBy}, ${submittedVia}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
       ON CONFLICT (date, slug) DO UPDATE SET
         entries = EXCLUDED.entries,
         submitted_by = EXCLUDED.submitted_by,
@@ -184,8 +184,8 @@ export async function POST(request: Request) {
     if (slug === 'nursing' && isNursingReportingOt && otEntries.length > 0) {
       const otForm = FORMS_BY_SLUG['ot'];
       await sql`
-        INSERT INTO department_data (date, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
-        VALUES (${normalizedDate}, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
+        INSERT INTO department_data (date, date_d, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
+        VALUES (${normalizedDate}, ${normalizedDate}::date, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
         ON CONFLICT (date, slug) DO UPDATE SET
           entries = EXCLUDED.entries,
           submitted_by = EXCLUDED.submitted_by,

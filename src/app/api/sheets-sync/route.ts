@@ -66,8 +66,8 @@ async function syncAllSheets() {
             // Upsert into Postgres instead of ephemeral JSON files
             const entriesJson = JSON.stringify(deptData.entries);
             await sql`
-              INSERT INTO department_data (date, slug, name, tab, entries)
-              VALUES (${fixedDate}, ${slug}, ${deptName}, ${deptData.tab}, ${entriesJson}::jsonb)
+              INSERT INTO department_data (date, date_d, slug, name, tab, entries)
+              VALUES (${fixedDate}, ${fixedDate}::date, ${slug}, ${deptName}, ${deptData.tab}, ${entriesJson}::jsonb)
               ON CONFLICT (date, slug) DO UPDATE SET
                 name = EXCLUDED.name,
                 tab = EXCLUDED.tab,
