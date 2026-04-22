@@ -24,5 +24,8 @@
       "path": "/api/cron/huddle-audio-cleanup",
       "schedule": "0 2 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }
