@@ -63,8 +63,29 @@ async function syncAllSheets() {
           if (fixedDate > today) continue;
 
           if (fixedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            // Upsert into Postgres instead of ephemeral JSON files
-            const entriesJson = JSON.stringify(deptData.entries);
+            // MERGE-not-REPLACE (Hot Fix B, 2026-05-05): preserve any web-form
+            // submissions (flat [{key, value}] entries) that the dept head may
+            // have made via /form/<slug>. Only replace existing sheets-sync-shape
+            // entries (those with a .fields property). This stops the longstanding
+            // bug where the 3:25 AM cron destroyed web-form submissions.
+            //
+            // Race note: read-modify-write here. In practice the only writers are
+            // (a) this cron (1x/day), (b) form-submit (during business hours), so
+            // a true race is essentially impossible. Documented for the record.
+            const existingRow = await sql`
+              SELECT entries FROM department_data
+              WHERE date = ${fixedDate} AND slug = ${slug}
+              LIMIT 1
+            `;
+            type EntryUnion = { key?: string; value?: string | number; fields?: Record<string, string | number>; date?: string; timestamp?: string };
+            const existingEntries: EntryUnion[] = (existingRow.rows[0]?.entries as EntryUnion[] | undefined) ?? [];
+            // Preserve everything that is NOT a sheets-sync-shape entry.
+            // sheets-sync entries are objects with a .fields property; web-form
+            // entries are objects with .key+.value. Anything else (whatsapp, etc.)
+            // is also preserved.
+            const preserved = existingEntries.filter(e => !(e && typeof e === 'object' && 'fields' in e));
+            const merged = [...preserved, ...deptData.entries];
+            const entriesJson = JSON.stringify(merged);
             await sql`
               INSERT INTO department_data (date, date_d, slug, name, tab, entries)
               VALUES (${fixedDate}, ${fixedDate}::date, ${slug}, ${deptName}, ${deptData.tab}, ${entriesJson}::jsonb)
