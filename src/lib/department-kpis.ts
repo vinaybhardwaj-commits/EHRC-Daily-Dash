@@ -176,6 +176,25 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     fieldPatterns: ['pending it', 'pending it tickets'],
     invertTrend: true,
   },
+  // 2-new-depts launch (5 May 2026)
+  {
+    slug: 'quality-accreditation',
+    label: 'Open NCs',
+    unit: 'open',
+    type: 'number',
+    // Form label: "Open non-compliances — running total"
+    fieldPatterns: ['open non-compliance', 'open non-compliances', 'non-compliances running total'],
+    invertTrend: true,
+  },
+  {
+    slug: 'infection-control',
+    label: 'Active HAI',
+    unit: 'cases',
+    type: 'number',
+    // Form label: "Active HAI cases — total census"
+    fieldPatterns: ['active hai', 'hai cases', 'hai census'],
+    invertTrend: true,
+  },
 ];
 
 export const DEPARTMENT_KPI_MAP = new Map(
@@ -233,6 +252,15 @@ export const DEPARTMENT_SECONDARY_KPIS: Record<string, SecondaryKPI[]> = {
     { label: 'Stockouts', type: 'text-status', fieldPatterns: ['stockout', 'shortage'], statusKeywords: { good: ['nil', 'none', 'no', 'na'], warning: ['low', 'partial'], bad: ['out', 'stock', 'shortage', 'unavailable', 'yes'] } },
   ],
   'training': [],
+  // 2-new-depts launch (5 May 2026)
+  'quality-accreditation': [
+    { label: 'Audits today', unit: 'done', type: 'number', fieldPatterns: ['quality audits', 'rounds completed'] },
+    { label: 'Adverse events', unit: 'events', type: 'number', fieldPatterns: ['adverse event'], invertTrend: true },
+  ],
+  'infection-control': [
+    { label: 'New HAI today', unit: 'cases', type: 'number', fieldPatterns: ['new hai cases', 'new hai'], invertTrend: true },
+    { label: 'In isolation', unit: 'pts', type: 'number', fieldPatterns: ['patients in isolation', 'isolation total'] },
+  ],
   'clinical-lab': [
     { label: 'Sample Errors', type: 'text-status', fieldPatterns: ['recollection', 'reporting error'], statusKeywords: { good: ['nil', 'none', 'no', 'na', 'nill'], warning: ['minor'], bad: ['error', 'recollection', 'rejected', 'contaminated'] } },
   ],

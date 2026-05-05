@@ -27,6 +27,10 @@ import { dietSmartForm } from './smart-forms/diet';
 import { hrManpowerSmartForm } from './smart-forms/hr-manpower';
 import { biomedicalSmartForm } from './smart-forms/biomedical';
 
+// 2026-05-05: 2-new-depts launch — Quality & Accreditations + Infection Control.
+import { qualityAccreditationSmartForm } from './smart-forms/quality-accreditation';
+import { infectionControlSmartForm } from './smart-forms/infection-control';
+
 // Convert all legacy forms once at module load
 const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
 
@@ -36,7 +40,8 @@ const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
 // S3b (21 Apr 2026): wave 2 — emergency, billing, supply-chain, pharmacy.
 // S3c (21 Apr 2026): wave 3 — training, customer-care, patient-safety, finance.
 // S3d (21 Apr 2026): wave 4 — radiology, facility, it, diet, hr-manpower, biomedical.
-//                    All 17 dept slugs now serve native SmartFormConfigs; legacy-adapter remains as fallback only.
+// 2-new-depts launch (5 May 2026): added quality-accreditation + infection-control.
+//                    All 19 dept slugs now serve native SmartFormConfigs; legacy-adapter remains as fallback only.
 const smartFormOverrides: Record<string, SmartFormConfig> = {
   nursing: nursingSmartForm,
   'clinical-lab': clinicalLabSmartForm,
@@ -55,6 +60,9 @@ const smartFormOverrides: Record<string, SmartFormConfig> = {
   diet: dietSmartForm,
   'hr-manpower': hrManpowerSmartForm,
   biomedical: biomedicalSmartForm,
+  // 2-new-depts launch (5 May 2026)
+  'quality-accreditation': qualityAccreditationSmartForm,
+  'infection-control': infectionControlSmartForm,
 };
 
 /* ── Conditional Show/Hide Patches ─────────────────────────────────── */
