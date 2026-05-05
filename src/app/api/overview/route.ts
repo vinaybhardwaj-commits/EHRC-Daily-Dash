@@ -116,6 +116,39 @@ function findField(fields: Record<string, string | number>, ...patterns: string[
   return null;
 }
 
+
+/**
+ * Normalize a department_data row's `entries` JSON into a flat fields map.
+ *
+ * Handles both ingestion shapes that coexist on the same table:
+ *   - sheets-sync (Google Sheets cron):  [{ date, fields: { k: v, ... }, timestamp }]
+ *   - web form (form-submit/route.ts):   [{ key, value }, { key, value }, ...]
+ *   - mixed (whatsapp-insights merge):   union of the above
+ *
+ * Earlier values win on key collision (mirrors the long-standing pattern in
+ * src/app/api/department-overview/route.ts). Skips internal `_*` keys.
+ *
+ * Bug history: prior code did `entries?.[0]?.fields || {}` which silently
+ * yielded {} for web-form submissions, hiding finance/nursing/ot data from
+ * every overview KPI. Hot-fixed 2026-05-05.
+ */
+function normalizeEntries(entries: unknown): Record<string, string | number> {
+  if (!Array.isArray(entries)) return {};
+  const merged: Record<string, string | number> = {};
+  for (const entry of entries as Array<{ key?: string; value?: string | number; fields?: Record<string, string | number> }>) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (entry.fields && typeof entry.fields === 'object') {
+      for (const [k, v] of Object.entries(entry.fields)) {
+        if (k.startsWith('_')) continue;
+        if (!(k in merged)) merged[k] = v;
+      }
+    } else if (typeof entry.key === 'string' && !entry.key.startsWith('_')) {
+      if (!(entry.key in merged)) merged[entry.key] = entry.value as string | number;
+    }
+  }
+  return merged;
+}
+
 function formatNumberShort(num: number | null): string {
   if (num === null) return 'Ã¢ÂÂ';
   if (Math.abs(num) >= 10000000) return (num / 10000000).toFixed(2) + ' Cr';
@@ -185,7 +218,7 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
     const date = row.date;
     const slug = row.slug;
     const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
-    const fields = entries?.[0]?.fields || {};
+    const fields = normalizeEntries(entries);
 
     if (!byDate.has(date)) byDate.set(date, new Map());
     byDate.get(date)!.set(slug, fields);
@@ -338,7 +371,7 @@ async function getRawDeptData(yearMonth: string): Promise<Map<string, Map<string
     const date = row.date;
     const slug = row.slug;
     const entries = row.entries as Array<{ fields: Record<string, string | number> }>;
-    const fields = entries?.[0]?.fields || {};
+    const fields = normalizeEntries(entries);
     if (!byDate.has(date)) byDate.set(date, new Map());
     byDate.get(date)!.set(slug, fields);
   }
@@ -1040,7 +1073,7 @@ export async function GET(req: NextRequest) {
   `;
   const todaySubmissions = todayResult.rows.map(r => {
     const entries = r.entries as Array<{ fields: Record<string, string | number> }>;
-    const fields = entries?.[0]?.fields || {};
+    const fields = normalizeEntries(entries);
     // Extract a one-line highlight from the data
     let highlight = '';
     if (r.slug === 'finance') {
