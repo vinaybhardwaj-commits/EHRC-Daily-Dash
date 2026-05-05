@@ -498,18 +498,25 @@ function RepeaterField({ field, value, onChange, onFocus, onBlur }: {
             <Trash2 className="w-3.5 h-3.5" />
           </button>
 
-          {config.fields.map(subField => (
-            <div key={subField.id}>
-              <label className="block text-xs font-medium text-gray-600 mb-1">{subField.label}</label>
-              <input
-                type={subField.type === 'number' ? 'number' : 'text'}
-                value={String(row[subField.id] ?? '')}
-                onChange={e => updateRow(rowIdx, subField.id, subField.type === 'number' ? (e.target.value === '' ? '' : parseFloat(e.target.value)) : e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={subField.placeholder}
-              />
-            </div>
-          ))}
+          {config.fields.map(subField => {
+            const inputType =
+              subField.type === 'number' ? 'number' :
+              subField.type === 'time'   ? 'time'   :
+              subField.type === 'date'   ? 'date'   :
+              'text';
+            return (
+              <div key={subField.id}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{subField.label}</label>
+                <input
+                  type={inputType}
+                  value={String(row[subField.id] ?? '')}
+                  onChange={e => updateRow(rowIdx, subField.id, subField.type === 'number' ? (e.target.value === '' ? '' : parseFloat(e.target.value)) : e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={subField.placeholder}
+                />
+              </div>
+            );
+          })}
         </div>
       ))}
 

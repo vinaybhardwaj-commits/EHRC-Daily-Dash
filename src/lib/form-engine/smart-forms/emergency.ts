@@ -16,7 +16,7 @@ export const emergencySmartForm: SmartFormConfig = {
   version: 2,
   lastModified: '2026-04-21',
   _legacyTab: 'ED',
-  _legacyKpiFields: ['genuineEmergencies', 'doorToDoctorTat', 'edRevenueToday'],
+  _legacyKpiFields: ['genuineEmergencies', 'doorToDoctorTat'],
   sections: [
     dateSection,
     {
@@ -72,12 +72,63 @@ export const emergencySmartForm: SmartFormConfig = {
           required: true,
           validation: { min: 0 },
         },
+      ],
+    },
+    {
+      id: 'emergency-oncall-contact',
+      title: 'ON-CALL SPECIALIST CONTACT',
+      description:
+        'In the last 24h, did the ED doctor have any trouble contacting an on-call specialist or hospitalist? Flip to YES below if there was even one incident — then add one row per attempt.',
+      fields: [
         {
-          id: 'edRevenueToday',
-          label: 'ED revenue today (Rs.)',
-          type: 'number',
+          id: 'contactDifficultyToday',
+          label: 'Any trouble contacting an on-call specialist or hospitalist?',
+          type: 'toggle',
           required: true,
-          validation: { min: 0 },
+        },
+        {
+          id: 'contactDifficultyIncidents',
+          label: 'Incidents',
+          description: 'Add one row per specialist contact difficulty in the last 24h.',
+          type: 'repeater',
+          required: false,
+          showWhen: { field: 'contactDifficultyToday', operator: 'eq', value: true },
+          requireWhen: { field: 'contactDifficultyToday', operator: 'eq', value: true },
+          repeaterConfig: {
+            minRows: 1,
+            maxRows: 10,
+            addLabel: '+ Add another incident',
+            emptyMessage: 'No incidents added yet.',
+            fields: [
+              {
+                id: 'specialistName',
+                label: 'Specialist name',
+                type: 'text',
+                required: true,
+                placeholder: 'e.g., Dr. Mehta',
+              },
+              {
+                id: 'specialty',
+                label: 'Specialty / role',
+                type: 'text',
+                required: true,
+                placeholder: 'e.g., Cardiology, Hospitalist',
+              },
+              {
+                id: 'attemptTime',
+                label: 'Time of contact attempt (24h)',
+                type: 'time',
+                required: true,
+              },
+              {
+                id: 'outcome',
+                label: 'What happened?',
+                type: 'text',
+                required: true,
+                placeholder: 'e.g., reached after 35 min via backup; patient transferred to ICU during wait',
+              },
+            ],
+          },
         },
       ],
     },
