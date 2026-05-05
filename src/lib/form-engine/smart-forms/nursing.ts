@@ -16,7 +16,7 @@ export const nursingSmartForm: SmartFormConfig = {
   version: 2,
   lastModified: '2026-04-21',
   _legacyTab: 'Nursing',
-  _legacyKpiFields: ['midnightCensusNursing', 'staffingMatrixNurses', 'dailyHaiIpcStatus'],
+  _legacyKpiFields: ['midnightCensusNursing', 'staffingMatrixNurses', 'dailyHaiIpcStatus', 'icuPatientsOnVentilator'],
   sections: [
     dateSection,
     {
@@ -48,6 +48,42 @@ export const nursingSmartForm: SmartFormConfig = {
           label: 'Daily HAI/IPC status (CLABSI,VAP,CAUTI,SSI)',
           type: 'text',
           required: true,
+        },
+      ],
+    },
+    {
+      id: 'nursing-respiratory-census',
+      title: 'RESPIRATORY SUPPORT CENSUS',
+      description:
+        'Daily count of patients on respiratory support, broken down by location and modality. Total hospital census on respiratory support is derived as the sum of all four below.',
+      fields: [
+        {
+          id: 'wardPatientsOnOxygen',
+          label: 'Ward — patients on oxygen',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'icuPatientsOnOxygen',
+          label: 'ICU — patients on oxygen',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'icuPatientsOnNiv',
+          label: 'ICU — patients on NIV (non-invasive ventilation)',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
+        },
+        {
+          id: 'icuPatientsOnVentilator',
+          label: 'ICU — patients on mechanical ventilation',
+          type: 'number',
+          required: true,
+          validation: { min: 0 },
         },
       ],
     },
