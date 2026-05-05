@@ -92,6 +92,21 @@ function extractCount(value: string | number | undefined | null): number {
  * Find a field value by partial key match (case-insensitive).
  */
 function findField(fields: Record<string, string | number>, ...patterns: string[]): string | number | null {
+  // Two-pass: first prefer pattern matches whose value is NON-EMPTY (handles dual-key
+  // shadowing where sheets-sync keeps legacy column headers as empty strings alongside
+  // new web-form labels with real values). Fall back to first match (even if empty)
+  // to preserve "field exists but blank" semantics for callers that care.
+  for (const pattern of patterns) {
+    const lower = pattern.toLowerCase();
+    for (const [key, val] of Object.entries(fields)) {
+      if (!key.toLowerCase().includes(lower)) continue;
+      if (val === null || val === undefined) continue;
+      if (String(val).trim() === '') continue;
+      return val;
+    }
+  }
+  // Fallback — all matches were empty/null. Return the first match so callers can
+  // detect "key is present" vs. "key is absent".
   for (const pattern of patterns) {
     const lower = pattern.toLowerCase();
     for (const [key, val] of Object.entries(fields)) {
