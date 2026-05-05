@@ -191,6 +191,13 @@ export interface SecondaryKPI {
   unit?: string;
   type: 'number' | 'text-status';
   fieldPatterns: string[];
+  /**
+   * If set, the KPI value is the sum of multiple form fields (each found via its own
+   * pattern group). Used for derived totals (e.g., total oxygen cylinders consumed today
+   * = left manifold + right manifold). Takes precedence over `fieldPatterns` for value
+   * extraction; `fieldPatterns` is still required (used as fallback + SourceBadge label).
+   */
+  sumOfPatterns?: string[][];
   invertTrend?: boolean;
   statusKeywords?: { good: string[]; warning: string[]; bad: string[] };
 }
@@ -218,7 +225,10 @@ export const DEPARTMENT_SECONDARY_KPIS: Record<string, SecondaryKPI[]> = {
   'supply-chain': [
     { label: 'Shortages', type: 'text-status', fieldPatterns: ['shortage', 'stockout', 'shortages'], statusKeywords: { good: ['nil', 'none', 'no', 'adequate', 'no stock'], warning: ['low', 'partial'], bad: ['shortage', 'stockout', 'critical', 'out of stock', 'unavailable', 'backorder'] } },
   ],
-  'facility': [],
+  'facility': [
+    { label: 'O\u2082 today', unit: 'cyl', type: 'number', fieldPatterns: ['oxygen cylinders changed', 'cylinders changed today'], sumOfPatterns: [['left manifold', 'cylinders changed'], ['right manifold', 'cylinders changed']], invertTrend: true },
+    { label: 'Backup O\u2082', unit: 'cyl', type: 'number', fieldPatterns: ['backup oxygen', 'backup oxygen cylinders'] },
+  ],
   'pharmacy': [
     { label: 'Stockouts', type: 'text-status', fieldPatterns: ['stockout', 'shortage'], statusKeywords: { good: ['nil', 'none', 'no', 'na'], warning: ['low', 'partial'], bad: ['out', 'stock', 'shortage', 'unavailable', 'yes'] } },
   ],

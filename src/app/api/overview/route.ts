@@ -507,6 +507,17 @@ function buildGlobalIssues(
  */
 function extractSecondaryKPI(secKpi: SecondaryKPI, fields: Record<string, string | number>): { value: number | null; textValue: string | null; status: 'good' | 'warning' | 'bad' | null } {
   if (secKpi.type === 'number') {
+    // Derived total: sum across multiple field-pattern groups.
+    if (secKpi.sumOfPatterns && secKpi.sumOfPatterns.length > 0) {
+      let total = 0;
+      let anyFound = false;
+      for (const patterns of secKpi.sumOfPatterns) {
+        const raw = findField(fields, ...patterns);
+        const v = extractNumber(raw);
+        if (v !== null) { total += v; anyFound = true; }
+      }
+      return { value: anyFound ? total : null, textValue: null, status: null };
+    }
     const raw = findField(fields, ...secKpi.fieldPatterns);
     const val = extractNumber(raw);
     return { value: val, textValue: null, status: null };
