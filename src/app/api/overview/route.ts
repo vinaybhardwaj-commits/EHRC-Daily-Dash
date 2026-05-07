@@ -293,6 +293,35 @@ async function getMonthData(yearMonth: string): Promise<DayMetrics[]> {
   return metrics;
 }
 
+// ---- Helpers for prior-month MTD-thru-day-N + same-day-of-month comparison ----
+
+function dayOfMonthFromDate(dateStr: string): number {
+  return parseInt(dateStr.slice(8, 10), 10);
+}
+
+function metricsThroughDay(metrics: DayMetrics[], throughDay: number): DayMetrics[] {
+  return metrics.filter(m => dayOfMonthFromDate(m.date) <= throughDay);
+}
+
+function getLatestDayOfMonth(metrics: DayMetrics[]): number | null {
+  if (metrics.length === 0) return null;
+  return dayOfMonthFromDate(metrics[metrics.length - 1].date);
+}
+
+function getLatestDateStr(metrics: DayMetrics[]): string | null {
+  if (metrics.length === 0) return null;
+  return metrics[metrics.length - 1].date;
+}
+
+function metricForSameDay(metrics: DayMetrics[], dayOfMonth: number): DayMetrics | null {
+  if (metrics.length === 0) return null;
+  const exact = metrics.find(m => dayOfMonthFromDate(m.date) === dayOfMonth);
+  if (exact) return exact;
+  // Fallback: closest day <= N
+  const candidates = metrics.filter(m => dayOfMonthFromDate(m.date) <= dayOfMonth);
+  return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+}
+
 function aggregateMonth(metrics: DayMetrics[]) {
   if (metrics.length === 0) return null;
 
@@ -911,6 +940,29 @@ export async function GET(req: NextRequest) {
   const current = aggregateMonth(currentData);
   const previous = aggregateMonth(prevData);
 
+  // Apples-to-apples comparisons: prior month aggregated through the same day-of-month
+  // as current month's latest reporting date, plus a same-day snapshot.
+  const latestDayOfMonth = getLatestDayOfMonth(currentData);
+  const latestReportingDate = getLatestDateStr(currentData);
+  const previousMTDThroughDay = latestDayOfMonth !== null
+    ? aggregateMonth(metricsThroughDay(prevData, latestDayOfMonth))
+    : null;
+  const previousSameDayMetric = latestDayOfMonth !== null
+    ? metricForSameDay(prevData, latestDayOfMonth)
+    : null;
+  const previousSameDay = previousSameDayMetric ? {
+    date: previousSameDayMetric.date,
+    dayOfMonth: dayOfMonthFromDate(previousSameDayMetric.date),
+    revenue: previousSameDayMetric.revenue,
+    revenueMTD: previousSameDayMetric.revenueMTD,
+    arpob: previousSameDayMetric.arpob,
+    ipCensus: previousSameDayMetric.ipCensus,
+    admissions: previousSameDayMetric.admissions,
+    erCases: previousSameDayMetric.erCases,
+    surgeriesMTD: previousSameDayMetric.surgeriesMTD,
+  } : null;
+
+
   // Compute historical average daily curves (by day-of-month: day1, day2, ...)
   // Revenue: average revenue per day-of-month across all historical months
   // Census: average census per day-of-month across all historical months
@@ -1110,6 +1162,10 @@ export async function GET(req: NextRequest) {
     previousMonth: prevMonth,
     current,
     previous,
+    previousMTDThroughDay,
+    previousSameDay,
+    latestReportingDate,
+    latestDayOfMonth,
     availableMonths,
     dailyMetrics: currentData,
     todayDate: todayStr,

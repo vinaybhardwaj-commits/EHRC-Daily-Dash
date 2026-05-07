@@ -76,11 +76,27 @@ interface HeatmapDay {
   slugs: string[];
 }
 
+interface PreviousSameDay {
+  date: string;
+  dayOfMonth: number;
+  revenue: number | null;
+  revenueMTD: number | null;
+  arpob: number | null;
+  ipCensus: number | null;
+  admissions: number;
+  erCases: number;
+  surgeriesMTD: number | null;
+}
+
 interface ApiResponse {
   currentMonth: string;
   previousMonth: string;
   current: MonthlyData | null;
   previous: MonthlyData | null;
+  previousMTDThroughDay: MonthlyData | null;
+  previousSameDay: PreviousSameDay | null;
+  latestReportingDate: string | null;
+  latestDayOfMonth: number | null;
   availableMonths: string[];
   dailyMetrics: DailyMetric[];
   todayDate: string;
@@ -369,44 +385,74 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
     );
   };
 
+  // ---- MTD-thru-N + same-day comparison sources (apples-to-apples vs current MTD) ----
+  const previousMTDThroughDay = data.previousMTDThroughDay;
+  const previousSameDay = data.previousSameDay;
+  const latestDayOfMonth = data.latestDayOfMonth;
+  const prevMonthShort = formatShortMonth(data.previousMonth);
+  const currentMonthShort = formatShortMonth(data.currentMonth);
+
   // ---- Hero metric cards config ----
   const heroCards = [
     {
       id: 'revenue', label: 'Revenue MTD', value: formatIndian(current.revenueMTD),
-      comparison: renderTrendBadge(current.revenueMTD, previous?.revenueMTD || null), color: 'emerald',
-      currentVal: current.revenueMTD, prevVal: previous?.revenueMTD ?? null,
+      comparison: renderTrendBadge(current.revenueMTD, previousMTDThroughDay?.revenueMTD ?? null), color: 'emerald',
+      currentVal: current.revenueMTD, prevVal: previousMTDThroughDay?.revenueMTD ?? null,
       detail: `Daily avg: ${formatIndian(current.avgDailyRevenue)}`,
-      prevDetail: previous ? `Last month: ${formatIndian(previous.revenueMTD)}` : null,
-      prevAvgDetail: previous?.avgDailyRevenue ? `Daily avg last month: ${formatIndian(previous.avgDailyRevenue)}` : null,
+      prevDetail: previousMTDThroughDay && latestDayOfMonth ? `${prevMonthShort} thru day ${latestDayOfMonth}: ${formatIndian(previousMTDThroughDay.revenueMTD)}` : null,
+      prevAvgDetail: previous?.avgDailyRevenue ? `${prevMonthShort} full-month total: ${formatIndian(previous.revenueMTD)} (avg ${formatIndian(previous.avgDailyRevenue)}/day)` : null,
+      sameDayChip: (() => {
+        const todayRev = current.dailyRevenues.length > 0 ? current.dailyRevenues[current.dailyRevenues.length - 1] : null;
+        if (!todayRev || !previousSameDay || previousSameDay.revenue === null) return null;
+        const todayDayN = parseInt(todayRev.date.slice(8, 10), 10);
+        return { todayLabel: `${currentMonthShort} ${todayDayN}: ${formatIndian(todayRev.value)}`, prevLabel: `${prevMonthShort} ${previousSameDay.dayOfMonth}: ${formatIndian(previousSameDay.revenue)}`, todayVal: todayRev.value, prevVal: previousSameDay.revenue };
+      })(),
     },
     {
       id: 'admissions', label: 'Admissions MTD', value: current.totalAdmissions ?? '\u2014',
-      comparison: renderTrendBadge(current.totalAdmissions ?? null, previous?.totalAdmissions ?? null), color: 'blue',
-      currentVal: current.totalAdmissions ?? null, prevVal: previous?.totalAdmissions ?? null,
+      comparison: renderTrendBadge(current.totalAdmissions ?? null, previousMTDThroughDay?.totalAdmissions ?? null), color: 'blue',
+      currentVal: current.totalAdmissions ?? null, prevVal: previousMTDThroughDay?.totalAdmissions ?? null,
       detail: `Over ${current.daysReported} days of data`,
-      prevDetail: previous?.totalAdmissions !== undefined ? `Last month: ${previous.totalAdmissions} over ${previous.daysReported} days` : null,
+      prevDetail: previousMTDThroughDay?.totalAdmissions !== undefined && latestDayOfMonth ? `${prevMonthShort} thru day ${latestDayOfMonth}: ${previousMTDThroughDay.totalAdmissions}` : null,
+      prevAvgDetail: previous?.totalAdmissions !== undefined ? `${prevMonthShort} full-month total: ${previous.totalAdmissions} over ${previous.daysReported} days` : null,
+      sameDayChip: (() => {
+        const todayAdm = current.dailyAdmissions && current.dailyAdmissions.length > 0 ? current.dailyAdmissions[current.dailyAdmissions.length - 1] : null;
+        if (!todayAdm || !previousSameDay) return null;
+        const todayDayN = parseInt(todayAdm.date.slice(8, 10), 10);
+        return { todayLabel: `${currentMonthShort} ${todayDayN}: ${todayAdm.value}`, prevLabel: `${prevMonthShort} ${previousSameDay.dayOfMonth}: ${previousSameDay.admissions}`, todayVal: todayAdm.value, prevVal: previousSameDay.admissions };
+      })(),
     },
     {
       id: 'surgeries', label: 'Surgeries MTD', value: current.surgeriesMTD || '\u2014',
-      comparison: renderTrendBadge(current.surgeriesMTD, previous?.surgeriesMTD || null), color: 'purple',
-      currentVal: current.surgeriesMTD, prevVal: previous?.surgeriesMTD ?? null,
+      comparison: renderTrendBadge(current.surgeriesMTD, previousMTDThroughDay?.surgeriesMTD ?? null), color: 'purple',
+      currentVal: current.surgeriesMTD, prevVal: previousMTDThroughDay?.surgeriesMTD ?? null,
       detail: `${current.daysReported} days reported`,
-      prevDetail: previous?.surgeriesMTD ? `Last month: ${previous.surgeriesMTD}` : null,
-      prevAvgDetail: previous ? `Over ${previous.daysReported} days` : null,
+      prevDetail: previousMTDThroughDay?.surgeriesMTD && latestDayOfMonth ? `${prevMonthShort} thru day ${latestDayOfMonth}: ${previousMTDThroughDay.surgeriesMTD}` : null,
+      prevAvgDetail: previous?.surgeriesMTD ? `${prevMonthShort} full-month total: ${previous.surgeriesMTD} over ${previous.daysReported} days` : null,
+      sameDayChip: null,
     },
     {
       id: 'arpob', label: 'ARPOB', value: formatIndian(current.latestArpob),
-      comparison: renderTrendBadge(current.latestArpob, previous?.latestArpob || null), color: 'amber',
-      currentVal: current.latestArpob, prevVal: previous?.latestArpob ?? null,
+      comparison: renderTrendBadge(current.latestArpob, previousMTDThroughDay?.latestArpob ?? null), color: 'amber',
+      currentVal: current.latestArpob, prevVal: previousMTDThroughDay?.latestArpob ?? null,
       detail: `Latest value this month`,
-      prevDetail: previous?.latestArpob ? `Last month: ${formatIndian(previous.latestArpob)}` : null,
+      prevDetail: previousMTDThroughDay?.latestArpob && latestDayOfMonth ? `${prevMonthShort} day ${latestDayOfMonth}: ${formatIndian(previousMTDThroughDay.latestArpob)}` : null,
+      prevAvgDetail: previous?.latestArpob ? `${prevMonthShort} latest reading: ${formatIndian(previous.latestArpob)}` : null,
+      sameDayChip: null,
     },
     {
       id: 'er', label: 'ER Cases MTD', value: current.totalErCases || '\u2014',
-      comparison: renderTrendBadge(current.totalErCases, previous?.totalErCases || null), color: 'red',
-      currentVal: current.totalErCases, prevVal: previous?.totalErCases ?? null,
+      comparison: renderTrendBadge(current.totalErCases, previousMTDThroughDay?.totalErCases ?? null), color: 'red',
+      currentVal: current.totalErCases, prevVal: previousMTDThroughDay?.totalErCases ?? null,
       detail: `${current.daysReported} days of data`,
-      prevDetail: previous ? `Last month: ${previous.totalErCases} over ${previous.daysReported} days` : null,
+      prevDetail: previousMTDThroughDay && latestDayOfMonth ? `${prevMonthShort} thru day ${latestDayOfMonth}: ${previousMTDThroughDay.totalErCases}` : null,
+      prevAvgDetail: previous ? `${prevMonthShort} full-month total: ${previous.totalErCases} over ${previous.daysReported} days` : null,
+      sameDayChip: (() => {
+        const todayEr = current.dailyErCases && current.dailyErCases.length > 0 ? current.dailyErCases[current.dailyErCases.length - 1] : null;
+        if (!todayEr || !previousSameDay) return null;
+        const todayDayN = parseInt(todayEr.date.slice(8, 10), 10);
+        return { todayLabel: `${currentMonthShort} ${todayDayN}: ${todayEr.value}`, prevLabel: `${prevMonthShort} ${previousSameDay.dayOfMonth}: ${previousSameDay.erCases}`, todayVal: todayEr.value, prevVal: previousSameDay.erCases };
+      })(),
     },
   ];
 
@@ -421,6 +467,8 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
   // Previous month daily data for sparkline overlay
   const prevDailyRevenues = previous?.dailyRevenues?.map(d => ({ value: d.value })) || [];
   const prevDailyCensus = previous?.dailyCensus?.map(d => ({ value: d.value })) || [];
+
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6 lg:p-8">
@@ -491,9 +539,27 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
                       <div className={`text-xs font-semibold mt-1 px-2 py-1 rounded-md inline-block ${
                         pctVal > 0 ? 'bg-emerald-100 text-emerald-800' : pctVal < 0 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600'
                       }`}>
-                        {pctVal > 0 ? '\u2191' : '\u2193'} {Math.abs(pctVal).toFixed(1)}% vs last month
+                        {pctVal > 0 ? '\u2191' : '\u2193'} {Math.abs(pctVal).toFixed(1)}% vs MTD {prevMonthShort}
                       </div>
                     )}
+                    {'sameDayChip' in card && card.sameDayChip && (() => {
+                      const sd = card.sameDayChip;
+                      const sdPct = pctChange(sd.todayVal, sd.prevVal);
+                      return (
+                        <div className="mt-2 pt-2 border-t border-slate-200/60">
+                          <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Same-day comparison</div>
+                          <div className="text-xs text-slate-600">{sd.todayLabel}</div>
+                          <div className="text-xs text-slate-500">{sd.prevLabel}</div>
+                          {sdPct !== null && (
+                            <div className={`text-xs font-semibold mt-1 px-2 py-1 rounded-md inline-block ${
+                              sdPct > 0 ? 'bg-emerald-100 text-emerald-800' : sdPct < 0 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {sdPct > 0 ? '\u2191' : '\u2193'} {Math.abs(sdPct).toFixed(1)}% same-day
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
