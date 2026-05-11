@@ -257,6 +257,52 @@ const MIGRATIONS: Migration[] = [
          ALTER COLUMN date_d SET NOT NULL`,
     ],
   },
+  {
+    version: 13,
+    name: 'create_surgical_risk_assessments',
+    statements: [
+      // SREWS.0 — Surgical Risk Early Warning System foundation table.
+      // Per PRD v2 §3 (no-GCP architecture, dated 11 May 2026).
+      // LLM produces factor classification; server enforces all arithmetic + tier
+      // (see PRD §13.3). assessment_json holds the full LLM JSON for audit;
+      // raw_form_data preserves the source row so we can re-score on rubric tuning.
+      `CREATE TABLE IF NOT EXISTS surgical_risk_assessments (
+        id SERIAL PRIMARY KEY,
+        form_submission_uid TEXT UNIQUE NOT NULL,
+        submission_timestamp TIMESTAMPTZ NOT NULL,
+        patient_name TEXT NOT NULL,
+        uhid TEXT NOT NULL,
+        age INTEGER,
+        sex TEXT,
+        surgeon_name TEXT,
+        surgical_specialty TEXT,
+        proposed_procedure TEXT,
+        surgery_date DATE,
+        surgery_datetime TIMESTAMPTZ,
+        admission_date DATE,
+        admission_datetime TIMESTAMPTZ,
+        patient_risk_score NUMERIC(3,1) NOT NULL,
+        procedure_risk_score NUMERIC(3,1) NOT NULL,
+        system_risk_score NUMERIC(3,1) NOT NULL,
+        composite_risk_score NUMERIC(3,1) NOT NULL,
+        risk_tier TEXT NOT NULL CHECK (risk_tier IN ('GREEN', 'AMBER', 'RED', 'CRITICAL')),
+        assessment_json JSONB NOT NULL,
+        llm_model TEXT DEFAULT 'qwen2.5:14b',
+        llm_latency_ms INTEGER,
+        llm_divergence_logged BOOLEAN DEFAULT FALSE,
+        rubric_version TEXT NOT NULL,
+        raw_form_data JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        review_notes TEXT
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_sra_surgery_date ON surgical_risk_assessments(surgery_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_sra_risk_tier ON surgical_risk_assessments(risk_tier)`,
+      `CREATE INDEX IF NOT EXISTS idx_sra_uhid ON surgical_risk_assessments(uhid)`,
+      `CREATE INDEX IF NOT EXISTS idx_sra_form_submission_uid ON surgical_risk_assessments(form_submission_uid)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
