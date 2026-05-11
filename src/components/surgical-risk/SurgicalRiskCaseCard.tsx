@@ -179,7 +179,7 @@ export default function SurgicalRiskCaseCard({ row, onReviewed }: Props) {
           )}
 
           {/* Divergence indicator (transparency: show if LLM was significantly corrected) */}
-          {row.llm_divergence_logged && (
+          {false /* HIDDEN per V 2026-05-11; restore when SPAS admin ships */ && row.llm_divergence_logged && (
             <div className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600 mb-3">
               <span className="font-semibold">Note:</span> server-side recalc differed from LLM by &gt;2.0 on at least one sub-score.
               The displayed scores are server-corrected per PRD §13.3.
