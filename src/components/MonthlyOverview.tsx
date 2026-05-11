@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import SurgicalRiskBanner from '@/components/surgical-risk/SurgicalRiskBanner';
 import GlobalIssuesPanel, { type GlobalIssueData } from './GlobalIssuesPanel';
 import DepartmentGrid, { type DeptKPIData, type DeptAlertData } from './DepartmentGrid';
 import SewaOverviewPanel from './SewaOverviewPanel';
@@ -472,6 +473,8 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6 lg:p-8">
+      {/* SREWS banner — top-of-page CTA per PRD v2 decisions #24-26 */}
+      <SurgicalRiskBanner />
       {/* ===== HEADER ===== */}
       <div className="mb-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

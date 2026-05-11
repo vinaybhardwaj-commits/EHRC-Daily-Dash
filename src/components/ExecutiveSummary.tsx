@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { DaySnapshot, DEPARTMENTS } from '@/lib/types';
 
 interface Props {
@@ -55,6 +56,21 @@ function MetricCard({ label, value, icon, color }: MetricCardProps) {
 }
 
 export default function ExecutiveSummary({ snapshot }: Props) {
+  // SREWS counts (per PRD v2 §14.5 + decision #24 — 2 MetricCards in this strip)
+  const [srSummary, setSrSummary] = useState<{ total: number; high: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/surgical-risk?summary=true')
+      .then(r => r.json())
+      .then((j: { ok: boolean; summary?: { total: number; RED: number; CRITICAL: number } }) => {
+        if (!cancelled && j.ok && j.summary) {
+          setSrSummary({ total: j.summary.total, high: j.summary.RED + j.summary.CRITICAL });
+        }
+      })
+      .catch(() => { /* swallow — empty SREWS data is acceptable */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const getDeptField = (slug: string, field: string): string | number | undefined => {
     const dept = snapshot.departments.find(d => d.slug === slug);
     if (!dept || !dept.entries.length) return undefined;
@@ -109,6 +125,24 @@ export default function ExecutiveSummary({ snapshot }: Props) {
   if (edCases !== null) metrics.push({ label: 'ED Cases', value: edCases, icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', color: 'amber' });
   if (otCases !== null) metrics.push({ label: 'OT Cases', value: otCases, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', color: 'purple' });
   if (pharmacyMTD !== null) metrics.push({ label: 'Pharmacy MTD', value: `â¹${formatCurrency(pharmacyMTD, true)}`, icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', color: 'emerald' });
+
+  // SREWS MetricCards (PRD v2 §14.5 + decision #24 — Upcoming Surgeries + High Risk Cases)
+  if (srSummary) {
+    metrics.push({
+      label: 'Upcoming Surgeries',
+      value: srSummary.total,
+      icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+      color: 'blue',
+    });
+    if (srSummary.high > 0) {
+      metrics.push({
+        label: 'High Risk Cases',
+        value: srSummary.high,
+        icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z',
+        color: 'rose',
+      });
+    }
+  }
 
   return (
     <div className="space-y-4">

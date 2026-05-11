@@ -13,6 +13,7 @@ import SparklineHeatmap from '@/components/SparklineHeatmap';
 import TrendCharts from '@/components/TrendCharts';
 import DepartmentForms from '@/components/DepartmentForms';
 import MonthlyOverview from '@/components/MonthlyOverview';
+import SurgicalRiskBanner from '@/components/surgical-risk/SurgicalRiskBanner';
 import WhatsAppInsights from '@/components/WhatsAppInsights';
 import HKFacilityCard from '@/components/HKFacilityCard';
 import SupplyChainSummary from '@/components/SupplyChainSummary';
@@ -238,6 +239,18 @@ export default function Home() {
                 </svg>
                 <span className="hidden sm:inline">Forms</span>
               </a>
+              <a
+                href="/surgical-risk"
+                title="Surgical Risk Assessment"
+                aria-label="Surgical Risk Assessment"
+                className="px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-blue-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5"
+              >
+                {/* shield-exclamation icon (mobile only) */}
+                <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <span className="hidden sm:inline">Surgical Risk</span>
+              </a>
             </div>
           </div>
 
@@ -352,6 +365,11 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* SREWS banner — top-of-dashboard-view CTA per PRD v2 decisions #24-26 */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <SurgicalRiskBanner />
+      </div>
 
       {/* Upload Panel */}
       {showUpload && (
