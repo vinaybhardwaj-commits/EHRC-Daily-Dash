@@ -27,6 +27,7 @@ import { sql } from '@vercel/postgres';
 import { llm, LLM_MODELS } from '@/lib/llm';
 import { checkWebhookSecret } from '@/lib/surgical-risk/webhook-auth';
 import { SREWS_SYSTEM_PROMPT, buildUserPrompt } from '@/lib/surgical-risk/prompt';
+import { getActiveConfig } from '@/lib/surgical-risk/config-store';
 import { recalculateFromLLMOutput } from '@/lib/surgical-risk/recalculate';
 import { computeDeterministicRisk, combineDateTime } from '@/lib/surgical-risk/fallback';
 import { RUBRIC_VERSION } from '@/lib/surgical-risk/rubric';
@@ -122,6 +123,14 @@ export async function POST(req: NextRequest) {
     return jsonErr(`Dedupe query failed: ${String(dbErr)}`, 500);
   }
 
+  // 3a. SPAS.1 — fetch active config (prompt + version). Falls back to
+  //     hardcoded SREWS_SYSTEM_PROMPT + RUBRIC_VERSION if DB is unreachable
+  //     or no active config exists. SPAS.5 will wire scoring through DB too;
+  //     for now fallback.ts + recalculate.ts keep reading rubric.ts constants.
+  const activeConfig = await getActiveConfig();
+  const systemPrompt = activeConfig?.system_prompt ?? SREWS_SYSTEM_PROMPT;
+  const rubricVersion = activeConfig?.version ?? RUBRIC_VERSION;
+
   // 4. + 5. + 6. Call LLM, parse, recalc — with deterministic fallback
   let assessment: RiskAssessment;
   let llmModel = LLM_MODELS.PRIMARY as string;
@@ -139,7 +148,7 @@ export async function POST(req: NextRequest) {
       const completion = await client.chat.completions.create({
         model: LLM_MODELS.PRIMARY,
         messages: [
-          { role: 'system', content: SREWS_SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: buildUserPrompt(body) },
         ],
         temperature: 0.2,
@@ -194,7 +203,7 @@ export async function POST(req: NextRequest) {
         ${body.admission_date ?? null}, ${admDt ? admDt.toISOString() : null},
         ${assessment.patient_risk.score}, ${assessment.procedure_risk.score},
         ${assessment.system_risk.score}, ${assessment.composite.score}, ${assessment.composite.tier},
-        ${JSON.stringify(assessment)}::jsonb, ${llmModel}, ${llmLatencyMs}, ${divergenceFlagged}, ${RUBRIC_VERSION},
+        ${JSON.stringify(assessment)}::jsonb, ${llmModel}, ${llmLatencyMs}, ${divergenceFlagged}, ${rubricVersion},
         ${JSON.stringify(body)}::jsonb
       )
       RETURNING id
