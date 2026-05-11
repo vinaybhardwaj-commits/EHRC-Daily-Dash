@@ -27,6 +27,7 @@ import { llm, LLM_MODELS } from '@/lib/llm';
 import { checkAdminKey } from '@/lib/surgical-risk/admin-auth';
 import { SREWS_SYSTEM_PROMPT, buildUserPrompt } from '@/lib/surgical-risk/prompt';
 import { getActiveConfig } from '@/lib/surgical-risk/config-store';
+import { buildRuntimeRubric } from '@/lib/surgical-risk/runtime-rubric';
 import { recalculateFromLLMOutput } from '@/lib/surgical-risk/recalculate';
 import { computeDeterministicRisk } from '@/lib/surgical-risk/fallback';
 import { RUBRIC_VERSION } from '@/lib/surgical-risk/rubric';
@@ -111,8 +112,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     // 3. Resolve active config (prompt + version)
     const activeConfig = await getActiveConfig();
-    const systemPrompt = activeConfig?.system_prompt ?? SREWS_SYSTEM_PROMPT;
-    const rubricVersion = activeConfig?.version ?? RUBRIC_VERSION;
+  const systemPrompt = activeConfig?.system_prompt ?? SREWS_SYSTEM_PROMPT;
+  const rubricVersion = activeConfig?.version ?? RUBRIC_VERSION;
+  // SPAS.5 — build runtime rubric from active config. Falls back to hardcoded
+  // rubric.ts constants if activeConfig is null. Scoring (fallback + recalc)
+  // now sources weights/thresholds/factor-points/keywords/override-rules from
+  // this rubric instead of importing rubric.ts constants directly.
+  const runtimeRubric = buildRuntimeRubric(activeConfig);
 
     // 4. Re-run scoring (mirrors /assess flow)
     let assessment: RiskAssessment;
@@ -122,7 +128,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     const client = llm();
     if (!client) {
-      assessment = computeDeterministicRisk(formData);
+      assessment = computeDeterministicRisk(formData, runtimeRubric);
       llmModel = 'fallback-no-tunnel';
     } else {
       try {
@@ -140,16 +146,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         const text = completion.choices[0]?.message?.content || '';
         const parsed = parseLLMResponse(text);
         if (!parsed) {
-          assessment = computeDeterministicRisk(formData);
+          assessment = computeDeterministicRisk(formData, runtimeRubric);
           llmModel = 'fallback-parse-error';
         } else {
-          const recalc = recalculateFromLLMOutput(parsed, formData);
+          const recalc = recalculateFromLLMOutput(parsed, formData, runtimeRubric);
           assessment = recalc.assessment;
           divergenceFlagged = recalc.divergence.flagged;
         }
       } catch (llmErr) {
         console.warn('[srews/reassess] LLM call failed', { id, error: String(llmErr) });
-        assessment = computeDeterministicRisk(formData);
+        assessment = computeDeterministicRisk(formData, runtimeRubric);
         llmModel = 'fallback-llm-error';
       }
     }

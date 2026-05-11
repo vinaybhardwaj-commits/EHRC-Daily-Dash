@@ -19,16 +19,12 @@ import type {
   SurgeryBookingPayload,
 } from './types';
 import {
-  COMPOSITE_WEIGHTS,
-  INFECTION_KEYWORDS,
-  INFECTION_POINTS,
-  LATERALITY_BILATERAL_POINTS,
-  OVERRIDE_RULES,
-  SUB_SCORE_CAP,
-  TIMING_GAP_POINTS,
-  maxTier,
-  tierForComposite,
-} from './rubric';
+  buildRuntimeRubric,
+  evaluateOverrideRules,
+  tierForCompositeRuntime,
+  timingGapFor,
+  type RuntimeRubric,
+} from './runtime-rubric';
 import { combineDateTime, computeTimingGapHours } from './fallback';
 
 const DIVERGENCE_THRESHOLD = 2.0;
@@ -37,8 +33,8 @@ function lc(value: string | null | undefined): string {
   return (value || '').toLowerCase();
 }
 
-function clampSubScore(n: number): number {
-  return Math.min(SUB_SCORE_CAP, Math.round(n * 10) / 10);
+function clampSubScore(rubric: RuntimeRubric, n: number): number {
+  return Math.min(rubric.sub_score_cap, Math.round(n * 10) / 10);
 }
 
 function sumFactors(factors: FactorContribution[]): number {
@@ -76,7 +72,8 @@ export interface RecalculatedAssessment {
  */
 export function recalculateFromLLMOutput(
   llmOutput: RiskAssessment,
-  formData: SurgeryBookingPayload
+  formData: SurgeryBookingPayload,
+  rubric: RuntimeRubric = buildRuntimeRubric(null)
 ): RecalculatedAssessment {
   // Deep clone so original LLM output is preserved (caller may store both)
   const out: RiskAssessment = JSON.parse(JSON.stringify(llmOutput));
@@ -88,19 +85,19 @@ export function recalculateFromLLMOutput(
 
   // ---- Step 1: Sum each sub-score's factors ----
   for (const key of ['patient_risk', 'procedure_risk', 'system_risk'] as const) {
-    out[key].score = clampSubScore(sumFactors(out[key].factors));
+    out[key].score = clampSubScore(rubric, sumFactors(out[key].factors));
   }
 
   // ---- Step 2: Server-side infection-keyword scan ----
   const procText = `${formData.proposed_procedure || ''} ${formData.clinical_justification || ''}`;
-  const hasInfection = INFECTION_KEYWORDS.some(k => lc(procText).includes(k));
+  const hasInfection = rubric.infection_keywords.some(k => lc(procText).includes(k));
   if (hasInfection && !out.procedure_risk.factors.some(f => f.factor.toLowerCase().includes('infect') || f.factor.toLowerCase().includes('contamina'))) {
     out.procedure_risk.factors.push({
       factor: 'Infected/contaminated field',
-      points: INFECTION_POINTS,
+      points: rubric.infection_points,
       detail: 'Keyword detected in procedure/justification text (server-side scan)',
     });
-    out.procedure_risk.score = clampSubScore(sumFactors(out.procedure_risk.factors));
+    out.procedure_risk.score = clampSubScore(rubric, sumFactors(out.procedure_risk.factors));
   }
 
   // ---- Step 3: Laterality correction ----
@@ -108,27 +105,27 @@ export function recalculateFromLLMOutput(
   const isBilateral = lat === 'bilateral';
   const latFactorIdx = out.procedure_risk.factors.findIndex(f => f.factor.toLowerCase().includes('lateral'));
   if (latFactorIdx >= 0) {
-    out.procedure_risk.factors[latFactorIdx].points = isBilateral ? LATERALITY_BILATERAL_POINTS : 0;
+    out.procedure_risk.factors[latFactorIdx].points = isBilateral ? rubric.laterality_bilateral_points : 0;
     out.procedure_risk.factors[latFactorIdx].detail = isBilateral ? 'Bilateral (+0.5 per rubric)' : `${formData.laterality || 'unspecified'} → 0 per rubric (only Bilateral scores)`;
     if (!isBilateral) {
       // 0-point factors are still listed for transparency, but cleaner to drop
       // when corrected to 0
       out.procedure_risk.factors.splice(latFactorIdx, 1);
     }
-    out.procedure_risk.score = clampSubScore(sumFactors(out.procedure_risk.factors));
+    out.procedure_risk.score = clampSubScore(rubric, sumFactors(out.procedure_risk.factors));
   } else if (isBilateral) {
     // LLM missed Bilateral entirely
     out.procedure_risk.factors.push({
       factor: 'Bilateral laterality',
-      points: LATERALITY_BILATERAL_POINTS,
+      points: rubric.laterality_bilateral_points,
       detail: 'Server-added (LLM omitted)',
     });
-    out.procedure_risk.score = clampSubScore(sumFactors(out.procedure_risk.factors));
+    out.procedure_risk.score = clampSubScore(rubric, sumFactors(out.procedure_risk.factors));
   }
 
   // ---- Step 4: Timing gap server-correction ----
   const gapH = computeTimingGapHours(formData);
-  const gapRes = TIMING_GAP_POINTS(gapH);
+  const gapRes = timingGapFor(rubric, gapH);
   const timingFactorIdx = out.system_risk.factors.findIndex(f => /timing|gap|admission/i.test(f.factor));
   if (timingFactorIdx >= 0) {
     out.system_risk.factors[timingFactorIdx].points = gapRes.points;
@@ -139,7 +136,7 @@ export function recalculateFromLLMOutput(
     if (gapRes.points === 0) {
       out.system_risk.factors.splice(timingFactorIdx, 1);
     }
-    out.system_risk.score = clampSubScore(sumFactors(out.system_risk.factors));
+    out.system_risk.score = clampSubScore(rubric, sumFactors(out.system_risk.factors));
   } else if (gapRes.points > 0) {
     // LLM missed timing factor entirely
     out.system_risk.factors.push({
@@ -149,7 +146,7 @@ export function recalculateFromLLMOutput(
         ? `${Math.round(gapH * 10) / 10}h gap (server-added — LLM omitted, ${gapRes.band})`
         : `${gapRes.band} (server-added)`,
     });
-    out.system_risk.score = clampSubScore(sumFactors(out.system_risk.factors));
+    out.system_risk.score = clampSubScore(rubric, sumFactors(out.system_risk.factors));
   }
 
   // ---- Step 5: Composite ----
@@ -157,25 +154,19 @@ export function recalculateFromLLMOutput(
   const pr = out.procedure_risk.score;
   const s = out.system_risk.score;
   const composite = Math.round(
-    (p * COMPOSITE_WEIGHTS.patient + pr * COMPOSITE_WEIGHTS.procedure + s * COMPOSITE_WEIGHTS.system) * 100
+    (p * rubric.composite_weights.patient + pr * rubric.composite_weights.procedure + s * rubric.composite_weights.system) * 100
   ) / 100;
   out.composite.score = Math.round(composite * 10) / 10;
 
   // ---- Step 6: Tier thresholds ----
-  const baseTier = tierForComposite(composite);
-  let tier = baseTier;
-  let appliedRule: typeof OVERRIDE_RULES[number] | null = null;
+  const baseTier = tierForCompositeRuntime(rubric, composite);
 
   // ---- Step 7: Override rules ----
-  for (const rule of OVERRIDE_RULES) {
-    if (rule.appliesIf(formData, { patient: p, procedure: pr, system: s }, hasInfection)) {
-      const newTier = maxTier(tier, rule.forceTier);
-      if (newTier !== tier) {
-        tier = newTier;
-        appliedRule = rule;
-      }
-    }
-  }
+  const { applied: appliedRule, tier } = evaluateOverrideRules(
+    rubric, formData,
+    { patient: p, procedure: pr, system: s },
+    hasInfection, baseTier
+  );
 
   out.composite.tier = tier;
   out.composite.override_applied = tier !== baseTier;

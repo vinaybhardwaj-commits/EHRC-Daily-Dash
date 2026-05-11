@@ -28,6 +28,7 @@ import { llm, LLM_MODELS } from '@/lib/llm';
 import { checkWebhookSecret } from '@/lib/surgical-risk/webhook-auth';
 import { SREWS_SYSTEM_PROMPT, buildUserPrompt } from '@/lib/surgical-risk/prompt';
 import { getActiveConfig } from '@/lib/surgical-risk/config-store';
+import { buildRuntimeRubric } from '@/lib/surgical-risk/runtime-rubric';
 import { recalculateFromLLMOutput } from '@/lib/surgical-risk/recalculate';
 import { computeDeterministicRisk, combineDateTime } from '@/lib/surgical-risk/fallback';
 import { RUBRIC_VERSION } from '@/lib/surgical-risk/rubric';
@@ -130,6 +131,11 @@ export async function POST(req: NextRequest) {
   const activeConfig = await getActiveConfig();
   const systemPrompt = activeConfig?.system_prompt ?? SREWS_SYSTEM_PROMPT;
   const rubricVersion = activeConfig?.version ?? RUBRIC_VERSION;
+  // SPAS.5 — build runtime rubric from active config. Falls back to hardcoded
+  // rubric.ts constants if activeConfig is null. Scoring (fallback + recalc)
+  // now sources weights/thresholds/factor-points/keywords/override-rules from
+  // this rubric instead of importing rubric.ts constants directly.
+  const runtimeRubric = buildRuntimeRubric(activeConfig);
 
   // 4. + 5. + 6. Call LLM, parse, recalc — with deterministic fallback
   let assessment: RiskAssessment;
@@ -140,7 +146,7 @@ export async function POST(req: NextRequest) {
   const client = llm();
   if (!client) {
     // No LLM client configured — go straight to fallback
-    assessment = computeDeterministicRisk(body);
+    assessment = computeDeterministicRisk(body, runtimeRubric);
     llmModel = 'fallback-no-tunnel';
   } else {
     try {
@@ -163,11 +169,11 @@ export async function POST(req: NextRequest) {
           uid: body.form_submission_uid,
           preview: text.slice(0, 200),
         });
-        assessment = computeDeterministicRisk(body);
+        assessment = computeDeterministicRisk(body, runtimeRubric);
         llmModel = 'fallback-parse-error';
       } else {
         // 6. Server-side recalc per PRD §13.3
-        const recalc = recalculateFromLLMOutput(parsed, body);
+        const recalc = recalculateFromLLMOutput(parsed, body, runtimeRubric);
         assessment = recalc.assessment;
         divergenceFlagged = recalc.divergence.flagged;
       }
@@ -176,7 +182,7 @@ export async function POST(req: NextRequest) {
         uid: body.form_submission_uid,
         error: String(llmErr),
       });
-      assessment = computeDeterministicRisk(body);
+      assessment = computeDeterministicRisk(body, runtimeRubric);
       llmModel = 'fallback-llm-error';
     }
   }

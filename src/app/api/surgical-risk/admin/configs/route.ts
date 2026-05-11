@@ -119,19 +119,33 @@ export async function POST(req: NextRequest) {
     // 2. Compute next version
     let nextVersion = body.version;
     if (!nextVersion) {
-      // Increment the minor part of the source version: 1.0 → 1.1, 1.5 → 1.6, 2.0 → 2.1
+      // SPAS.5 polish: increment minor PAST any archived/draft versions to find
+      // the next clean unused minor. E.g. active=1.0 + archived=1.1 → next=1.2.
       const parsed = String(source.version).match(/^(\d+)\.(\d+)/);
       if (parsed) {
         const major = parseInt(parsed[1], 10);
-        const minor = parseInt(parsed[2], 10);
-        nextVersion = `${major}.${minor + 1}`;
+        let minor = parseInt(parsed[2], 10);
+        // Probe successive minors until we find one with no DB row. Cap at 100
+        // attempts to avoid runaway loops on pathological data.
+        for (let i = 0; i < 100; i++) {
+          minor += 1;
+          const candidate = `${major}.${minor}`;
+          const collision = await sql`SELECT id FROM srews_configs WHERE version = ${candidate}`;
+          if (collision.rows.length === 0) {
+            nextVersion = candidate;
+            break;
+          }
+        }
+        if (!nextVersion) {
+          // Fallback if 100 successive versions all collided (shouldn't happen)
+          nextVersion = `${major}.${minor}-${Date.now()}`;
+        }
       } else {
         nextVersion = `${source.version}-draft-${Date.now()}`;
-      }
-      // Ensure uniqueness — if version already exists, append a suffix
-      const collision = await sql`SELECT id FROM srews_configs WHERE version = ${nextVersion}`;
-      if (collision.rows.length > 0) {
-        nextVersion = `${nextVersion}-${Date.now()}`;
+        const collision = await sql`SELECT id FROM srews_configs WHERE version = ${nextVersion}`;
+        if (collision.rows.length > 0) {
+          nextVersion = `${nextVersion}-${Date.now()}`;
+        }
       }
     } else {
       const collision = await sql`SELECT id FROM srews_configs WHERE version = ${nextVersion}`;

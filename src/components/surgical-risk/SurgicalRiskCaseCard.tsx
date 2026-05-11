@@ -19,6 +19,8 @@ import FactorTable from './FactorTable';
 interface Props {
   row: SurgicalRiskAssessmentRow;
   onReviewed?: (id: number, reviewedBy: string, reviewedAt: string) => void;
+  /** SPAS.5 — called after a successful reassess so parent can refresh the row */
+  onReassessed?: (id: number) => void;
 }
 
 function formatDate(iso: string | null): string {
@@ -35,16 +37,66 @@ function formatDateTime(iso: string | null): string {
   return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export default function SurgicalRiskCaseCard({ row, onReviewed }: Props) {
+export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [reviewerName, setReviewerName] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
+  // SPAS.5 — Re-assess state
+  const [reassessing, setReassessing] = useState(false);
+  const [reassessError, setReassessError] = useState<string | null>(null);
+  const [reassessResult, setReassessResult] = useState<string | null>(null);
 
   const s = TIER_STYLES[row.risk_tier];
   const a = row.assessment_json;
   const reviewed = !!row.reviewed_at;
+
+  async function handleReassess(e: React.MouseEvent) {
+    e.stopPropagation();
+    // SPAS.5 — fetch admin key from URL or prompt + localStorage cache
+    let key = '';
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      key = params.get('key') || localStorage.getItem('ehrc_admin_key') || '';
+      if (!key) {
+        const entered = window.prompt('Enter admin key to re-assess this case:') || '';
+        if (!entered) return;
+        key = entered;
+        localStorage.setItem('ehrc_admin_key', key);
+      }
+    }
+    if (!window.confirm(`Re-assess ${row.patient_name}?\n\nThe LLM will re-score this booking using the currently-active config. This takes 20-50 seconds.\n\nProceed?`)) return;
+    setReassessing(true);
+    setReassessError(null);
+    setReassessResult(null);
+    try {
+      const r = await fetch(`/api/surgical-risk/${row.id}/reassess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key },
+        body: JSON.stringify({ actor: 'dashboard-ui' }),
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        // Wrong key → clear cache so next attempt re-prompts
+        if (r.status === 401) {
+          localStorage.removeItem('ehrc_admin_key');
+        }
+        throw new Error(data.error || `HTTP ${r.status}`);
+      }
+      const ra = data.reassessment;
+      setReassessResult(
+        ra.tier_changed
+          ? `Tier ${ra.from_tier} → ${ra.to_tier}; score ${ra.from_composite} → ${ra.to_composite} (${ra.llm_model}, ${(ra.llm_latency_ms / 1000).toFixed(1)}s)`
+          : `Tier unchanged (${ra.to_tier}); score ${ra.from_composite} → ${ra.to_composite} (${ra.llm_model}, ${(ra.llm_latency_ms / 1000).toFixed(1)}s)`
+      );
+      onReassessed?.(row.id);
+    } catch (err) {
+      setReassessError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setReassessing(false);
+    }
+  }
 
   async function handleSubmitReview(e: React.MouseEvent) {
     e.stopPropagation();
@@ -233,13 +285,30 @@ export default function SurgicalRiskCaseCard({ row, onReviewed }: Props) {
                 Mark as Reviewed
               </button>
             )}
-            <button
-              onClick={(e) => { e.stopPropagation(); window.print(); }}
-              className="text-xs text-slate-500 hover:text-slate-700 underline print:hidden"
-            >
-              Print Assessment
-            </button>
+            <div className="flex items-center gap-3 print:hidden">
+              {/* SPAS.5 — Re-assess */}
+              <button
+                onClick={handleReassess}
+                disabled={reassessing}
+                className="text-xs text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
+                title="Re-run LLM scoring using the currently-active SREWS config"
+              >
+                {reassessing ? 'Re-assessing… (20-50s)' : 'Re-assess'}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); window.print(); }}
+                className="text-xs text-slate-500 hover:text-slate-700 underline"
+              >
+                Print Assessment
+              </button>
+            </div>
           </div>
+          {/* SPAS.5 — Re-assess feedback */}
+          {(reassessResult || reassessError) && (
+            <div className={`mt-2 px-3 py-2 rounded text-xs ${reassessError ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+              {reassessError ? `Re-assess failed: ${reassessError}` : `Re-assessed: ${reassessResult}. Refresh to see updated card.`}
+            </div>
+          )}
         </div>
       )}
     </div>
