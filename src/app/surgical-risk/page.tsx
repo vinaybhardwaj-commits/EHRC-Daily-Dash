@@ -126,6 +126,7 @@ export default function SurgicalRiskPage() {
           </div>
           <div className="flex items-center gap-4 text-sm">
             <a href="/" className="text-blue-300 hover:text-white transition-colors">← Dashboard</a>
+            <a href="/admin/surgical-risk" className="text-blue-300 hover:text-white transition-colors" title="SPAS — prompt + rubric admin">⚙ Config</a>
             <div className="flex items-center gap-1.5" title={`LLM: ${llmHealth}`}>
               <div className={`w-2 h-2 rounded-full ${llmHealth === 'healthy' ? 'bg-emerald-400 animate-pulse' : llmHealth === 'down' ? 'bg-red-500' : 'bg-slate-400'}`} />
               <span className="text-xs text-blue-300 hidden sm:inline">
