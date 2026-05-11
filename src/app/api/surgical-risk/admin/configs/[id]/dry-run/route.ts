@@ -50,11 +50,12 @@ function structurallyDiffers(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) !== JSON.stringify(b);
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = checkAdminKey(req);
   if (!auth.ok) return jsonErr(auth.error || 'Unauthorized', 401);
 
-  const id = parseInt(params.id, 10);
+  const { id: idStr } = await ctx.params;
+  const id = parseInt(idStr, 10);
   if (!Number.isFinite(id)) return jsonErr('Invalid id', 400);
 
   let body: DryRunBody = {};

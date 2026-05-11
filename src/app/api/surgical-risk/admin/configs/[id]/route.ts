@@ -19,11 +19,12 @@ function jsonErr(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = checkAdminKey(req);
   if (!auth.ok) return jsonErr(auth.error || 'Unauthorized', 401);
 
-  const id = parseInt(params.id, 10);
+  const { id: idStr } = await ctx.params;
+  const id = parseInt(idStr, 10);
   if (!Number.isFinite(id)) return jsonErr('Invalid id', 400);
 
   try {
@@ -44,11 +45,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = checkAdminKey(req);
   if (!auth.ok) return jsonErr(auth.error || 'Unauthorized', 401);
 
-  const id = parseInt(params.id, 10);
+  const { id: idStr } = await ctx.params;
+  const id = parseInt(idStr, 10);
   if (!Number.isFinite(id)) return jsonErr('Invalid id', 400);
 
   try {
