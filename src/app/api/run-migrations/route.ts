@@ -303,6 +303,58 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_sra_form_submission_uid ON surgical_risk_assessments(form_submission_uid)`,
     ],
   },
+  {
+    version: 14,
+    name: 'create_srews_configs',
+    statements: [
+      // SPAS.0 — Surgical Prompt Admin System foundation tables.
+      // Per PRD_SPAS_v1 §3 (decisions #1-9 locked, 11 May 2026).
+      // srews_configs holds versioned config blobs (prompt + rubric + override rules);
+      // exactly one row can be status='active' at a time (enforced by partial unique index).
+      // Forward-only model: new configs apply to bookings submitted AFTER activation.
+      // Per-case re-assess pulls the active config at trigger time.
+      `CREATE TABLE IF NOT EXISTS srews_configs (
+        id BIGSERIAL PRIMARY KEY,
+        version TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','archived')),
+        system_prompt TEXT NOT NULL,
+        composite_weights JSONB NOT NULL,
+        tier_thresholds JSONB NOT NULL,
+        sub_score_cap NUMERIC(4,1) NOT NULL DEFAULT 10,
+        divergence_threshold NUMERIC(4,1) NOT NULL DEFAULT 2.0,
+        patient_config JSONB NOT NULL,
+        procedure_config JSONB NOT NULL,
+        system_config JSONB NOT NULL,
+        override_rules JSONB NOT NULL,
+        detect_lists JSONB NOT NULL,
+        changelog TEXT,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        activated_at TIMESTAMPTZ,
+        activated_by TEXT,
+        archived_at TIMESTAMPTZ
+      )`,
+      // Partial unique index — only ONE active config at any time
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_srews_configs_one_active ON srews_configs(status) WHERE status = 'active'`,
+      `CREATE INDEX IF NOT EXISTS idx_srews_configs_status ON srews_configs(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_srews_configs_created_at ON srews_configs(created_at)`,
+      `CREATE TABLE IF NOT EXISTS srews_config_audit (
+        id BIGSERIAL PRIMARY KEY,
+        config_id BIGINT REFERENCES srews_configs(id) ON DELETE SET NULL,
+        action TEXT NOT NULL CHECK (action IN ('created','edited','activated','archived','reassessed_case','dry_run')),
+        actor TEXT,
+        from_version TEXT,
+        to_version TEXT,
+        diff JSONB,
+        impact JSONB,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_srews_config_audit_config_id ON srews_config_audit(config_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_srews_config_audit_created_at ON srews_config_audit(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_srews_config_audit_action ON srews_config_audit(action)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
