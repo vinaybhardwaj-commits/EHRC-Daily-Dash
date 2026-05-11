@@ -80,6 +80,38 @@ interface SystemConfigBlock {
   transfer_logistics_points: number;
 }
 
+interface DetectGroup { key: string; matches: string[] }
+interface ProcedureDetectGroup { tier: 'MINOR' | 'INTERMEDIATE' | 'MAJOR' | 'COMPLEX'; matches: string[] }
+interface DetectLists {
+  comorbidity_detect: DetectGroup[];
+  habit_detect: DetectGroup[];
+  anaesthesia_detect: DetectGroup[];
+  procedure_complexity_detect: ProcedureDetectGroup[];
+  non_surgical_detect: string[];
+  urgency_detect: DetectGroup[];
+  special_requirement_detect: string[];
+  infection_keywords: string[];
+  pac_status_detect: DetectGroup[];
+  pac_advice_detect: DetectGroup[];
+}
+
+type OverrideRuleKind =
+  | 'sub_score_threshold'
+  | 'age_and_anaesthesia'
+  | 'infection_and_anaesthesia'
+  | 'comorbidity_and_procedure_tier'
+  | 'urgency_and_pac_pending'
+  | 'sub_score_exact';
+type RiskTier = 'GREEN' | 'AMBER' | 'RED' | 'CRITICAL';
+interface OverrideRuleConfig {
+  id: string;
+  enabled: boolean;
+  kind: OverrideRuleKind;
+  params: Record<string, string | number>;
+  forceTier: RiskTier;
+  description: string;
+}
+
 interface ConfigDetail {
   id: string;
   version: string;
@@ -92,8 +124,8 @@ interface ConfigDetail {
   patient_config: PatientConfig;
   procedure_config: ProcedureConfig;
   system_config: SystemConfigBlock;
-  override_rules: unknown[];
-  detect_lists: Record<string, unknown>;
+  override_rules: OverrideRuleConfig[];
+  detect_lists: DetectLists;
   changelog: string | null;
   created_by: string | null;
   created_at: string;
@@ -131,7 +163,7 @@ interface DryRunResult {
   error?: string;
 }
 
-type TabKey = 'overview' | 'prompt' | 'rubric' | 'factor_points' | 'diff';
+type TabKey = 'overview' | 'prompt' | 'rubric' | 'factor_points' | 'keywords' | 'overrides' | 'diff';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -585,7 +617,7 @@ export default function SurgicalRiskAdminPage() {
 
               {/* Tabs */}
               <div className="flex border-b border-slate-200 mb-4 gap-1">
-                {(['overview', 'prompt', 'rubric', 'factor_points', 'diff'] as TabKey[]).map((t) => (
+                {(['overview', 'prompt', 'rubric', 'factor_points', 'keywords', 'overrides', 'diff'] as TabKey[]).map((t) => (
                   <button
                     key={t}
                     onClick={() => setActiveTab(t)}
@@ -595,6 +627,8 @@ export default function SurgicalRiskAdminPage() {
                     {t === 'prompt' && 'Prompt'}
                     {t === 'rubric' && 'Rubric'}
                     {t === 'factor_points' && 'Factor Points'}
+                    {t === 'keywords' && 'Keywords'}
+                    {t === 'overrides' && 'Override Rules'}
                     {t === 'diff' && 'Diff vs Active'}
                   </button>
                 ))}
@@ -605,6 +639,8 @@ export default function SurgicalRiskAdminPage() {
               {activeTab === 'prompt' && <PromptTab detail={displayed} draft={draft} setDraft={setDraft} editing={editing} />}
               {activeTab === 'rubric' && <RubricTab detail={displayed} draft={draft} setDraft={setDraft} editing={editing} />}
               {activeTab === 'factor_points' && <FactorPointsTab detail={displayed} draft={draft} setDraft={setDraft} editing={editing} />}
+              {activeTab === 'keywords' && <KeywordListsTab detail={displayed} draft={draft} setDraft={setDraft} editing={editing} />}
+              {activeTab === 'overrides' && <OverrideRulesTab detail={displayed} draft={draft} setDraft={setDraft} editing={editing} />}
               {activeTab === 'diff' && <DiffTab detail={displayed} dryRun={dryRun} runDryRun={runDryRun} dryRunLoading={dryRunLoading} />}
 
               {editing && (
@@ -877,9 +913,534 @@ function FactorPointsTab({ detail, draft, setDraft, editing }: {
         </div>
       </section>
 
-      <p className="text-xs text-slate-500 italic">
-        Age bands, timing-gap bands, and scheduling flags are array editors — coming in SPAS.4 alongside keyword lists + override rules.
+      {/* Patient — age bands array editor */}
+      <section>
+        <h3 className="font-semibold text-slate-800 mb-2">Patient — age bands</h3>
+        <p className="text-xs text-slate-500 mb-2">Use <code>null</code> for open-ended min/max. Bands evaluated in order, first match wins.</p>
+        <BandArrayEditor
+          bands={v.patient_config.age_bands as unknown as { points: number; label: string; [k: string]: unknown }[]}
+          unit="y"
+          minKey="min"
+          maxKey="max"
+          disabled={!editing}
+          onChange={(arr) => editing && draft && setDraft({ ...draft, patient_config: { ...draft.patient_config, age_bands: arr as unknown as AgeBand[] } })}
+        />
+      </section>
+
+      {/* System — timing gap bands */}
+      <section>
+        <h3 className="font-semibold text-slate-800 mb-2">System — timing gap bands</h3>
+        <p className="text-xs text-slate-500 mb-2">Hours between admission and surgery. <code>null</code> = open-ended.</p>
+        <BandArrayEditor
+          bands={v.system_config.timing_gap_bands as unknown as { min: number | null; max: number | null; points: number; label: string }[]}
+          unit="h"
+          minKey="min_hours"
+          maxKey="max_hours"
+          disabled={!editing}
+          onChange={(arr) => editing && draft && setDraft({ ...draft, system_config: { ...draft.system_config, timing_gap_bands: arr as unknown as TimingGapBand[] } })}
+        />
+      </section>
+
+      {/* System — scheduling flags */}
+      <section>
+        <h3 className="font-semibold text-slate-800 mb-2">System — scheduling flags</h3>
+        <p className="text-xs text-slate-500 mb-2">Each flag triggers when ANY of its keywords match anywhere in the form.</p>
+        <SchedulingFlagsEditor
+          flags={v.system_config.scheduling_flags}
+          disabled={!editing}
+          onChange={(arr) => editing && draft && setDraft({ ...draft, system_config: { ...draft.system_config, scheduling_flags: arr } })}
+        />
+      </section>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SPAS.4 — Keyword Lists tab
+// ─────────────────────────────────────────────────────────────────────────
+
+function KeywordListsTab({ detail, draft, setDraft, editing }: {
+  detail: ConfigDetail; draft: ConfigDetail | null;
+  setDraft: (d: ConfigDetail | null) => void; editing: boolean;
+}) {
+  const v = (editing && draft) ? draft : detail;
+  const update = (patch: Partial<DetectLists>) => editing && draft && setDraft({ ...draft, detect_lists: { ...draft.detect_lists, ...patch } });
+
+  return (
+    <div className="space-y-8">
+      <DeferredBanner />
+      <p className="text-xs text-slate-500">
+        Keywords drive how the deterministic-fallback scorer detects values from free-text fields (comorbidities, procedure, urgency, etc.). The LLM also sees these as guidance in the system prompt. Match keywords are <strong>case-insensitive substring</strong>; SELECT-options exact-match first then substring fallback.
       </p>
+
+      <DetectListEditor
+        title="Comorbidities"
+        helper="Maps free-text mentions to the standard comorbidity keys used in scoring. Keys map to point values in Factor Points → Patient → comorbidity_points."
+        items={v.detect_lists.comorbidity_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ comorbidity_detect: arr })}
+      />
+
+      <DetectListEditor
+        title="Habits"
+        helper="e.g. smoking, alcohol, recreational drugs."
+        items={v.detect_lists.habit_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ habit_detect: arr })}
+      />
+
+      <DetectListEditor
+        title="Anaesthesia"
+        helper="GA / Regional / Spinal / Local detection. SELECT-option exact-match first, then substring."
+        items={v.detect_lists.anaesthesia_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ anaesthesia_detect: arr })}
+      />
+
+      <ProcedureDetectListEditor
+        items={v.detect_lists.procedure_complexity_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ procedure_complexity_detect: arr })}
+      />
+
+      <StringListEditor
+        title="Non-surgical procedure detection"
+        helper="Procedure text matching ANY of these phrases gets 0 procedure-complexity points (e.g. 'medical management', 'observation')."
+        items={v.detect_lists.non_surgical_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ non_surgical_detect: arr })}
+      />
+
+      <DetectListEditor
+        title="Urgency"
+        helper="Maps urgency-field free text to ELECTIVE / SEMI_EMERGENCY / URGENT_IMMEDIATE."
+        items={v.detect_lists.urgency_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ urgency_detect: arr })}
+      />
+
+      <StringListEditor
+        title="Special requirement keywords"
+        helper="Procedure text mentioning ANY of these adds the procedure → special_requirement_points modifier (e.g. 'implant', 'prosthetic')."
+        items={v.detect_lists.special_requirement_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ special_requirement_detect: arr })}
+      />
+
+      <StringListEditor
+        title="Infection keywords"
+        helper="Procedure text mentioning ANY of these adds the procedure → infection_points modifier and triggers the infection+GA override rule."
+        items={v.detect_lists.infection_keywords}
+        disabled={!editing}
+        onChange={(arr) => update({ infection_keywords: arr })}
+      />
+
+      <DetectListEditor
+        title="PAC status"
+        helper="Maps PAC-status field text to standard keys (e.g. WILL_DO_WITHOUT_ANY_REPORTS)."
+        items={v.detect_lists.pac_status_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ pac_status_detect: arr })}
+      />
+
+      <DetectListEditor
+        title="PAC advice"
+        helper="Maps PAC-advice field text to standard keys (FIT / PROVISIONALLY_FIT / NEEDS_WORK_UP / etc)."
+        items={v.detect_lists.pac_advice_detect}
+        disabled={!editing}
+        onChange={(arr) => update({ pac_advice_detect: arr })}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SPAS.4 — Override Rules tab
+// ─────────────────────────────────────────────────────────────────────────
+
+const RULE_KIND_SCHEMA: Record<OverrideRuleKind, { params: Array<{ key: string; label: string; type: 'number' | 'string' }>; description: string }> = {
+  sub_score_threshold: {
+    params: [{ key: 'threshold', label: 'Threshold (N)', type: 'number' }],
+    description: 'Any single sub-score ≥ threshold forces the rule\'s tier.',
+  },
+  age_and_anaesthesia: {
+    params: [
+      { key: 'min_age', label: 'Minimum age (years)', type: 'number' },
+      { key: 'anaesthesia_pattern', label: 'Anaesthesia regex pattern', type: 'string' },
+    ],
+    description: 'Patient age ≥ min_age AND anaesthesia matches pattern.',
+  },
+  infection_and_anaesthesia: {
+    params: [{ key: 'anaesthesia_pattern', label: 'Anaesthesia regex pattern', type: 'string' }],
+    description: 'Infection keywords detected AND anaesthesia matches pattern.',
+  },
+  comorbidity_and_procedure_tier: {
+    params: [
+      { key: 'comorbidity_pattern', label: 'Comorbidity regex pattern', type: 'string' },
+      { key: 'min_procedure_score', label: 'Min procedure sub-score', type: 'number' },
+    ],
+    description: 'Comorbidity matches pattern AND procedure sub-score ≥ minimum.',
+  },
+  urgency_and_pac_pending: {
+    params: [
+      { key: 'urgency_pattern', label: 'Urgency regex pattern', type: 'string' },
+      { key: 'pac_status_pending_pattern', label: 'PAC-status pending pattern', type: 'string' },
+    ],
+    description: 'Urgency matches pattern AND PAC status matches pending pattern.',
+  },
+  sub_score_exact: {
+    params: [{ key: 'value', label: 'Exact value (N)', type: 'number' }],
+    description: 'Any single sub-score == value forces the rule\'s tier.',
+  },
+};
+
+function OverrideRulesTab({ detail, draft, setDraft, editing }: {
+  detail: ConfigDetail; draft: ConfigDetail | null;
+  setDraft: (d: ConfigDetail | null) => void; editing: boolean;
+}) {
+  const v = (editing && draft) ? draft : detail;
+  return (
+    <div className="space-y-4 max-w-3xl">
+      <DeferredBanner />
+      <p className="text-xs text-slate-500">
+        Override rules can only RAISE a tier, never lower it. They fire after the composite-score tier is computed. <strong>Rule KINDS are fixed at deploy time</strong> — admin can tune params / forceTier / description / enabled, but new kinds need a code change (see SPAS.0 design note in memory).
+      </p>
+      {v.override_rules.map((rule, idx) => (
+        <OverrideRuleEditor
+          key={rule.id || idx}
+          rule={rule}
+          disabled={!editing}
+          onChange={(patched) => {
+            if (!editing || !draft) return;
+            const next = [...draft.override_rules];
+            next[idx] = patched;
+            setDraft({ ...draft, override_rules: next });
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OverrideRuleEditor({ rule, disabled, onChange }: {
+  rule: OverrideRuleConfig; disabled: boolean; onChange: (r: OverrideRuleConfig) => void;
+}) {
+  const schema = RULE_KIND_SCHEMA[rule.kind];
+  return (
+    <div className={`border border-slate-200 rounded p-3 ${rule.enabled ? 'bg-white' : 'bg-slate-50'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={rule.enabled}
+              disabled={disabled}
+              onChange={(e) => onChange({ ...rule, enabled: e.target.checked })}
+            />
+            <span className={rule.enabled ? '' : 'text-slate-400'}>enabled</span>
+          </label>
+          <span className="font-mono text-xs text-slate-500">{rule.id}</span>
+          <span className="text-xs text-slate-400">kind: <span className="font-mono">{rule.kind}</span></span>
+        </div>
+        <select
+          value={rule.forceTier}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...rule, forceTier: e.target.value as RiskTier })}
+          className="text-xs border border-slate-300 rounded px-2 py-1"
+        >
+          <option value="GREEN">→ GREEN</option>
+          <option value="AMBER">→ AMBER</option>
+          <option value="RED">→ RED</option>
+          <option value="CRITICAL">→ CRITICAL</option>
+        </select>
+      </div>
+      <p className="text-xs text-slate-500 mb-2">{schema?.description || '(unknown kind — params editor disabled)'}</p>
+      <div className="space-y-2 mb-2">
+        {schema?.params.map((p) => (
+          <div key={p.key} className="flex items-center gap-2">
+            <label className="text-xs text-slate-700 w-48">{p.label}</label>
+            <input
+              type={p.type === 'number' ? 'number' : 'text'}
+              value={String(rule.params?.[p.key] ?? '')}
+              readOnly={disabled}
+              onChange={(e) => {
+                const val = p.type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value;
+                onChange({ ...rule, params: { ...rule.params, [p.key]: val } });
+              }}
+              className={`flex-1 px-2 py-1 border border-slate-300 rounded text-sm ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+            />
+          </div>
+        ))}
+      </div>
+      <div>
+        <label className="block text-xs text-slate-600 mb-1">Description</label>
+        <input
+          type="text"
+          value={rule.description}
+          readOnly={disabled}
+          onChange={(e) => onChange({ ...rule, description: e.target.value })}
+          className={`w-full px-2 py-1 border border-slate-300 rounded text-xs ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SPAS.4 — Array + List editors
+// ─────────────────────────────────────────────────────────────────────────
+
+function DetectListEditor({ title, helper, items, disabled, onChange }: {
+  title: string; helper?: string;
+  items: DetectGroup[]; disabled?: boolean;
+  onChange: (items: DetectGroup[]) => void;
+}) {
+  function setItem(i: number, item: DetectGroup) {
+    const next = [...items]; next[i] = item; onChange(next);
+  }
+  function addItem() { onChange([...items, { key: 'NEW_KEY', matches: [] }]); }
+  function removeItem(i: number) { onChange(items.filter((_, idx) => idx !== i)); }
+
+  return (
+    <section>
+      <h3 className="font-semibold text-slate-800 mb-1">{title}</h3>
+      {helper && <p className="text-xs text-slate-500 mb-2">{helper}</p>}
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <div key={i} className="border border-slate-200 rounded p-2 bg-white">
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="text"
+                value={item.key}
+                readOnly={disabled}
+                onChange={(e) => setItem(i, { ...item, key: e.target.value })}
+                className={`flex-1 font-mono text-sm px-2 py-1 border border-slate-300 rounded ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+                placeholder="STANDARD_KEY"
+              />
+              {!disabled && (
+                <button onClick={() => removeItem(i)} className="text-xs text-rose-600 hover:text-rose-800 px-2">remove</button>
+              )}
+            </div>
+            <CSVStringListEditor
+              items={item.matches}
+              disabled={disabled}
+              onChange={(arr) => setItem(i, { ...item, matches: arr })}
+            />
+          </div>
+        ))}
+        {!disabled && (
+          <button onClick={addItem} className="text-xs text-blue-700 hover:text-blue-900 px-2 py-1 border border-dashed border-slate-300 rounded">+ Add detection group</button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ProcedureDetectListEditor({ items, disabled, onChange }: {
+  items: ProcedureDetectGroup[]; disabled?: boolean;
+  onChange: (items: ProcedureDetectGroup[]) => void;
+}) {
+  const TIERS: ProcedureDetectGroup['tier'][] = ['COMPLEX', 'MAJOR', 'INTERMEDIATE', 'MINOR'];
+  function setItem(i: number, item: ProcedureDetectGroup) {
+    const next = [...items]; next[i] = item; onChange(next);
+  }
+  function addItem() { onChange([...items, { tier: 'MINOR', matches: [] }]); }
+  function removeItem(i: number) { onChange(items.filter((_, idx) => idx !== i)); }
+  return (
+    <section>
+      <h3 className="font-semibold text-slate-800 mb-1">Procedure complexity</h3>
+      <p className="text-xs text-slate-500 mb-2">First matching tier wins. List COMPLEX entries first so multi-keyword procedures like &quot;TKR for fracture&quot; don&apos;t fall to MAJOR.</p>
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <div key={i} className="border border-slate-200 rounded p-2 bg-white">
+            <div className="flex items-center gap-2 mb-2">
+              <select
+                value={item.tier}
+                disabled={disabled}
+                onChange={(e) => setItem(i, { ...item, tier: e.target.value as ProcedureDetectGroup['tier'] })}
+                className="text-xs border border-slate-300 rounded px-2 py-1"
+              >{TIERS.map(t => <option key={t} value={t}>{t}</option>)}</select>
+              {!disabled && (
+                <button onClick={() => removeItem(i)} className="text-xs text-rose-600 hover:text-rose-800 px-2">remove</button>
+              )}
+            </div>
+            <CSVStringListEditor
+              items={item.matches}
+              disabled={disabled}
+              onChange={(arr) => setItem(i, { ...item, matches: arr })}
+            />
+          </div>
+        ))}
+        {!disabled && (
+          <button onClick={addItem} className="text-xs text-blue-700 hover:text-blue-900 px-2 py-1 border border-dashed border-slate-300 rounded">+ Add tier group</button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StringListEditor({ title, helper, items, disabled, onChange }: {
+  title: string; helper?: string;
+  items: string[]; disabled?: boolean;
+  onChange: (items: string[]) => void;
+}) {
+  return (
+    <section>
+      <h3 className="font-semibold text-slate-800 mb-1">{title}</h3>
+      {helper && <p className="text-xs text-slate-500 mb-2">{helper}</p>}
+      <CSVStringListEditor items={items} disabled={disabled} onChange={onChange} />
+    </section>
+  );
+}
+
+function CSVStringListEditor({ items, disabled, onChange }: {
+  items: string[]; disabled?: boolean; onChange: (items: string[]) => void;
+}) {
+  // Render as a textarea with newline-separated entries — simpler than chip UI for v1
+  const value = items.join('\n');
+  return (
+    <textarea
+      value={value}
+      readOnly={disabled}
+      onChange={(e) => onChange(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
+      className={`w-full font-mono text-xs border border-slate-300 rounded p-2 ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+      rows={Math.min(8, Math.max(3, items.length + 1))}
+      placeholder="one match keyword per line"
+    />
+  );
+}
+
+function BandArrayEditor({ bands, unit, minKey, maxKey, disabled, onChange }: {
+  bands: { points: number; label: string; [k: string]: unknown }[];
+  unit: string;
+  minKey: string;
+  maxKey: string;
+  disabled?: boolean;
+  onChange: (arr: { points: number; label: string; [k: string]: unknown }[]) => void;
+}) {
+  function setBand(i: number, b: typeof bands[number]) {
+    const next = [...bands]; next[i] = b; onChange(next);
+  }
+  function addBand() {
+    const b: { points: number; label: string; [k: string]: unknown } = { points: 0, label: 'new band' };
+    b[minKey] = null;
+    b[maxKey] = null;
+    onChange([...bands, b]);
+  }
+  function removeBand(i: number) { onChange(bands.filter((_, idx) => idx !== i)); }
+  return (
+    <div className="space-y-2 max-w-3xl">
+      {bands.map((b, i) => {
+        const minVal = (b[minKey] as number | null | undefined) ?? null;
+        const maxVal = (b[maxKey] as number | null | undefined) ?? null;
+        return (
+          <div key={i} className="flex items-center gap-2 border border-slate-200 rounded p-2 bg-white">
+            <div className="flex items-center gap-1 w-28">
+              <input
+                type="number"
+                value={minVal === null ? '' : minVal}
+                readOnly={disabled}
+                placeholder="-∞"
+                onChange={(e) => {
+                  const next = { ...b };
+                  next[minKey] = e.target.value === '' ? null : parseFloat(e.target.value);
+                  setBand(i, next);
+                }}
+                className={`w-16 px-1 py-0.5 border border-slate-300 rounded text-sm ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+              />
+              <span className="text-xs text-slate-500">{unit}</span>
+            </div>
+            <span className="text-slate-400">–</span>
+            <div className="flex items-center gap-1 w-28">
+              <input
+                type="number"
+                value={maxVal === null ? '' : maxVal}
+                readOnly={disabled}
+                placeholder="+∞"
+                onChange={(e) => {
+                  const next = { ...b };
+                  next[maxKey] = e.target.value === '' ? null : parseFloat(e.target.value);
+                  setBand(i, next);
+                }}
+                className={`w-16 px-1 py-0.5 border border-slate-300 rounded text-sm ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+              />
+              <span className="text-xs text-slate-500">{unit}</span>
+            </div>
+            <input
+              type="number"
+              value={b.points}
+              step={0.5}
+              readOnly={disabled}
+              onChange={(e) => setBand(i, { ...b, points: parseFloat(e.target.value) || 0 })}
+              className={`w-16 px-1 py-0.5 border border-slate-300 rounded text-sm ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+            />
+            <span className="text-xs text-slate-500">pts</span>
+            <input
+              type="text"
+              value={b.label}
+              readOnly={disabled}
+              onChange={(e) => setBand(i, { ...b, label: e.target.value })}
+              className={`flex-1 px-2 py-0.5 border border-slate-300 rounded text-sm ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+              placeholder="label"
+            />
+            {!disabled && (
+              <button onClick={() => removeBand(i)} className="text-xs text-rose-600 hover:text-rose-800 px-2">×</button>
+            )}
+          </div>
+        );
+      })}
+      {!disabled && (
+        <button onClick={addBand} className="text-xs text-blue-700 hover:text-blue-900 px-2 py-1 border border-dashed border-slate-300 rounded">+ Add band</button>
+      )}
+    </div>
+  );
+}
+
+function SchedulingFlagsEditor({ flags, disabled, onChange }: {
+  flags: SchedulingFlag[]; disabled?: boolean;
+  onChange: (arr: SchedulingFlag[]) => void;
+}) {
+  function setFlag(i: number, f: SchedulingFlag) {
+    const next = [...flags]; next[i] = f; onChange(next);
+  }
+  function addFlag() { onChange([...flags, { matches: [], points: 1, label: 'new flag' }]); }
+  function removeFlag(i: number) { onChange(flags.filter((_, idx) => idx !== i)); }
+  return (
+    <div className="space-y-2 max-w-3xl">
+      {flags.map((f, i) => (
+        <div key={i} className="border border-slate-200 rounded p-2 bg-white">
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="text"
+              value={f.label}
+              readOnly={disabled}
+              onChange={(e) => setFlag(i, { ...f, label: e.target.value })}
+              className={`flex-1 text-sm px-2 py-1 border border-slate-300 rounded ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+              placeholder="label"
+            />
+            <input
+              type="number"
+              value={f.points}
+              step={0.5}
+              readOnly={disabled}
+              onChange={(e) => setFlag(i, { ...f, points: parseFloat(e.target.value) || 0 })}
+              className={`w-20 px-2 py-1 border border-slate-300 rounded text-sm ${disabled ? 'bg-slate-50' : 'bg-white'}`}
+            />
+            <span className="text-xs text-slate-500">pts</span>
+            {!disabled && (
+              <button onClick={() => removeFlag(i)} className="text-xs text-rose-600 hover:text-rose-800 px-2">remove</button>
+            )}
+          </div>
+          <CSVStringListEditor
+            items={f.matches}
+            disabled={disabled}
+            onChange={(arr) => setFlag(i, { ...f, matches: arr })}
+          />
+        </div>
+      ))}
+      {!disabled && (
+        <button onClick={addFlag} className="text-xs text-blue-700 hover:text-blue-900 px-2 py-1 border border-dashed border-slate-300 rounded">+ Add flag</button>
+      )}
     </div>
   );
 }
