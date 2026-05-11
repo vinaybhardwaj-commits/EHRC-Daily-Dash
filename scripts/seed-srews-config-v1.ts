@@ -12,7 +12,7 @@
  * Safe to re-run.
  */
 
-import { createClient } from '@vercel/postgres';
+import { createPool } from '@vercel/postgres';
 import {
   COMPOSITE_WEIGHTS,
   TIER_THRESHOLDS,
@@ -130,12 +130,11 @@ async function main() {
     console.error('FATAL: POSTGRES_URL not set');
     process.exit(1);
   }
-  const client = createClient({ connectionString: url });
-  await client.connect();
+  const pool = createPool({ connectionString: url });
 
   try {
     // Idempotency check
-    const existing = await client.sql`
+    const existing = await pool.sql`
       SELECT id, version, status FROM srews_configs WHERE status = 'active'
     `;
     if (existing.rows.length > 0) {
@@ -193,7 +192,7 @@ async function main() {
       pac_advice_detect: PAC_ADVICE_DETECT,
     };
 
-    const insertResult = await client.sql`
+    const insertResult = await pool.sql`
       INSERT INTO srews_configs (
         version, status, system_prompt,
         composite_weights, tier_thresholds,
@@ -219,11 +218,11 @@ async function main() {
     const seeded = insertResult.rows[0];
 
     // Audit row
-    await client.sql`
+    await pool.sql`
       INSERT INTO srews_config_audit (config_id, action, actor, to_version, notes)
       VALUES (${seeded.id}, 'created', 'system-seed', ${seeded.version}, 'SPAS.0 initial seed')
     `;
-    await client.sql`
+    await pool.sql`
       INSERT INTO srews_config_audit (config_id, action, actor, to_version, notes)
       VALUES (${seeded.id}, 'activated', 'system-seed', ${seeded.version}, 'SPAS.0 initial seed — auto-activated')
     `;
@@ -234,7 +233,7 @@ async function main() {
       config: { id: seeded.id, version: seeded.version },
     }, null, 2));
   } finally {
-    await client.end();
+    await pool.end();
   }
 }
 
