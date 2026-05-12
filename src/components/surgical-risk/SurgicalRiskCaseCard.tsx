@@ -10,7 +10,7 @@
  * Mark Reviewed button (POSTs to /[id]/review) + Print link.
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { SurgicalRiskAssessmentRow } from '@/lib/surgical-risk/types';
 import { TIER_STYLES } from './tier-styles';
 import ScoreGauge from './ScoreGauge';
@@ -50,6 +50,8 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
   const [reassessing, setReassessing] = useState(false);
   const [reassessError, setReassessError] = useState<string | null>(null);
   const [reassessResult, setReassessResult] = useState<string | null>(null);
+  // DASH.2 — View original submission toggle
+  const [showOriginal, setShowOriginal] = useState(false);
   // DASH.1 — Remove/Restore state
   const [showRemoveForm, setShowRemoveForm] = useState(false);
   const [removerName, setRemoverName] = useState('');
@@ -347,6 +349,14 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
               >
                 {reassessing ? 'Re-assessing… (20-50s)' : 'Re-assess'}
               </button>
+              {/* DASH.2 — View original Google Form submission */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowOriginal(v => !v); }}
+                className="text-xs text-slate-600 hover:text-slate-900 underline"
+                title="Show the original Google Form submission that produced this assessment"
+              >
+                {showOriginal ? 'Hide original submission' : 'View original submission'}
+              </button>
               {row.removed_at ? (
                 <button
                   onClick={handleRestore}
@@ -414,8 +424,185 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
               Removed{row.removed_by ? ` by ${row.removed_by}` : ''}{row.remove_reason ? `: "${row.remove_reason}"` : ''}
             </div>
           )}
+
+          {/* DASH.2 — Original Google Form submission, for audit */}
+          {showOriginal && (
+            <OriginalSubmissionPanel form={row.raw_form_data as unknown as Record<string, unknown> | undefined} />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DASH.2 — Original Google Form submission panel
+// ─────────────────────────────────────────────────────────────────────────
+
+interface FieldDef { key: string; label: string; }
+
+const SUBMISSION_GROUPS: { title: string; fields: FieldDef[] }[] = [
+  {
+    title: 'Patient',
+    fields: [
+      { key: 'patient_name', label: 'Name' },
+      { key: 'uhid', label: 'UHID' },
+      { key: 'age', label: 'Age' },
+      { key: 'sex', label: 'Sex' },
+      { key: 'contact', label: 'Contact' },
+      { key: 'comorbidities', label: 'Comorbidities' },
+      { key: 'habits', label: 'Habits' },
+    ],
+  },
+  {
+    title: 'Surgical plan',
+    fields: [
+      { key: 'proposed_procedure', label: 'Proposed procedure' },
+      { key: 'surgical_specialty', label: 'Specialty' },
+      { key: 'surgeon_name', label: 'Surgeon' },
+      { key: 'laterality', label: 'Laterality' },
+      { key: 'anaesthesia', label: 'Anaesthesia' },
+      { key: 'special_requirements', label: 'Special requirements' },
+    ],
+  },
+  {
+    title: 'Timing & urgency',
+    fields: [
+      { key: 'surgery_date', label: 'Surgery date' },
+      { key: 'surgery_time', label: 'Surgery time' },
+      { key: 'admission_date', label: 'Admission date' },
+      { key: 'admission_time', label: 'Admission time' },
+      { key: 'urgency', label: 'Urgency' },
+      { key: 'los', label: 'Length of stay (days)' },
+    ],
+  },
+  {
+    title: 'PAC',
+    fields: [
+      { key: 'pac_status', label: 'PAC status' },
+      { key: 'pac_advice', label: 'PAC advice' },
+    ],
+  },
+  {
+    title: 'Logistics',
+    fields: [
+      { key: 'admission_to', label: 'Admission to' },
+      { key: 'admission_type', label: 'Admission type' },
+      { key: 'billing_bed', label: 'Billing bed' },
+      { key: 'staying_bed', label: 'Staying bed' },
+      { key: 'counselled_by', label: 'Counselled by' },
+      { key: 'admission_done_by', label: 'Admission done by' },
+      { key: 'transfer', label: 'Transfer patient' },
+      { key: 'referring_hospital', label: 'Referring hospital' },
+      { key: 'flag_auto', label: 'Auto-flag' },
+    ],
+  },
+  {
+    title: 'Financial',
+    fields: [
+      { key: 'payer', label: 'Payer' },
+      { key: 'insurance_details', label: 'Insurance details' },
+      { key: 'package_amount', label: 'Package amount' },
+      { key: 'advance', label: 'Advance' },
+      { key: 'open_bill', label: 'Open bill' },
+    ],
+  },
+  {
+    title: 'Notes & attachments',
+    fields: [
+      { key: 'clinical_justification', label: 'Clinical justification' },
+      { key: 'remarks', label: 'Remarks' },
+      { key: 'prescription_upload', label: 'Prescription upload' },
+      { key: 'submission_timestamp', label: 'Submitted at' },
+      { key: 'form_submission_uid', label: 'Form submission ID' },
+    ],
+  },
+];
+
+function renderValue(key: string, val: unknown): React.ReactNode {
+  if (val === undefined || val === null || val === '') {
+    return <span className="italic text-slate-400">(blank)</span>;
+  }
+  const str = String(val);
+  // Prescription / drive link
+  if (key === 'prescription_upload' && /^https?:\/\//.test(str)) {
+    return (
+      <a
+        href={str}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="text-blue-600 hover:text-blue-800 underline break-all"
+      >
+        Open in new tab ↗
+      </a>
+    );
+  }
+  // Submission timestamp — pretty-print
+  if (key === 'submission_timestamp') {
+    try {
+      const d = new Date(str);
+      if (!Number.isNaN(d.getTime())) {
+        return <span className="text-slate-700">{d.toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true })}</span>;
+      }
+    } catch { /* fall through */ }
+  }
+  // form_submission_uid — render in mono for easy copy
+  if (key === 'form_submission_uid') {
+    return <span className="font-mono text-xs text-slate-500 break-all">{str}</span>;
+  }
+  // Long text fields — preserve line breaks
+  if (key === 'clinical_justification' || key === 'remarks' || key === 'comorbidities') {
+    return <span className="text-slate-700 whitespace-pre-wrap">{str}</span>;
+  }
+  return <span className="text-slate-700">{str}</span>;
+}
+
+function OriginalSubmissionPanel({ form }: { form: Record<string, unknown> | undefined }) {
+  if (!form) {
+    return (
+      <div className="mt-3 px-3 py-2 rounded text-xs bg-amber-50 border border-amber-200 text-amber-800">
+        No original form data on file (this assessment row predates DASH.2 audit instrumentation).
+      </div>
+    );
+  }
+  // Collect any field keys not covered by the groups, so we don't silently drop new form fields
+  const coveredKeys = new Set(SUBMISSION_GROUPS.flatMap(g => g.fields.map(f => f.key)));
+  const extraKeys = Object.keys(form).filter(k => !coveredKeys.has(k));
+
+  return (
+    <div className="mt-3 border border-slate-200 rounded bg-slate-50" onClick={(e) => e.stopPropagation()}>
+      <div className="px-3 py-2 border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700">
+        Original Google Form submission — verbatim audit view
+      </div>
+      <div className="p-3 space-y-4">
+        {SUBMISSION_GROUPS.map(group => (
+          <div key={group.title}>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{group.title}</h4>
+            <dl className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-x-3 gap-y-1 text-xs">
+              {group.fields.map(f => (
+                <React.Fragment key={f.key}>
+                  <dt className="text-slate-500">{f.label}</dt>
+                  <dd>{renderValue(f.key, form[f.key])}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          </div>
+        ))}
+        {extraKeys.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Other fields</h4>
+            <dl className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-x-3 gap-y-1 text-xs">
+              {extraKeys.map(k => (
+                <React.Fragment key={k}>
+                  <dt className="text-slate-500 font-mono">{k}</dt>
+                  <dd>{renderValue(k, form[k])}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
