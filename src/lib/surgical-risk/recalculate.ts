@@ -126,7 +126,7 @@ export function recalculateFromLLMOutput(
   // ---- Step 4: Booking timing server-correction ----
   const gapH = computeTimingGapHours(formData);
   const gapRes = timingGapFor(rubric, gapH);
-  const timingFactorIdx = out.system_risk.factors.findIndex(f => /timing|gap|admission|booking timing/i.test(f.factor));
+  const timingFactorIdx = out.system_risk.factors.findIndex(f => /timing|gap|admission|booking timing|surgery time/i.test(f.factor));
   if (timingFactorIdx >= 0) {
     out.system_risk.factors[timingFactorIdx].points = gapRes.points;
     out.system_risk.factors[timingFactorIdx].factor = 'Booking timing';
