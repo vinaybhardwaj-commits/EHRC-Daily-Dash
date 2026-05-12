@@ -21,36 +21,44 @@ export const dynamic = 'force-dynamic';
 
 const VALID_TIERS = new Set<RiskTier>(['GREEN', 'AMBER', 'RED', 'CRITICAL']);
 
-function parseRange(rangeStr: string | null): { start: string; end: string } {
-  // Default: today + 3 days forward (the PRD §6 v1 list view)
+function parseRange(rangeStr: string | null): { start: string | null; end: string | null; mode: string } {
+  // V's request 12 May 2026: show ALL legit submissions on the dashboard regardless of date.
+  // Default range is now 'all' — no surgery_date filter applied. Older modes still work.
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const threeDaysOut = new Date(today.getTime() + 3 * 86400000).toISOString().slice(0, 10);
 
-  if (!rangeStr || rangeStr === 'upcoming') {
-    return { start: todayStr, end: threeDaysOut };
+  // 'all' (default) — no date filter
+  if (!rangeStr || rangeStr === 'all') {
+    return { start: null, end: null, mode: 'all' };
+  }
+  if (rangeStr === 'upcoming') {
+    return { start: todayStr, end: threeDaysOut, mode: 'upcoming' };
   }
   if (rangeStr === 'today') {
-    return { start: todayStr, end: todayStr };
+    return { start: todayStr, end: todayStr, mode: 'today' };
   }
   const daysMatch = rangeStr.match(/^(\d+)d$/);
   if (daysMatch) {
     const n = parseInt(daysMatch[1], 10);
     const past = new Date(today.getTime() - n * 86400000).toISOString().slice(0, 10);
-    return { start: past, end: threeDaysOut };
+    return { start: past, end: threeDaysOut, mode: `${n}d` };
   }
   // explicit YYYY-MM-DD,YYYY-MM-DD
   const explicitMatch = rangeStr.match(/^(\d{4}-\d{2}-\d{2}),(\d{4}-\d{2}-\d{2})$/);
   if (explicitMatch) {
-    return { start: explicitMatch[1], end: explicitMatch[2] };
+    return { start: explicitMatch[1], end: explicitMatch[2], mode: 'custom' };
   }
-  // fallback to upcoming+3d
-  return { start: todayStr, end: threeDaysOut };
+  // unknown — fall back to all
+  return { start: null, end: null, mode: 'all' };
 }
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const { start, end } = parseRange(params.get('range'));
+  const { start, end, mode } = parseRange(params.get('range'));
+  const dateFilterSql = (start && end)
+    ? 'surgery_date >= $1::date AND surgery_date <= $2::date'
+    : 'TRUE';
   const tierParam = params.get('tier');
   const tiers: RiskTier[] = tierParam
     ? (tierParam.split(',').map(t => t.trim().toUpperCase()).filter(t => VALID_TIERS.has(t as RiskTier)) as RiskTier[])
@@ -60,6 +68,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Summary counts (always computed — cheap, dashboard KPI strip needs them)
+    const summaryQueryParams: unknown[] = (start && end) ? [start, end] : [];
     const summaryRes = await sql.query(
       `SELECT
          COUNT(*) FILTER (WHERE risk_tier = 'GREEN')    AS green,
@@ -69,15 +78,15 @@ export async function GET(req: NextRequest) {
          COUNT(*) FILTER (WHERE reviewed_at IS NULL)    AS unreviewed,
          COUNT(*) AS total
        FROM surgical_risk_assessments
-       WHERE surgery_date >= $1::date AND surgery_date <= $2::date`,
-      [start, end]
+       WHERE ${dateFilterSql}`,
+      summaryQueryParams
     );
     const summary = summaryRes.rows[0] || {};
 
     if (summaryOnly) {
       return NextResponse.json({
         ok: true,
-        range: { start, end },
+        range: { start, end, mode },
         summary: {
           GREEN: Number(summary.green || 0),
           AMBER: Number(summary.amber || 0),
@@ -89,15 +98,25 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Build the WHERE for the row query
-    const whereClauses = ['surgery_date >= $1::date', 'surgery_date <= $2::date', 'risk_tier = ANY($3::text[])'];
-    const queryParams: unknown[] = [start, end, tiers];
-
+    // Build the WHERE for the row query. Date filter is conditional.
+    const whereClauses: string[] = [];
+    const queryParams: unknown[] = [];
+    if (start && end) {
+      whereClauses.push(`surgery_date >= $${queryParams.length + 1}::date`);
+      queryParams.push(start);
+      whereClauses.push(`surgery_date <= $${queryParams.length + 1}::date`);
+      queryParams.push(end);
+    }
+    whereClauses.push(`risk_tier = ANY($${queryParams.length + 1}::text[])`);
+    queryParams.push(tiers);
     if (specialty) {
       whereClauses.push(`surgical_specialty ILIKE $${queryParams.length + 1}`);
       queryParams.push(`%${specialty}%`);
     }
 
+    // V's request 12 May 2026: sort by 'distance from today' — upcoming first (today asc),
+    // then past in reverse chronological. Cases with no surgery_date go last.
+    // Composite score is secondary sort key.
     const rowsRes = await sql.query(
       `SELECT
          id, form_submission_uid, submission_timestamp,
@@ -111,14 +130,22 @@ export async function GET(req: NextRequest) {
          created_at, reviewed_by, reviewed_at, review_notes
        FROM surgical_risk_assessments
        WHERE ${whereClauses.join(' AND ')}
-       ORDER BY surgery_date ASC, composite_risk_score DESC, id DESC
-       LIMIT 200`,
+       ORDER BY
+         CASE
+           WHEN surgery_date IS NULL THEN 2
+           WHEN surgery_date >= CURRENT_DATE THEN 0
+           ELSE 1
+         END,
+         CASE WHEN surgery_date >= CURRENT_DATE THEN surgery_date END ASC,
+         CASE WHEN surgery_date <  CURRENT_DATE THEN surgery_date END DESC,
+         composite_risk_score DESC, id DESC
+       LIMIT 500`,
       queryParams
     );
 
     return NextResponse.json({
       ok: true,
-      range: { start, end },
+      range: { start, end, mode },
       filters: { tiers, specialty: specialty || null },
       summary: {
         GREEN: Number(summary.green || 0),

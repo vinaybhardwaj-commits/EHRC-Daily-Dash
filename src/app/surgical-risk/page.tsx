@@ -18,7 +18,7 @@ import SurgicalRiskCaseCard from '@/components/surgical-risk/SurgicalRiskCaseCar
 
 interface ApiList {
   ok: boolean;
-  range?: { start: string; end: string };
+  range?: { start: string | null; end: string | null; mode?: string };
   filters?: { tiers: RiskTier[]; specialty: string | null };
   summary?: { GREEN: number; AMBER: number; RED: number; CRITICAL: number; unreviewed: number; total: number };
   assessments?: SurgicalRiskAssessmentRow[];
@@ -38,6 +38,7 @@ export default function SurgicalRiskPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tierFilter, setTierFilter] = useState<Set<RiskTier>>(new Set(['GREEN', 'AMBER', 'RED', 'CRITICAL']));
+  const [rangeMode, setRangeMode] = useState<'all' | 'upcoming' | 'today' | '7d' | '30d'>('all');
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('');
   const [llmHealth, setLlmHealth] = useState<'healthy' | 'down' | 'unknown'>('unknown');
 
@@ -47,7 +48,7 @@ export default function SurgicalRiskPage() {
     async function load() {
       setLoading(true);
       try {
-        const r = await fetch('/api/surgical-risk');
+        const r = await fetch(`/api/surgical-risk?range=${rangeMode}`);
         const json: ApiList = await r.json();
         if (!cancelled) {
           if (json.ok) {
@@ -65,7 +66,7 @@ export default function SurgicalRiskPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [rangeMode]);
 
   // Fetch LLM health
   useEffect(() => {
@@ -180,8 +181,22 @@ export default function SurgicalRiskPage() {
                 {specialties.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             )}
+            <select
+              value={rangeMode}
+              onChange={(e) => setRangeMode(e.target.value as typeof rangeMode)}
+              className="text-xs px-2 py-1 border border-slate-300 rounded-lg bg-white text-slate-700"
+              title="Date range filter (by surgery_date)"
+            >
+              <option value="all">All submissions</option>
+              <option value="upcoming">Upcoming (today + 3 days)</option>
+              <option value="today">Today only</option>
+              <option value="7d">Past 7d + upcoming</option>
+              <option value="30d">Past 30d + upcoming</option>
+            </select>
             <span className="text-xs text-slate-500">
-              {data?.range ? `${data.range.start} → ${data.range.end}` : ''}
+              {data?.range?.mode === 'all' ? 'all dates' :
+               data?.range?.start && data?.range?.end ? `${data.range.start} → ${data.range.end}` : ''}
+              {data?.assessments && ` · ${data.assessments.length} shown`}
             </span>
           </div>
         </div>
@@ -214,7 +229,7 @@ export default function SurgicalRiskPage() {
                 row={row}
                 onReviewed={() => {
                   // Reload to refresh "reviewed" badge
-                  fetch('/api/surgical-risk').then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                  fetch(`/api/surgical-risk?range=${rangeMode}`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
                 }}
               />
             ))}
