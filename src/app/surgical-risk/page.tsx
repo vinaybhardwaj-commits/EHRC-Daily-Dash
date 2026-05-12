@@ -39,6 +39,7 @@ export default function SurgicalRiskPage() {
   const [error, setError] = useState<string | null>(null);
   const [tierFilter, setTierFilter] = useState<Set<RiskTier>>(new Set(['GREEN', 'AMBER', 'RED', 'CRITICAL']));
   const [rangeMode, setRangeMode] = useState<'all' | 'upcoming' | 'today' | '7d' | '30d'>('all');
+  const [removedExpanded, setRemovedExpanded] = useState(false);
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('');
   const [llmHealth, setLlmHealth] = useState<'healthy' | 'down' | 'unknown'>('unknown');
 
@@ -48,7 +49,7 @@ export default function SurgicalRiskPage() {
     async function load() {
       setLoading(true);
       try {
-        const r = await fetch(`/api/surgical-risk?range=${rangeMode}`);
+        const r = await fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`);
         const json: ApiList = await r.json();
         if (!cancelled) {
           if (json.ok) {
@@ -78,10 +79,19 @@ export default function SurgicalRiskPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Derived: filtered + sorted assessments
+  // Derived: filtered + sorted assessments — split into active + removed (DASH.1)
   const visibleAssessments = useMemo(() => {
     if (!data?.assessments) return [];
     return data.assessments
+      .filter(a => !a.removed_at)
+      .filter(a => tierFilter.has(a.risk_tier))
+      .filter(a => !specialtyFilter || (a.surgical_specialty || '').toLowerCase().includes(specialtyFilter.toLowerCase()));
+  }, [data, tierFilter, specialtyFilter]);
+
+  const removedAssessments = useMemo(() => {
+    if (!data?.assessments) return [];
+    return data.assessments
+      .filter(a => !!a.removed_at)
       .filter(a => tierFilter.has(a.risk_tier))
       .filter(a => !specialtyFilter || (a.surgical_specialty || '').toLowerCase().includes(specialtyFilter.toLowerCase()));
   }, [data, tierFilter, specialtyFilter]);
@@ -229,10 +239,49 @@ export default function SurgicalRiskPage() {
                 row={row}
                 onReviewed={() => {
                   // Reload to refresh "reviewed" badge
-                  fetch(`/api/surgical-risk?range=${rangeMode}`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                  fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                }}
+                onRemoved={() => {
+                  fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                }}
+                onRestored={() => {
+                  fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
                 }}
               />
             ))}
+          </div>
+        )}
+
+        {/* DASH.1 — Removed group (collapsible). Hidden when empty. */}
+        {!loading && !error && removedAssessments.length > 0 && (
+          <div className="mt-8 border-t border-slate-200 pt-4">
+            <button
+              onClick={() => setRemovedExpanded(v => !v)}
+              className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 mb-3"
+            >
+              <span className="inline-block w-4 transition-transform" style={{ transform: removedExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+              Removed ({removedAssessments.length})
+              <span className="text-xs font-normal text-slate-400">— click to {removedExpanded ? 'collapse' : 'expand'}</span>
+            </button>
+            {removedExpanded && (
+              <div className="space-y-3 opacity-70">
+                {removedAssessments.map(row => (
+                  <SurgicalRiskCaseCard
+                    key={row.id}
+                    row={row}
+                    onReviewed={() => {
+                      fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                    }}
+                    onRemoved={() => {
+                      fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                    }}
+                    onRestored={() => {
+                      fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 

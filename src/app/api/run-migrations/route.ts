@@ -355,6 +355,18 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_srews_config_audit_action ON srews_config_audit(action)`,
     ],
   },
+  {
+    version: 15,
+    name: 'add_soft_remove_to_assessments',
+    statements: [
+      // DASH.1 — soft-remove pattern. Lets the dashboard user hide cluttered/test/
+      // duplicate cases without losing the underlying data. Restore-able.
+      `ALTER TABLE surgical_risk_assessments ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ`,
+      `ALTER TABLE surgical_risk_assessments ADD COLUMN IF NOT EXISTS removed_by TEXT`,
+      `ALTER TABLE surgical_risk_assessments ADD COLUMN IF NOT EXISTS remove_reason TEXT`,
+      `CREATE INDEX IF NOT EXISTS idx_sra_removed_at ON surgical_risk_assessments(removed_at)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {

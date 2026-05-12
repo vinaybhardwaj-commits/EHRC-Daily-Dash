@@ -21,6 +21,9 @@ interface Props {
   onReviewed?: (id: number, reviewedBy: string, reviewedAt: string) => void;
   /** SPAS.5 — called after a successful reassess so parent can refresh the row */
   onReassessed?: (id: number) => void;
+  /** DASH.1 — called after successful remove/restore */
+  onRemoved?: (id: number) => void;
+  onRestored?: (id: number) => void;
 }
 
 function formatDate(iso: string | null): string {
@@ -37,7 +40,7 @@ function formatDateTime(iso: string | null): string {
   return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed }: Props) {
+export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, onRemoved, onRestored }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [reviewerName, setReviewerName] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
@@ -47,10 +50,59 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed }: 
   const [reassessing, setReassessing] = useState(false);
   const [reassessError, setReassessError] = useState<string | null>(null);
   const [reassessResult, setReassessResult] = useState<string | null>(null);
+  // DASH.1 — Remove/Restore state
+  const [showRemoveForm, setShowRemoveForm] = useState(false);
+  const [removerName, setRemoverName] = useState('');
+  const [removeReason, setRemoveReason] = useState('');
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const s = TIER_STYLES[row.risk_tier];
   const a = row.assessment_json;
   const reviewed = !!row.reviewed_at;
+
+  // DASH.1 — soft-remove
+  async function submitRemove(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!removerName.trim() || !removeReason.trim()) return;
+    setRemoving(true); setRemoveError(null);
+    try {
+      const r = await fetch(`/api/surgical-risk/${row.id}/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: removerName.trim(), reason: removeReason.trim() }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Remove failed');
+      setShowRemoveForm(false);
+      onRemoved?.(row.id);
+    } catch (err) {
+      setRemoveError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  async function handleRestore(e: React.MouseEvent) {
+    e.stopPropagation();
+    const actor = window.prompt('Your name (for the restore audit):') || '';
+    if (!actor.trim()) return;
+    setRemoving(true); setRemoveError(null);
+    try {
+      const r = await fetch(`/api/surgical-risk/${row.id}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: actor.trim() }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Restore failed');
+      onRestored?.(row.id);
+    } catch (err) {
+      setRemoveError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   async function handleReassess(e: React.MouseEvent) {
     e.stopPropagation();
@@ -295,18 +347,71 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed }: 
               >
                 {reassessing ? 'Re-assessing… (20-50s)' : 'Re-assess'}
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); window.print(); }}
-                className="text-xs text-slate-500 hover:text-slate-700 underline"
-              >
-                Print Assessment
-              </button>
+              {row.removed_at ? (
+                <button
+                  onClick={handleRestore}
+                  disabled={removing}
+                  className="text-xs text-emerald-600 hover:text-emerald-800 underline disabled:opacity-50"
+                  title="Restore this case back to the active dashboard"
+                >
+                  {removing ? 'Restoring…' : 'Restore'}
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowRemoveForm(true); setRemoveError(null); }}
+                  className="text-xs text-slate-500 hover:text-rose-700 underline"
+                  title="Soft-remove this case from the main list (kept in Removed group)"
+                >
+                  Remove from dashboard
+                </button>
+              )}
             </div>
           </div>
           {/* SPAS.5 — Re-assess feedback */}
           {(reassessResult || reassessError) && (
             <div className={`mt-2 px-3 py-2 rounded text-xs ${reassessError ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
               {reassessError ? `Re-assess failed: ${reassessError}` : `Re-assessed: ${reassessResult}. Refresh to see updated card.`}
+            </div>
+          )}
+          {/* DASH.1 — remove form */}
+          {showRemoveForm && (
+            <div className="mt-3 p-3 border border-slate-200 rounded bg-slate-50" onClick={(e) => e.stopPropagation()}>
+              <h4 className="text-sm font-semibold text-slate-800 mb-2">Remove this case from the dashboard</h4>
+              <p className="text-xs text-slate-500 mb-2">The case is hidden from the main list but stays in the DB and can be restored from the Removed group.</p>
+              <input
+                type="text"
+                placeholder="Your name (for the audit log)"
+                value={removerName}
+                onChange={(e) => setRemoverName(e.target.value)}
+                className="w-full px-3 py-1.5 mb-2 border border-slate-300 rounded text-sm"
+              />
+              <textarea
+                placeholder="Reason for removal (e.g. 'test submission', 'duplicate', 'patient cancelled')"
+                value={removeReason}
+                onChange={(e) => setRemoveReason(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-1.5 mb-2 border border-slate-300 rounded text-sm resize-none"
+              />
+              {removeError && <div className="mb-2 text-xs text-rose-600">{removeError}</div>}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={submitRemove}
+                  disabled={!removerName.trim() || !removeReason.trim() || removing}
+                  className="px-3 py-1 bg-rose-600 text-white text-sm rounded hover:bg-rose-700 disabled:bg-slate-300"
+                >
+                  {removing ? 'Removing…' : 'Confirm remove'}
+                </button>
+                <button
+                  onClick={() => { setShowRemoveForm(false); setRemoveError(null); }}
+                  className="px-3 py-1 text-sm text-slate-500 hover:text-slate-700"
+                >Cancel</button>
+              </div>
+            </div>
+          )}
+          {/* DASH.1 — removed banner when card is in Removed group */}
+          {row.removed_at && (
+            <div className="mt-2 px-3 py-2 rounded text-xs bg-slate-100 border border-slate-300 text-slate-600">
+              Removed{row.removed_by ? ` by ${row.removed_by}` : ''}{row.remove_reason ? `: "${row.remove_reason}"` : ''}
             </div>
           )}
         </div>

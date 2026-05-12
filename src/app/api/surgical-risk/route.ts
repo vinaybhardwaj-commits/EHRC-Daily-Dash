@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
     : ['GREEN', 'AMBER', 'RED', 'CRITICAL'];
   const specialty = params.get('specialty')?.trim();
   const summaryOnly = params.get('summary') === 'true';
+  const includeRemoved = params.get('include_removed') === 'true';
 
   try {
     // Summary counts (always computed — cheap, dashboard KPI strip needs them)
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
          COUNT(*) FILTER (WHERE reviewed_at IS NULL)    AS unreviewed,
          COUNT(*) AS total
        FROM surgical_risk_assessments
-       WHERE ${dateFilterSql}`,
+       WHERE ${dateFilterSql} AND removed_at IS NULL`,
       summaryQueryParams
     );
     const summary = summaryRes.rows[0] || {};
@@ -113,6 +114,12 @@ export async function GET(req: NextRequest) {
       whereClauses.push(`surgical_specialty ILIKE $${queryParams.length + 1}`);
       queryParams.push(`%${specialty}%`);
     }
+    // DASH.1 — default to active cases only (removed_at IS NULL). When
+    // include_removed=true, return BOTH groups so the dashboard can split
+    // them client-side into the main list + the "Removed (N)" section.
+    if (!includeRemoved) {
+      whereClauses.push(`removed_at IS NULL`);
+    }
 
     // V's request 12 May 2026: sort by 'distance from today' — upcoming first (today asc),
     // then past in reverse chronological. Cases with no surgery_date go last.
@@ -127,10 +134,12 @@ export async function GET(req: NextRequest) {
          composite_risk_score, risk_tier,
          assessment_json,
          llm_model, llm_latency_ms, llm_divergence_logged, rubric_version,
-         created_at, reviewed_by, reviewed_at, review_notes
+         created_at, reviewed_by, reviewed_at, review_notes,
+         removed_at, removed_by, remove_reason
        FROM surgical_risk_assessments
        WHERE ${whereClauses.join(' AND ')}
        ORDER BY
+         CASE WHEN removed_at IS NOT NULL THEN 1 ELSE 0 END,
          CASE
            WHEN surgery_date IS NULL THEN 2
            WHEN surgery_date >= CURRENT_DATE THEN 0

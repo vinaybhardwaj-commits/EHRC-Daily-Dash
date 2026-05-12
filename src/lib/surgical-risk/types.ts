@@ -152,4 +152,8 @@ export interface SurgicalRiskAssessmentRow {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_notes: string | null;
+  /** DASH.1 — soft-remove */
+  removed_at?: string | null;
+  removed_by?: string | null;
+  remove_reason?: string | null;
 }
