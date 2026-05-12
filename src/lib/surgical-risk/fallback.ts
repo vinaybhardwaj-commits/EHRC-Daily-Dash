@@ -319,15 +319,15 @@ export function computeSystemRisk(form: SurgeryBookingPayload, rubric: RuntimeRu
     });
   }
 
-  // TIMING GAP
+  // BOOKING TIMING (admission ↔ surgery)
   const gapH = computeTimingGapHours(form);
   const gapRes = timingGapFor(rubric, gapH);
   if (gapRes.points > 0) {
     factors.push({
-      factor: 'Timing gap',
+      factor: 'Booking timing',
       points: gapRes.points,
       detail: gapH !== null
-        ? `${Math.round(gapH * 10) / 10}h gap (${gapRes.band})`
+        ? `${Math.round(gapH * 10) / 10}h between admission and surgery (${gapRes.band})`
         : `${gapRes.band}`,
     });
   }

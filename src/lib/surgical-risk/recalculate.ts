@@ -123,15 +123,15 @@ export function recalculateFromLLMOutput(
     out.procedure_risk.score = clampSubScore(rubric, sumFactors(out.procedure_risk.factors));
   }
 
-  // ---- Step 4: Timing gap server-correction ----
+  // ---- Step 4: Booking timing server-correction ----
   const gapH = computeTimingGapHours(formData);
   const gapRes = timingGapFor(rubric, gapH);
-  const timingFactorIdx = out.system_risk.factors.findIndex(f => /timing|gap|admission/i.test(f.factor));
+  const timingFactorIdx = out.system_risk.factors.findIndex(f => /timing|gap|admission|booking timing/i.test(f.factor));
   if (timingFactorIdx >= 0) {
     out.system_risk.factors[timingFactorIdx].points = gapRes.points;
-    out.system_risk.factors[timingFactorIdx].factor = 'Timing gap';
+    out.system_risk.factors[timingFactorIdx].factor = 'Booking timing';
     out.system_risk.factors[timingFactorIdx].detail = gapH !== null
-      ? `${Math.round(gapH * 10) / 10}h gap (server-calculated, ${gapRes.band})`
+      ? `${Math.round(gapH * 10) / 10}h between admission and surgery (server-calculated, ${gapRes.band})`
       : `${gapRes.band} (server-calculated)`;
     if (gapRes.points === 0) {
       out.system_risk.factors.splice(timingFactorIdx, 1);
@@ -140,10 +140,10 @@ export function recalculateFromLLMOutput(
   } else if (gapRes.points > 0) {
     // LLM missed timing factor entirely
     out.system_risk.factors.push({
-      factor: 'Timing gap',
+      factor: 'Booking timing',
       points: gapRes.points,
       detail: gapH !== null
-        ? `${Math.round(gapH * 10) / 10}h gap (server-added — LLM omitted, ${gapRes.band})`
+        ? `${Math.round(gapH * 10) / 10}h between admission and surgery (server-added — LLM omitted, ${gapRes.band})`
         : `${gapRes.band} (server-added)`,
     });
     out.system_risk.score = clampSubScore(rubric, sumFactors(out.system_risk.factors));

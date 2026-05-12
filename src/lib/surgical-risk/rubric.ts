@@ -258,7 +258,7 @@ export const PAC_ADVICE_DETECT: Array<{ key: string; matches: string[] }> = [
   { key: 'PAC_NOT_YET_DONE', matches: ['pac not yet done', 'not yet done'] },
 ];
 
-// ---- Timing gap ----
+// ---- Booking timing ----
 
 export const TIMING_GAP_POINTS = (gapHours: number | null): { points: number; band: string } => {
   if (gapHours === null || !Number.isFinite(gapHours)) return { points: 3, band: 'unclear / same-day no time' };
