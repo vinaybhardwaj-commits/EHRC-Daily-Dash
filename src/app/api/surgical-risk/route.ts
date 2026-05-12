@@ -135,7 +135,8 @@ export async function GET(req: NextRequest) {
          assessment_json,
          llm_model, llm_latency_ms, llm_divergence_logged, rubric_version,
          created_at, reviewed_by, reviewed_at, review_notes,
-         removed_at, removed_by, remove_reason
+         removed_at, removed_by, remove_reason,
+         raw_form_data
        FROM surgical_risk_assessments
        WHERE ${whereClauses.join(' AND ')}
        ORDER BY
