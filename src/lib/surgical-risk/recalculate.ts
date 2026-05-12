@@ -149,7 +149,55 @@ export function recalculateFromLLMOutput(
     out.system_risk.score = clampSubScore(rubric, sumFactors(out.system_risk.factors));
   }
 
-  // ---- Step 5: Composite ----
+  // ---- Step 5a: Legal/Regulatory cross-check (LEGAL.3) ----
+  // Scan proposed_procedure + clinical_justification for legal keywords. Add any
+  // missing Legal: factors that the LLM didn't produce. Server-add only (never
+  // remove LLM-produced legal factors — V wants visibility).
+  const procTextL = `${(formData.proposed_procedure || '').toLowerCase()} ${(formData.clinical_justification || '').toLowerCase()}`;
+  const existingLegalCats = new Set(
+    out.system_risk.factors
+      .filter(f => /^Legal:/i.test(f.factor))
+      .map(f => f.factor.replace(/^Legal:\s*/i, '').trim().toLowerCase())
+  );
+  for (const cat of (rubric.legal_risk_detect || [])) {
+    if (existingLegalCats.has(cat.category.toLowerCase())) continue;
+    const hit = (cat.matches || []).find(m => procTextL.includes(String(m).toLowerCase()));
+    if (hit) {
+      out.system_risk.factors.push({
+        factor: `Legal: ${cat.category}`,
+        points: Number(cat.points) || 0,
+        detail: `${cat.label} — matched keyword '${hit}' (server-added)`,
+      });
+    }
+  }
+  // Minor consent server-side check
+  const age = Number(formData.age);
+  if (Number.isFinite(age) && age < 16 && !existingLegalCats.has('minor consent')) {
+    // Look up procedure complexity from rubric
+    let isMajorOrComplex = false;
+    for (const entry of rubric.procedure_complexity_detect) {
+      if (entry.matches.some(m => procTextL.includes(m))) {
+        isMajorOrComplex = entry.tier === 'MAJOR' || entry.tier === 'COMPLEX';
+        break;
+      }
+    }
+    if (isMajorOrComplex) {
+      const consentText = `${formData.clinical_justification || ''} ${formData.remarks || ''}`.toLowerCase();
+      const hasParentalConsent = /parental consent|guardian consent|consent of parent|consent of guardian/.test(consentText);
+      if (!hasParentalConsent) {
+        out.system_risk.factors.push({
+          factor: 'Legal: Minor consent',
+          points: 3,
+          detail: `Patient age ${age} (<16) with MAJOR/COMPLEX procedure; no parental-consent documentation (server-added)`,
+        });
+      }
+    }
+  }
+  // Recompute system_risk.score after legal additions
+  out.system_risk.score = clampSubScore(rubric, sumFactors(out.system_risk.factors));
+  const hasLegalFlag = out.system_risk.factors.some(f => /^Legal:/i.test(f.factor));
+
+  // ---- Step 5: Composite (recompute with updated system_risk) ----
   const p = out.patient_risk.score;
   const pr = out.procedure_risk.score;
   const s = out.system_risk.score;
@@ -165,7 +213,8 @@ export function recalculateFromLLMOutput(
   const { applied: appliedRule, tier } = evaluateOverrideRules(
     rubric, formData,
     { patient: p, procedure: pr, system: s },
-    hasInfection, baseTier
+    hasInfection, baseTier,
+    hasLegalFlag
   );
 
   out.composite.tier = tier;

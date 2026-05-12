@@ -125,6 +125,16 @@ export interface RuntimeRubric {
 
   // Overrides
   override_rules: OverrideRuleConfig[];
+
+  // LEGAL.3 — Legal/Regulatory keyword detect (optional; may be absent in older configs)
+  legal_risk_detect?: LegalRiskCategory[];
+}
+
+export interface LegalRiskCategory {
+  category: string;
+  label: string;
+  matches: string[];
+  points: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -173,6 +183,7 @@ export function buildRuntimeRubric(cfg: SrewsConfig | null): RuntimeRubric {
       transfer_logistics_points: cfg.system_config.transfer_logistics_points,
 
       override_rules: cfg.override_rules,
+      legal_risk_detect: (cfg.detect_lists as unknown as { legal_risk_detect?: LegalRiskCategory[] }).legal_risk_detect || [],
     };
   }
 
@@ -227,6 +238,9 @@ export function buildRuntimeRubric(cfg: SrewsConfig | null): RuntimeRubric {
 
     // Hardcoded override rules in kind+params shape (mirrors SPAS.0 seed)
     override_rules: HARDCODED_OVERRIDE_RULES,
+
+    // LEGAL.3 — hardcoded fallback has no legal detection; admin must configure in DB
+    legal_risk_detect: [],
   };
 }
 
@@ -279,6 +293,14 @@ const HARDCODED_OVERRIDE_RULES: OverrideRuleConfig[] = [
     forceTier: 'CRITICAL',
     description: 'Any single sub-score at maximum (10) forces CRITICAL',
   },
+  {
+    id: 'legal_factor_present',
+    enabled: true,
+    kind: 'legal_factor_present',
+    params: {},
+    forceTier: 'RED',
+    description: 'Any legal/regulatory factor (MLC / PNDT / MTP / THOTA / Surrogacy / Sterilization / Minor consent) forces minimum tier of RED',
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -290,7 +312,8 @@ type OverridePredicate = (
   params: Record<string, unknown>,
   form: SurgeryBookingPayload,
   subs: SubScoreTriple,
-  hasInfection: boolean
+  hasInfection: boolean,
+  hasLegalFlag: boolean
 ) => boolean;
 
 const safeRegex = (pattern: unknown): RegExp | null => {
@@ -332,6 +355,12 @@ export const OVERRIDE_PREDICATES: Record<OverrideRuleKind, OverridePredicate> = 
     const value = Number(params.value);
     if (!Number.isFinite(value)) return false;
     return Math.max(subs.patient, subs.procedure, subs.system) === value;
+  },
+  // LEGAL.3 — fires when any factor in the assessment has name starting 'Legal:'.
+  // The presence of the flag is computed during scoring (fallback.ts / recalculate.ts)
+  // and threaded through to this predicate via the hasLegalFlag context bit.
+  legal_factor_present: (_params, _form, _subs, _hasInfection, hasLegalFlag) => {
+    return hasLegalFlag === true;
   },
 };
 
@@ -395,7 +424,8 @@ export function evaluateOverrideRules(
   form: SurgeryBookingPayload,
   subs: SubScoreTriple,
   hasInfection: boolean,
-  initialTier: RiskTier
+  initialTier: RiskTier,
+  hasLegalFlag: boolean = false
 ): OverrideEvalResult {
   let tier = initialTier;
   let appliedRule: OverrideRuleConfig | null = null;
@@ -409,7 +439,7 @@ export function evaluateOverrideRules(
       console.warn('[runtime-rubric] unknown override rule kind, skipping:', rule.kind);
       continue;
     }
-    if (predicate(rule.params, form, subs, hasInfection)) {
+    if (predicate(rule.params, form, subs, hasInfection, hasLegalFlag)) {
       const newTier = maxTier(tier, rule.forceTier);
       if (newTier !== tier) {
         tier = newTier;

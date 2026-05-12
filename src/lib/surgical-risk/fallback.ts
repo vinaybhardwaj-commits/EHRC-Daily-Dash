@@ -387,6 +387,61 @@ export function computeSystemRisk(form: SurgeryBookingPayload, rubric: RuntimeRu
   return { score: clampScore(rubric, sumFactors(factors)), factors };
 }
 
+// ---- LEGAL/REGULATORY detection (LEGAL.3) ----
+
+/**
+ * Scan proposed_procedure + clinical_justification for legal-risk keywords.
+ * Returns an array of factor entries to be appended to system_risk.factors.
+ * Does NOT scan comorbidities (past medical history shouldn't trigger — per PRD §14.1).
+ * Minor consent is handled separately via age check below.
+ */
+function detectLegalFactors(form: SurgeryBookingPayload, rubric: RuntimeRubric): FactorContribution[] {
+  const text = lc(`${form.proposed_procedure || ''} ${form.clinical_justification || ''}`);
+  const factors: FactorContribution[] = [];
+  // legal_risk_detect is optional on RuntimeRubric — empty array if config doesn't have it.
+  const lists = rubric.legal_risk_detect || [];
+  if (lists.length > 0) {
+    for (const cat of lists) {
+      const hit = (cat.matches || []).find(m => text.includes(String(m).toLowerCase()));
+      if (hit) {
+        factors.push({
+          factor: `Legal: ${cat.category}`,
+          points: Number(cat.points) || 0,
+          detail: `${cat.label} — matched keyword '${hit}'`,
+        });
+      }
+    }
+  }
+  // Minor consent rule (age < 16 AND procedure complexity MAJOR/COMPLEX AND no parental-consent mention)
+  const age = Number(form.age);
+  if (Number.isFinite(age) && age < 16) {
+    const procText = `${form.proposed_procedure || ''} ${form.clinical_justification || ''}`;
+    // Use rubric procedure tiers to estimate complexity
+    let isMajorOrComplex = false;
+    for (const entry of rubric.procedure_complexity_detect) {
+      if (entry.matches.some(m => lc(procText).includes(m))) {
+        isMajorOrComplex = entry.tier === 'MAJOR' || entry.tier === 'COMPLEX';
+        break;
+      }
+    }
+    if (isMajorOrComplex) {
+      const cjLower = lc(form.clinical_justification);
+      const remarksLower = lc(form.remarks);
+      const hasParentalConsent = /parental consent|guardian consent|consent of parent|consent of guardian/i.test(
+        cjLower + ' ' + remarksLower
+      );
+      if (!hasParentalConsent) {
+        factors.push({
+          factor: 'Legal: Minor consent',
+          points: 3,
+          detail: `Patient age ${age} (<16) with MAJOR/COMPLEX procedure; no parental-consent documentation`,
+        });
+      }
+    }
+  }
+  return factors;
+}
+
 // ---- Composite + override application ----
 
 export function applyOverridesAndComposite(
@@ -408,12 +463,17 @@ export function applyOverridesAndComposite(
   const procText = `${form.proposed_procedure || ''} ${form.clinical_justification || ''}`;
   const hasInfection = containsAny(procText, rubric.infection_keywords);
 
+  // LEGAL.3 — check if any factor on the system_risk side is a Legal: factor.
+  // (fallback path already pushed them into system.factors via detectLegalFactors below.)
+  const hasLegalFlag = system.factors.some(f => /^Legal:/i.test(f.factor));
+
   // Apply override rules via runtime predicate registry. Tier can only go UP.
   const { applied, tier } = evaluateOverrideRules(
     rubric, form,
     { patient: patient.score, procedure: procedure.score, system: system.score },
     hasInfection,
-    baselineTier
+    baselineTier,
+    hasLegalFlag
   );
 
   return {
@@ -435,6 +495,14 @@ export function computeDeterministicRisk(
   const patient_risk = computePatientRisk(form, rubric);
   const procedure_risk = computeProcedureRisk(form, rubric);
   const system_risk = computeSystemRisk(form, rubric);
+
+  // LEGAL.3 — append legal/regulatory factors to system_risk (additive, capped at sub_score_cap).
+  const legalFactors = detectLegalFactors(form, rubric);
+  if (legalFactors.length > 0) {
+    system_risk.factors.push(...legalFactors);
+    system_risk.score = clampScore(rubric, sumFactors(system_risk.factors));
+  }
+
   const composite = applyOverridesAndComposite(form, patient_risk, procedure_risk, system_risk, rubric);
 
   return {

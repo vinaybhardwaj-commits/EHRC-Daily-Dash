@@ -139,7 +139,8 @@ export type OverrideRuleKind =
   | 'infection_and_anaesthesia'        // infection keyword AND anaesthesia matches → forceTier
   | 'comorbidity_and_procedure_tier'   // comorbidity keyword AND procedure >= N → forceTier
   | 'urgency_and_pac_pending'          // urgency matches AND pac_status pending → forceTier
-  | 'sub_score_exact';                 // any sub-score == N → forceTier (used for max=10 → CRITICAL)
+  | 'sub_score_exact'                  // any sub-score == N → forceTier (used for max=10 → CRITICAL)
+  | 'legal_factor_present';            // any factor with name starting 'Legal:' → forceTier (LEGAL.3)
 
 export interface OverrideRuleConfig {
   id: string;                          // stable id, e.g. 'sub_score_max_5'

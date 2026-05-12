@@ -101,7 +101,8 @@ type OverrideRuleKind =
   | 'infection_and_anaesthesia'
   | 'comorbidity_and_procedure_tier'
   | 'urgency_and_pac_pending'
-  | 'sub_score_exact';
+  | 'sub_score_exact'
+  | 'legal_factor_present';
 type RiskTier = 'GREEN' | 'AMBER' | 'RED' | 'CRITICAL';
 interface OverrideRuleConfig {
   id: string;
@@ -1091,6 +1092,10 @@ const RULE_KIND_SCHEMA: Record<OverrideRuleKind, { params: Array<{ key: string; 
   sub_score_exact: {
     params: [{ key: 'value', label: 'Exact value (N)', type: 'number' }],
     description: 'Any single sub-score == value forces the rule\'s tier.',
+  },
+  legal_factor_present: {
+    params: [],
+    description: 'Any factor with name starting "Legal:" (e.g. MLC, PNDT, MTP, THOTA, Surrogacy, Sterilization, Minor consent) forces the rule\'s tier. Built per PRD_LEGAL_RISK_AXIS_v1.',
   },
 };
 

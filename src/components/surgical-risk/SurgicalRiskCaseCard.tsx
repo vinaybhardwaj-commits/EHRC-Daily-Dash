@@ -62,6 +62,8 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
   const s = TIER_STYLES[row.risk_tier];
   const a = row.assessment_json;
   const reviewed = !!row.reviewed_at;
+  // LEGAL.4 — collect any Legal: factors so we can badge them prominently
+  const legalFactors = (a?.system_risk?.factors || []).filter(f => /^Legal:/i.test(f.factor || ''));
 
   // DASH.1 — soft-remove
   async function submitRemove(e: React.MouseEvent) {
@@ -193,6 +195,14 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>{row.risk_tier}</span>
                 {a?.composite?.override_applied && (
                   <span className="text-xs text-amber-600" title={a.composite.override_reason || undefined}>⚠ Override</span>
+                )}
+                {legalFactors.length > 0 && (
+                  <span
+                    className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
+                    title={legalFactors.map(f => f.factor.replace(/^Legal:\s*/i,'') + ': ' + (f.detail||'')).join('\n')}
+                  >
+                    ⚖ {legalFactors.length === 1 ? 'Legal flag' : `${legalFactors.length} legal flags`}
+                  </span>
                 )}
                 {reviewed && (
                   <span className="text-xs text-emerald-600" title={`Reviewed by ${row.reviewed_by} at ${formatDateTime(row.reviewed_at)}`}>
