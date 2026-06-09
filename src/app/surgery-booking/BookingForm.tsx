@@ -8,10 +8,24 @@ import {
   type TextareaHTMLAttributes,
   type FormEvent,
 } from 'react';
+import { upload } from '@vercel/blob/client';
 import FormFillerBadge from '@/components/FormFillerBadge';
 import { OPTIONS, type BookingFormData } from '@/lib/surgical-risk/booking-types';
 
 /* ------------------------------------------------------------------ helpers */
+
+// Parse a response as JSON, but never throw on a non-JSON body (e.g. a platform
+// 413 "Request Entity Too Large" or an HTML error page). Returns a usable
+// { error } object instead of the cryptic "Unexpected token 'R'…" message.
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: text.slice(0, 200) || `HTTP ${res.status}` };
+  }
+}
 
 function Field({ label, required, children, hint }: { label: string; required?: boolean; children: ReactNode; hint?: string }) {
   return (
@@ -83,6 +97,8 @@ const FLAG_COLOURS: Record<string, string> = {
 type S = Record<string, string>;
 const EMPTY: S = {};
 
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
+
 /* -------------------------------------------------------------------- form */
 
 export default function BookingForm() {
@@ -112,20 +128,28 @@ export default function BookingForm() {
     setCounselledBy(prev => prev || name); // prefill once, stay editable
   }, []);
 
+  // Client-side direct-to-Blob upload. Bypasses the serverless 4.5 MB body
+  // limit by uploading straight to Vercel Blob storage; the route only signs a
+  // short-lived token (see /api/surgical-risk/booking/upload).
   async function handleUpload(file: File | undefined) {
     if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 15 MB. Please upload a smaller scan or PDF.`);
+      return;
+    }
     setUploading(true);
     setError('');
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/surgical-risk/booking/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-      setPrescriptionUrl(data.url);
+      const safeName = (file.name || 'prescription').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const blob = await upload(`surgery-booking/prescriptions/${safeName}`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/surgical-risk/booking/upload',
+        contentType: file.type || undefined,
+      });
+      setPrescriptionUrl(blob.url);
       setPrescriptionName(file.name);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed');
+      setError(e instanceof Error ? e.message : 'Upload failed. Please try again or use a smaller file.');
     } finally {
       setUploading(false);
     }
@@ -196,9 +220,9 @@ export default function BookingForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Save failed');
-      setDone({ flag: data.flag || '', id: data.id, token: data.portal_token });
+      const data = await readJson(res);
+      if (!res.ok) throw new Error((data.error as string) || 'Save failed');
+      setDone({ flag: (data.flag as string) || '', id: data.id as string, token: data.portal_token as string });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
@@ -324,7 +348,7 @@ export default function BookingForm() {
           <Field label="Counselled by" hint="Auto-filled from your name; editable."><TextInput value={counselledBy} onChange={e => setCounselledBy(e.target.value)} /></Field>
           <Field label="Admission done by"><TextInput value={f.admission_done_by || ''} onChange={e => set('admission_done_by')(e.target.value)} /></Field>
           <div className="sm:col-span-2">
-            <Field label="Prescription upload" hint="Must mention date & time of surgery and admission.">
+            <Field label="Prescription upload" hint="Image or PDF, up to 15 MB. Must mention date & time of surgery and admission.">
               <input type="file" accept="image/*,application/pdf" onChange={e => handleUpload(e.target.files?.[0])} className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-blue-700" />
               {uploading && <span className="block text-xs text-blue-600 mt-1">Uploading…</span>}
               {prescriptionUrl && <span className="block text-xs text-green-700 mt-1">✓ {prescriptionName} uploaded</span>}
