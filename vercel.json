@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/huddle-audio-cleanup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/llm-warmup",
+      "schedule": "*/4 0-16 * * *"
     }
   ],
   "git": {
