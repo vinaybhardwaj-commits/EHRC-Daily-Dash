@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['mammoth'],
+  serverExternalPackages: ['mammoth', '@react-pdf/renderer'],
 };
 
 export default nextConfig;

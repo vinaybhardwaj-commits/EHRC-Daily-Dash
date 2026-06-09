@@ -5,6 +5,8 @@
  * IF NOT EXISTS on first use, so there is NO separate migration step to run.
  * Idempotent + additive — safe to call on every request (guarded to run once
  * per warm lambda). Zero new dependencies (uses @vercel/postgres + node crypto).
+ *
+ * Phase 3 adds getBookingByToken() for the public patient portal + PDF routes.
  */
 import { sql } from '@vercel/postgres';
 import { randomUUID } from 'crypto';
@@ -73,14 +75,63 @@ export interface InsertResult {
   flag: FlagValue;
 }
 
+/** Full booking row (loose types — pg returns dates as Date|string and bigint as string). */
+export interface BookingRow {
+  id: string;
+  created_at: string | Date;
+  submitted_by: string | null;
+  submitted_by_device: string | null;
+  patient_name: string;
+  uhid: string;
+  age: number | null;
+  sex: string | null;
+  contact: string | null;
+  surgeon_name: string | null;
+  surgical_specialty: string | null;
+  proposed_procedure: string | null;
+  laterality: string | null;
+  anaesthesia: string | null;
+  urgency: string | null;
+  clinical_justification: string | null;
+  comorbidities: string | null;
+  pac_status: string | null;
+  pac_advice: string | null;
+  habits: string | null;
+  transfer: boolean | null;
+  referring_hospital: string | null;
+  surgery_date: string | Date | null;
+  surgery_time: string | null;
+  admission_date: string | Date | null;
+  admission_time: string | null;
+  special_requirements: string | null;
+  payer: string | null;
+  insurance_details: string | null;
+  los: string | null;
+  admission_to: string | null;
+  billing_bed: string | null;
+  staying_bed: string | null;
+  admission_type: string | null;
+  package_amount_paise: string | number | null;
+  open_bill_items: string | null;
+  advance_paise: string | number | null;
+  counselled_by: string | null;
+  admission_done_by: string | null;
+  prescription_url: string | null;
+  remarks: string | null;
+  flag: string | null;
+  portal_token: string;
+  is_test: boolean;
+  revoked: boolean;
+}
+
 const toPaise = (rupees?: number | null): number | null =>
   rupees === null || rupees === undefined || isNaN(rupees) ? null : Math.round(rupees * 100);
 
 const csv = (arr?: string[]): string | null =>
   arr && arr.length ? arr.join(', ') : null;
 
-const clean = (s?: string | null): string | null => {
-  const t = (s ?? '').toString().trim();
+const clean = (v?: string | null): string | null => {
+  const t = (v ?? '').toString().trim();
   return t === '' ? null : t;
 };
 
@@ -129,4 +180,13 @@ export async function insertBooking(d: BookingFormData): Promise<InsertResult> {
   `;
 
   return { id, portal_token, flag };
+}
+
+/** Look up a booking by its public portal token (Phase 3 patient portal + PDFs). */
+export async function getBookingByToken(token: string): Promise<BookingRow | null> {
+  await ensureBookingSchema();
+  const { rows } = await sql<BookingRow>`
+    SELECT * FROM surgery_booking WHERE portal_token = ${token} LIMIT 1
+  `;
+  return rows[0] ?? null;
 }

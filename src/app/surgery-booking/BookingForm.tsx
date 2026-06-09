@@ -100,7 +100,8 @@ export default function BookingForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [done, setDone] = useState<null | { flag: string; id: string }>(null);
+  const [done, setDone] = useState<null | { flag: string; id: string; token: string }>(null);
+  const [copied, setCopied] = useState(false);
 
   const set = (k: string) => (v: string) => setF(prev => ({ ...prev, [k]: v }));
   const toggle = (arr: string[], setArr: (a: string[]) => void) => (v: string) =>
@@ -197,7 +198,7 @@ export default function BookingForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
-      setDone({ flag: data.flag || '', id: data.id });
+      setDone({ flag: data.flag || '', id: data.id, token: data.portal_token });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
@@ -209,6 +210,10 @@ export default function BookingForm() {
   /* ---------------------------------------------------------- success view */
   if (done) {
     const colour = FLAG_COLOURS[done.flag] || 'bg-gray-100 text-gray-800 border-gray-300';
+    const portalUrl = (typeof window !== 'undefined' ? window.location.origin : '') + `/booking/${done.token}`;
+    const copyLink = async () => {
+      try { await navigator.clipboard.writeText(portalUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
+    };
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl border border-gray-200 p-8 max-w-lg w-full text-center">
@@ -220,6 +225,17 @@ export default function BookingForm() {
           {done.flag
             ? <div className={`rounded-lg border px-4 py-3 text-sm font-medium ${colour}`}>⚑ {done.flag}</div>
             : <div className="rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-600">No scheduling flag — requested time looks clear.</div>}
+
+          <div className="mt-5 text-left bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="text-xs font-semibold text-blue-900 mb-1">Patient document link</div>
+            <div className="text-xs text-gray-600 mb-2">Share with the patient to download their forms (Financial Counselling, Information, Admission slip).</div>
+            <div className="flex items-center gap-2">
+              <input readOnly value={portalUrl} className="flex-1 text-xs rounded border border-gray-300 px-2 py-1.5 bg-white text-gray-700" />
+              <button onClick={copyLink} className="text-xs font-medium rounded bg-blue-600 text-white px-3 py-1.5 whitespace-nowrap">{copied ? 'Copied ✓' : 'Copy'}</button>
+            </div>
+            <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-xs text-blue-600 underline">Open patient page</a>
+          </div>
+
           <button
             onClick={() => { setDone(null); setF(EMPTY); setComorbidities([]); setHabits([]); setTransfer(''); setPrescriptionUrl(''); setPrescriptionName(''); }}
             className="mt-6 w-full rounded-lg bg-blue-600 text-white py-2.5 text-sm font-medium hover:bg-blue-700"
