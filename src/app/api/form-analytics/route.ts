@@ -61,6 +61,16 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/* ── Helpers ──────────────────────────────────────────────────────── */
+
+// Last calendar day of a YYYY-MM month (hardcoding "-31" breaks Postgres
+// date casts for Feb/Apr/Jun/Sep/Nov and silently zeroed analytics out).
+function monthEndDate(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${month}-${String(lastDay).padStart(2, '0')}`;
+}
+
 /* ── GET: Retrieve analytics summary for a form ───────────────────── */
 
 export async function GET(req: NextRequest) {
@@ -73,7 +83,7 @@ export async function GET(req: NextRequest) {
     if (allForms) {
       const month = period || new Date().toISOString().slice(0, 7);
       const startDate = `${month}-01`;
-      const endDate = `${month}-31`;
+      const endDate = monthEndDate(month);
 
       const result = await sql`
         SELECT form_slug, date, total_starts, total_submits, total_abandons,
@@ -105,7 +115,7 @@ export async function GET(req: NextRequest) {
     // Compute from raw events
     const month = period || new Date().toISOString().slice(0, 7);
     const startDate = `${month}-01`;
-    const endDate = period?.length === 10 ? period : `${month}-31`;
+    const endDate = period?.length === 10 ? period : monthEndDate(month);
 
     // Get session-level aggregates
     const sessionStats = await sql`
