@@ -201,11 +201,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Get current timestamp in IST
-    const now = new Date();
-    const istOffset = 5.5 * 60; // IST is UTC+5:30
-    const istDate = new Date(now.getTime() + (istOffset * 60 * 1000) - (now.getTimezoneOffset() * 60 * 1000));
-    const isoNow = istDate.toISOString();
+    // Real UTC timestamp. (Previously shifted +5:30 then .toISOString(), which
+    // produced IST wall-time stamped with a Z — off by 5.5h to any UTC parser.
+    // Display layers convert to IST via toLocaleString('en-IN').)
+    const isoNow = new Date().toISOString();
 
     const submittedBy = submitted_by || null;
     const submittedVia = slug;
