@@ -225,6 +225,36 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
           newErrors[field.id] = field.validation.patternMessage || 'Invalid format';
         }
       }
+
+      // Length limits (declared in configs but previously unenforced)
+      if (typeof val === 'string' && val) {
+        if (field.validation?.minLength !== undefined && val.length < field.validation.minLength) {
+          newErrors[field.id] = `Must be at least ${field.validation.minLength} characters`;
+        }
+        if (field.validation?.maxLength !== undefined && val.length > field.validation.maxLength) {
+          newErrors[field.id] = `Must be at most ${field.validation.maxLength} characters`;
+        }
+      }
+
+      // Repeater rows: enforce required sub-fields + numeric sub-values per row
+      if (field.type === 'repeater' && Array.isArray(val) && field.repeaterConfig) {
+        const rows = val as unknown as Record<string, unknown>[];
+        for (let i = 0; i < rows.length; i++) {
+          for (const sub of field.repeaterConfig.fields) {
+            const sv = rows[i]?.[sub.id];
+            const svEmpty = sv === '' || sv === undefined || sv === null;
+            if (sub.required && svEmpty) {
+              newErrors[field.id] = `Row ${i + 1}: ${sub.label} is required`;
+              break;
+            }
+            if (sub.type === 'number' && !svEmpty && isNaN(Number(sv))) {
+              newErrors[field.id] = `Row ${i + 1}: ${sub.label} must be a number`;
+              break;
+            }
+          }
+          if (newErrors[field.id]) break;
+        }
+      }
     });
 
     return newErrors;
@@ -236,10 +266,12 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
       Object.assign(allErrors, validateSection(section));
     }
     setErrors(allErrors);
-    if (Object.keys(allErrors).length > 0) {
-      trackEvent('validation_error', {
-        metadata: { fieldCount: Object.keys(allErrors).length } as Record<string, string | number | boolean>,
-      });
+    const errIds = Object.keys(allErrors);
+    if (errIds.length > 0) {
+      // One event per failing field (capped) so per-field analytics work
+      for (const fieldId of errIds.slice(0, 20)) {
+        trackEvent('validation_error', { fieldId });
+      }
     }
     return allErrors;
   }, [visibleSections, validateSection, trackEvent]);
@@ -250,7 +282,9 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     const sectionErrors = validateSection(currentSection);
     if (Object.keys(sectionErrors).length > 0) {
       setErrors(prev => ({ ...prev, ...sectionErrors }));
-      trackEvent('validation_error', { sectionId: currentSection.id });
+      for (const fieldId of Object.keys(sectionErrors).slice(0, 20)) {
+        trackEvent('validation_error', { fieldId, sectionId: currentSection.id });
+      }
       return;
     }
     if (!isLastStep) {
@@ -282,8 +316,21 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
     setSubmitting(true);
 
+    // Prune values of fields that are currently hidden by conditions —
+    // toggling a conditional off used to leave its stale answers in the payload.
+    const visibleData: Record<string, unknown> = {};
+    if (formData.date !== undefined) visibleData.date = formData.date;
+    const pruneState = formData as Record<string, string | number | boolean | string[] | undefined>;
+    for (const section of config.sections) {
+      if (!isFieldVisible(section.showWhen, pruneState)) continue;
+      for (const field of section.fields) {
+        if (!isFieldVisible(field.showWhen, pruneState)) continue;
+        if (field.id in formData) visibleData[field.id] = formData[field.id];
+      }
+    }
+
     try {
-      const result = await onSubmit(formData);
+      const result = await onSubmit(visibleData as typeof formData);
 
       if (!result.success) {
         setSubmitError(result.error || 'Failed to submit form');
@@ -303,13 +350,13 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
       // Notify parent with submitted data for AI question engine
       if (onSubmitSuccess) {
-        onSubmitSuccess({ formData: { ...formData }, sessionId: sessionId.current });
+        onSubmitSuccess({ formData: { ...visibleData } as typeof formData, sessionId: sessionId.current });
       }
     } catch {
       setSubmitError('An error occurred while submitting the form');
       setSubmitting(false);
     }
-  }, [formData, validateAll, onSubmit, onSubmitSuccess, trackEvent, flushAnalytics, submitting, isWizard, visibleSections, clampedStep]);
+  }, [formData, validateAll, onSubmit, onSubmitSuccess, trackEvent, flushAnalytics, submitting, isWizard, visibleSections, clampedStep, config.sections]);
 
   // ── Reset form for new submission ──
   const handleNewSubmission = useCallback(() => {

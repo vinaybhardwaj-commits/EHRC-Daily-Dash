@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/form-filler?key=<ADMIN_KEY>&limit=100
+// GET /api/form-filler?limit=100 — Authorization: Bearer <ADMIN_KEY>
 // Admin-only (validates against ADMIN_KEY env). Returns fillers sorted by last_seen_at DESC.
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
