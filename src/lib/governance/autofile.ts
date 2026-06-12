@@ -61,6 +61,15 @@ function msFlags(v: GroupValues): Flag[] {
   return flags;
 }
 
+function ipcFlags(v: GroupValues, ctx: GroupCtx): Flag[] {
+  if (v.woundStatus === 'Infected') return [{
+    label: 'Post-op infection', category: 'patient_safety', severity: 'high',
+    detail: [ctx.patient && `patient ${ctx.patient}`, ctx.procedure, v.notes].filter(Boolean).join(' — ') || null,
+  }];
+  // 'Redness / discharge (concern)' is recorded on the watchlist but not auto-filed
+  return [];
+}
+
 function ccFlags(v: GroupValues): Flag[] {
   if (v.reportType === 'Complaint') return [{ label: 'Customer-care complaint', category: 'professionalism', severity: 'medium', detail: v.details || null }];
   if (v.reportType === 'Concern') return [{ label: 'Customer-care concern', category: 'professionalism', severity: 'low', detail: v.details || null }];
@@ -88,6 +97,7 @@ export async function autoFileGroup(
     templateGroup === 'ot' ? otFlags(values) :
     templateGroup === 'cc' ? ccFlags(values) :
     templateGroup === 'nur' ? nurFlags(values, ctx) :
+    templateGroup === 'ipc' ? ipcFlags(values, ctx) :
     templateGroup === 'ms' ? msFlags(values) : [];
   if (flags.length > 0) {
     const severity = flags.reduce((s, f) => maxSev(s, f.severity), 'low');

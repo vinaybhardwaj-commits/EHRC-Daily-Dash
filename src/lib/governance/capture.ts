@@ -7,6 +7,7 @@
 import { sql } from '@vercel/postgres';
 import type { CaseContext } from './generator';
 import { autoFileGroup, type GroupCtx } from './autofile';
+import { recordIpcCheck } from './watchlist';
 
 const GOV_FIELD_RE = /^gov__([a-z0-9]+)__([a-z0-9]+)__([A-Za-z0-9]+)$/;
 
@@ -84,8 +85,22 @@ export async function captureGovernanceResponses(
       written++;
     }
 
+    let fileValues = values;
+    if (templateGroup === 'ipc' && caseCtx) {
+      try {
+        const { firstInfection } = await recordIpcCheck(forDate, caseCtx as unknown as { watchlist_id?: number; pod?: number }, values, fillerName);
+        // an ongoing infection files once (on first detection), not every day
+        if (values.woundStatus === 'Infected' && !firstInfection) {
+          fileValues = { ...values };
+          delete fileValues.woundStatus;
+        }
+      } catch (e) {
+        console.error('governance IPC check write failed (capture unaffected):', e);
+      }
+    }
+
     try {
-      await autoFileGroup(forDate, slug, templateGroup, groupKey, ctx, values, { name: fillerName, deviceId: fillerDeviceId });
+      await autoFileGroup(forDate, slug, templateGroup, groupKey, ctx, fileValues, { name: fillerName, deviceId: fillerDeviceId });
     } catch (e) {
       console.error('governance auto-file failed (capture unaffected):', e);
     }
