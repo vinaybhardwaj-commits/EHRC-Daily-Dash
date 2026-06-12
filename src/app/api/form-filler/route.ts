@@ -80,7 +80,10 @@ export async function POST(request: NextRequest) {
 // Admin-only (validates against ADMIN_KEY env). Returns fillers sorted by last_seen_at DESC.
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const key = url.searchParams.get('key') || '';
+  // Admin key moved from the query string (leaks into server/proxy/browser
+  // logs) to the Authorization header.
+  const auth = request.headers.get('authorization') || '';
+  const key = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const expected = process.env.ADMIN_KEY || '';
   if (!expected || key !== expected) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });

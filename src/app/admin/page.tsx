@@ -175,7 +175,7 @@ export default function AdminPage() {
   const loadFillers = useCallback(async () => {
     setFillersLoading(true);
     try {
-      const res = await fetch(`/api/form-filler?key=${encodeURIComponent(key)}&limit=200`);
+      const res = await fetch('/api/form-filler?limit=200', { headers: { Authorization: `Bearer ${key}` } });
       if (res.ok) {
         const data = await res.json();
         setFillers(data.fillers || []);
