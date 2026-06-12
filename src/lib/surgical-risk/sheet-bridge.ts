@@ -241,25 +241,31 @@ export async function syncBookingSheet(opts: { backfill?: boolean; dry?: boolean
   const stats: SyncStats = { parsed: parsed.length, stubsSkipped: 0, inserted: 0, updated: 0, unchanged: 0, srewsQueued: [], errors: [] };
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
 
+  // bulk lookups (the per-row version was ~200 sequential HTTP queries/run)
+  const importRows = await sql`SELECT tab_key, booking_id, row_hash FROM sb_sheet_imports`;
+  const imports = new Map<string, { booking_id: string; row_hash: string }>(
+    importRows.rows.map(r => [r.tab_key as string, { booking_id: r.booking_id as string, row_hash: r.row_hash as string }]),
+  );
+  const nativeRows = await sql`SELECT id, uhid, surgery_date::text AS sd FROM surgery_booking WHERE revoked = false`;
+  const nativeByKey = new Map<string, string>(
+    nativeRows.rows.map(r => [`${r.uhid}|${r.sd}`, r.id as string]),
+  );
+
   for (const p of parsed) {
     try {
       if (p.stub) { stats.stubsSkipped++; continue; }
-      const existing = await sql`SELECT booking_id, row_hash FROM sb_sheet_imports WHERE tab_key = ${p.tabKey}`;
+      const existing = imports.get(p.tabKey);
 
-      if (existing.rows.length === 0) {
+      if (!existing) {
         // safety net: the same patient may already exist via the NATIVE form —
         // link instead of duplicating (match on uhid + surgery_date)
         if (p.data.uhid !== '—' && p.data.surgery_date) {
-          const dupe = await sql`
-            SELECT id FROM surgery_booking
-            WHERE uhid = ${p.data.uhid} AND surgery_date = ${p.data.surgery_date} AND revoked = false
-            LIMIT 1
-          `;
-          if (dupe.rows.length > 0) {
+          const dupeId = nativeByKey.get(`${p.data.uhid}|${p.data.surgery_date}`);
+          if (dupeId) {
             if (!opts.dry) {
               await sql`
                 INSERT INTO sb_sheet_imports (tab_key, booking_id, row_hash)
-                VALUES (${p.tabKey}, ${dupe.rows[0].id}::uuid, ${p.hash})
+                VALUES (${p.tabKey}, ${dupeId}::uuid, ${p.hash})
                 ON CONFLICT (tab_key) DO NOTHING
               `;
             }
@@ -279,9 +285,9 @@ export async function syncBookingSheet(opts: { backfill?: boolean; dry?: boolean
         if (!opts.backfill && p.data.surgery_date && p.data.surgery_date >= today) {
           stats.srewsQueued.push(result.id);
         }
-      } else if (existing.rows[0].row_hash !== p.hash) {
+      } else if (existing.row_hash !== p.hash) {
         if (opts.dry) { stats.updated++; continue; }
-        const bid = existing.rows[0].booking_id as string;
+        const bid = existing.booking_id;
         // refresh sheet-sourced fields; cc-desk state (cc_status / revoked / flag) untouched
         const d = p.data as unknown as Record<string, unknown>;
         for (const col of UPDATABLE) {
