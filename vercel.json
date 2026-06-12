@@ -47,6 +47,10 @@
     {
       "path": "/api/surgical-risk/booking/sheet-sync",
       "schedule": "40 * * * *"
+    },
+    {
+      "path": "/api/surgical-risk/assess-backlog",
+      "schedule": "*/5 * * * *"
     }
   ],
   "git": {
