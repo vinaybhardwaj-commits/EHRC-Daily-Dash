@@ -17,6 +17,9 @@ export async function GET(_req: NextRequest) {
       FROM ot_case_log
       WHERE surgeon_physician_id IS NULL AND surgeon_raw IS NOT NULL
         AND case_date > now() - interval '30 days'
+        -- only dates the matcher has already processed (generation runs the
+        -- morning AFTER the case date); today's fresh sync isn't "unmatched" yet
+        AND case_date < (now() + interval '5 hours 30 minutes')::date
       GROUP BY surgeon_raw
     `;
     const respRows = await sql`
