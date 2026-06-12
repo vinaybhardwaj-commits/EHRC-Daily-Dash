@@ -15,12 +15,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, inserted: 0 });
     }
 
+    // Validate + sanitise each event; skip bad rows instead of failing the
+    // whole batch (one junk timestamp used to throw away every event in the
+    // request). Cap the batch to keep the unauthenticated endpoint bounded.
+    const VALID_TYPES = new Set(['form_start', 'field_focus', 'field_blur', 'section_enter', 'form_submit', 'form_abandon', 'validation_error']);
+    const MAX_EVENTS = 500;
+    const sane = (v: unknown, max: number): string | null =>
+      typeof v === 'string' && v.length > 0 ? v.slice(0, max) : null;
+    const cleaned: AnalyticsEvent[] = [];
+    for (const ev of events.slice(0, MAX_EVENTS)) {
+      if (!ev || typeof ev !== 'object') continue;
+      const sessionId = sane(ev.sessionId, 64);
+      const formSlug = sane(ev.formSlug, 64);
+      const ts = typeof ev.timestamp === 'number' ? ev.timestamp : NaN;
+      // sane epoch-ms window: 2020-01-01 .. now+1h
+      if (!sessionId || !formSlug || !VALID_TYPES.has(ev.type) || isNaN(ts) || ts < 1577836800000 || ts > Date.now() + 3600_000) continue;
+      cleaned.push({ ...ev, sessionId, formSlug, fieldId: sane(ev.fieldId, 128) ?? undefined, sectionId: sane(ev.sectionId, 128) ?? undefined, timestamp: ts });
+    }
+    if (cleaned.length === 0) {
+      return NextResponse.json({ ok: true, inserted: 0 });
+    }
+
     // Batch insert in chunks of 50 (10 params per row)
     const BATCH_SIZE = 50;
     let inserted = 0;
 
-    for (let i = 0; i < events.length; i += BATCH_SIZE) {
-      const batch = events.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < cleaned.length; i += BATCH_SIZE) {
+      const batch = cleaned.slice(i, i + BATCH_SIZE);
       const params: (string | number | null)[] = [];
       const valueClauses: string[] = [];
 
