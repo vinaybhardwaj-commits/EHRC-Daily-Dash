@@ -29,6 +29,10 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
+  // Mirror of `submitted` readable inside the beforeunload handler (which is
+  // registered once and used to close over a stale false — every successful
+  // submission also got logged as a form_abandon).
+  const submittedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -61,9 +65,13 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     );
   }, [config.sections, formData]);
 
-  const currentSection = isWizard ? visibleSections[currentStep] : null;
   const totalSteps = visibleSections.length;
-  const isLastStep = currentStep >= totalSteps - 1;
+  // Clamp the step: answering a question can hide a later section while the
+  // user is on it, which used to leave currentStep out of range and silently
+  // dropped the wizard into the scroll layout mid-fill.
+  const clampedStep = Math.min(currentStep, Math.max(0, totalSteps - 1));
+  const currentSection = isWizard ? visibleSections[clampedStep] ?? null : null;
+  const isLastStep = clampedStep >= totalSteps - 1;
 
   // ── Auto-fill date on mount ──
   useEffect(() => {
@@ -80,7 +88,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
     // Track abandonment on unload
     const handleUnload = () => {
-      if (!submitted) {
+      if (!submittedRef.current) {
         trackEvent('form_abandon');
         flushAnalytics();
       }
@@ -89,6 +97,11 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     return () => window.removeEventListener('beforeunload', handleUnload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep currentStep state in range when sections hide
+  useEffect(() => {
+    if (currentStep !== clampedStep) setCurrentStep(clampedStep);
+  }, [currentStep, clampedStep]);
 
   // Track section entry for wizard
   useEffect(() => {
@@ -217,7 +230,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     return newErrors;
   }, [formData]);
 
-  const validateAll = useCallback((): boolean => {
+  const validateAll = useCallback((): Record<string, string> => {
     const allErrors: Record<string, string> = {};
     for (const section of visibleSections) {
       Object.assign(allErrors, validateSection(section));
@@ -228,7 +241,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
         metadata: { fieldCount: Object.keys(allErrors).length } as Record<string, string | number | boolean>,
       });
     }
-    return Object.keys(allErrors).length === 0;
+    return allErrors;
   }, [visibleSections, validateSection, trackEvent]);
 
   // ── Wizard navigation ──
@@ -246,15 +259,26 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
   }, [currentSection, validateSection, isLastStep, trackEvent]);
 
   const goBack = useCallback(() => {
-    if (currentStep > 0) setCurrentStep(prev => prev - 1);
-  }, [currentStep]);
+    if (clampedStep > 0) setCurrentStep(clampedStep - 1);
+  }, [clampedStep]);
 
   // ── Submit ──
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // guard rapid double-submit
     setSubmitError(null);
 
-    if (!validateAll()) return;
+    const allErrors = validateAll();
+    if (Object.keys(allErrors).length > 0) {
+      // Errors can live on earlier wizard steps — jump to the first one so
+      // the Submit button never appears silently dead.
+      if (isWizard) {
+        const errIdx = visibleSections.findIndex(s => s.fields.some(f => allErrors[f.id]));
+        if (errIdx >= 0 && errIdx !== clampedStep) setCurrentStep(errIdx);
+      }
+      setSubmitError('Some required fields are missing or invalid — please review the highlighted fields.');
+      return;
+    }
 
     setSubmitting(true);
 
@@ -273,6 +297,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
       });
       flushAnalytics();
 
+      submittedRef.current = true;
       setSubmitted(true);
       setSubmitting(false);
 
@@ -284,10 +309,11 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
       setSubmitError('An error occurred while submitting the form');
       setSubmitting(false);
     }
-  }, [formData, validateAll, onSubmit, onSubmitSuccess, trackEvent, flushAnalytics]);
+  }, [formData, validateAll, onSubmit, onSubmitSuccess, trackEvent, flushAnalytics, submitting, isWizard, visibleSections, clampedStep]);
 
   // ── Reset form for new submission ──
   const handleNewSubmission = useCallback(() => {
+    submittedRef.current = false;
     setSubmitted(false);
     setFormData({ date: formData.date as string });
     setCurrentStep(0);
@@ -334,7 +360,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
   // ── Render: Wizard layout ──
   if (isWizard && currentSection) {
-    const progress = ((currentStep + 1) / totalSteps) * 100;
+    const progress = ((clampedStep + 1) / totalSteps) * 100;
     return (
       <div className="min-h-screen bg-gray-50">
         <FormHeader title={config.title} subtitle={config.department} viewMode={viewMode} onToggleMode={toggleMode} showToggle={isResponsive} />
@@ -342,7 +368,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
         {/* Progress bar */}
         <div className="max-w-2xl mx-auto px-4 pt-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-500">Step {currentStep + 1} of {totalSteps}</span>
+            <span className="text-xs font-medium text-gray-500">Step {clampedStep + 1} of {totalSteps}</span>
             <span className="text-xs text-gray-400">{Math.round(progress)}%</span>
           </div>
           <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -389,7 +415,7 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
             {/* Navigation */}
             <div className="flex gap-3">
-              {currentStep > 0 && (
+              {clampedStep > 0 && (
                 <button
                   type="button"
                   onClick={goBack}
