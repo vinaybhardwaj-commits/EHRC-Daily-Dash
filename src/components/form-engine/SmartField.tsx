@@ -105,10 +105,12 @@ function FieldRenderer({ field, value, onChange, onFocus, onBlur, baseInput, has
         <input
           id={field.id}
           type="number"
+          inputMode="decimal"
           value={String(v)}
-          onChange={e => onChange(field.id, e.target.value === '' ? '' : parseFloat(e.target.value))}
+          onChange={e => onChange(field.id, e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
+          onWheel={e => (e.target as HTMLInputElement).blur()}
           min={field.validation?.min}
           max={field.validation?.max}
           step={field.validation?.step ?? 'any'}
@@ -200,10 +202,12 @@ function CurrencyField({ field, value, onChange, onFocus, onBlur, hasError }: {
       <input
         id={field.id}
         type="number"
+        inputMode="decimal"
         value={String(value ?? '')}
-        onChange={e => onChange(field.id, e.target.value === '' ? '' : parseFloat(e.target.value))}
+        onChange={e => onChange(field.id, e.target.value)}
         onFocus={onFocus}
         onBlur={onBlur}
+        onWheel={e => (e.target as HTMLInputElement).blur()}
         className={`w-full pl-8 pr-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
           hasError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'
         }`}
@@ -273,20 +277,23 @@ function ToggleField({ field, value, onChange, onFocus }: {
   field: SmartFormField; value: unknown; onChange: (id: string, v: unknown) => void; onFocus: () => void;
 }) {
   const isOn = value === true || value === 'yes' || value === 'Yes';
+  const unanswered = value === undefined || value === null || value === '';
   return (
     <div className="space-y-2" onFocus={onFocus}>
       <button
         type="button"
-        onClick={() => onChange(field.id, !isOn)}
+        onClick={() => onChange(field.id, unanswered ? true : !isOn)}
         className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-          isOn ? 'bg-blue-600' : 'bg-gray-300'
+          isOn ? 'bg-blue-600' : unanswered ? 'bg-gray-200 ring-1 ring-amber-300' : 'bg-gray-300'
         }`}
       >
         <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
           isOn ? 'translate-x-6' : 'translate-x-1'
         }`} />
       </button>
-      <span className="ml-2 text-sm text-gray-600">{isOn ? 'Yes' : 'No'}</span>
+      <span className={`ml-2 text-sm ${unanswered ? 'text-amber-600' : 'text-gray-600'}`}>
+        {unanswered ? 'Not answered — tap for Yes, tap twice for No' : isOn ? 'Yes' : 'No'}
+      </span>
     </div>
   );
 }
@@ -510,7 +517,8 @@ function RepeaterField({ field, value, onChange, onFocus, onBlur }: {
                 <input
                   type={inputType}
                   value={String(row[subField.id] ?? '')}
-                  onChange={e => updateRow(rowIdx, subField.id, subField.type === 'number' ? (e.target.value === '' ? '' : parseFloat(e.target.value)) : e.target.value)}
+                  inputMode={subField.type === 'number' ? 'decimal' : undefined}
+                  onChange={e => updateRow(rowIdx, subField.id, e.target.value)}
                   className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder={subField.placeholder}
                 />
