@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getFormConfig } from '@/lib/form-engine/registry';
+import type { SmartFormSection } from '@/lib/form-engine/types';
 import { SmartForm } from '@/components/form-engine';
 import { FORMS_BY_SLUG } from '@/lib/form-definitions';
 import FormChat from '@/components/FormChat';
@@ -21,10 +22,25 @@ export default function FormPage({ params }: PageProps) {
     date: string;
   } | null>(null);
   const [chatSlot, setChatSlot] = useState<HTMLElement | null>(null);
+  // GV.2 — today's generated governance sections (empty when the flag is off)
+  const [govSections, setGovSections] = useState<SmartFormSection[]>([]);
 
   useEffect(() => {
     params.then(p => setSlug(p.slug));
   }, [params]);
+
+  // GV.2 — merge dynamically generated governance question sections.
+  // The API returns [] when GOV_QUESTIONS_ENABLED is off or nothing was
+  // generated for today, so the form is unchanged in every other case.
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    fetch(`/api/governance/question-set?slug=${encodeURIComponent(slug)}`)
+      .then(r => (r.ok ? r.json() : { sections: [] }))
+      .then(d => { if (!cancelled && Array.isArray(d.sections)) setGovSections(d.sections); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [slug]);
 
   // Watch for the chat slot element to appear after submission
   useEffect(() => {
@@ -54,7 +70,10 @@ export default function FormPage({ params }: PageProps) {
     );
   }
 
-  const config = getFormConfig(slug);
+  const baseConfig = getFormConfig(slug);
+  const config = baseConfig && govSections.length > 0
+    ? { ...baseConfig, sections: [...baseConfig.sections, ...govSections] }
+    : baseConfig;
 
   if (!config) {
     return (
