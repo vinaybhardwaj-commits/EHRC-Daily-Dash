@@ -2,6 +2,7 @@ import { sql } from '@vercel/postgres';
 import { getFormConfig } from '@/lib/form-engine/registry';
 import { isFieldVisible, isFieldRequired } from '@/lib/form-engine/condition-evaluator';
 import { captureGovernanceResponses } from '@/lib/governance/capture';
+import { captureEdContactIncidents } from '@/lib/governance/ed-contact';
 
 interface FormSubmissionBody {
   slug: string;
@@ -260,6 +261,13 @@ export async function POST(request: Request) {
       govCaptured = await captureGovernanceResponses(normalizedDate, slug, fields, fillerName, fillerDeviceId);
     } catch (e) {
       console.error('governance capture failed (submit unaffected):', e);
+    }
+    if (slug === 'emergency') {
+      try {
+        govCaptured += await captureEdContactIncidents(normalizedDate, fields, fillerName, fillerDeviceId);
+      } catch (e) {
+        console.error('ED contact capture failed (submit unaffected):', e);
+      }
     }
 
     // Upsert day_snapshots

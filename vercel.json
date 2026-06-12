@@ -39,6 +39,10 @@
     {
       "path": "/api/governance/outbox-drain",
       "schedule": "25 * * * *"
+    },
+    {
+      "path": "/api/governance/digest",
+      "schedule": "30 13 * * *"
     }
   ],
   "git": {

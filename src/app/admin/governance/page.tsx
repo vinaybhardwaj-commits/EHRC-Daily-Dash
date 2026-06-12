@@ -44,6 +44,9 @@ export default function GovernanceAdminPage() {
   const [outbox, setOutbox] = useState<Record<string, number>>({});
   const [aliasPick, setAliasPick] = useState<Record<string, string>>({});
   const [mapping, setMapping] = useState<string | null>(null);
+  const [watched, setWatched] = useState<RosterItem[]>([]);
+  const [watchPick, setWatchPick] = useState('');
+  const [watchBusy, setWatchBusy] = useState(false);
 
   const load = useCallback(async (d: string) => {
     setLoading(true);
@@ -70,6 +73,35 @@ export default function GovernanceAdminPage() {
     } catch { /* panel stays empty */ }
   }, []);
   useEffect(() => { loadUnmatched(); }, [loadUnmatched]);
+
+  const loadWatchList = useCallback(async () => {
+    try {
+      const res = await fetch('/api/governance/watch-config');
+      const data = await res.json();
+      setWatched(data.watched || []);
+    } catch { /* panel stays empty */ }
+  }, []);
+  useEffect(() => { loadWatchList(); }, [loadWatchList]);
+
+  const changeWatch = async (physicianId: string, action: 'add' | 'remove') => {
+    if (!syncKey) { setMessage('Enter the service secret to change the watch list.'); return; }
+    setWatchBusy(true);
+    try {
+      const res = await fetch('/api/governance/watch-config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${syncKey}` },
+        body: JSON.stringify({ physician_id: physicianId, action }),
+      });
+      const data = await res.json();
+      setMessage(res.ok ? `Watch list updated (${data.watched} doctor${data.watched === 1 ? '' : 's'}). Takes effect at the next morning generation — or regenerate now.` : `Failed: ${data.error || res.status}`);
+      setWatchPick('');
+      await loadWatchList();
+    } catch {
+      setMessage('Watch list request failed');
+    } finally {
+      setWatchBusy(false);
+    }
+  };
 
   const mapAlias = async (raw: string, norm: string) => {
     const pickName = aliasPick[norm];
@@ -227,6 +259,36 @@ export default function GovernanceAdminPage() {
             {roster.map(r => <option key={r.id} value={r.name} />)}
           </datalist>
           <p className="text-xs text-gray-400 mt-2">Mapping a name creates a permanent alias, re-matches old cases, upgrades held responses, and files any waiting observations to EPI.</p>
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-lg font-bold text-gray-900 mb-3">OPPE/FPPE observation watch list</h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs text-gray-500 mb-3">Doctors on this list appear on Dr. Shilpa&apos;s daily observation form (in addition to any open OPPE reviews in EPI).</p>
+            {watched.length === 0 ? (
+              <p className="text-sm text-gray-400 mb-3">No doctors on the manual watch list.</p>
+            ) : (
+              <ul className="mb-3 space-y-1">
+                {watched.map(w => (
+                  <li key={w.id} className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-1.5">
+                    <span>{w.name}</span>
+                    <button onClick={() => changeWatch(w.id, 'remove')} disabled={watchBusy}
+                      className="text-xs text-red-600 hover:underline disabled:opacity-50">Remove</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <input list="gv-roster" value={watchPick} onChange={e => setWatchPick(e.target.value)}
+                placeholder="Add a doctor — start typing…"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+              <button onClick={() => { const p = roster.find(r => r.name === watchPick); if (p) changeWatch(p.id, 'add'); else setMessage('Pick a roster physician from the list first.'); }}
+                disabled={watchBusy}
+                className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                Add
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
