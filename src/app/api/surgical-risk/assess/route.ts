@@ -159,6 +159,11 @@ export async function POST(req: NextRequest) {
         ],
         temperature: 0.2,
         max_tokens: 1500,
+      }, {
+        // Full SREWS generations run 35-60s on qwen2.5:14b (~25 tok/s warm);
+        // the llm() client default of 30s was killing them mid-generation and
+        // silently flipping every assessment to fallback-llm-error.
+        timeout: 55_000,
       });
       llmLatencyMs = Date.now() - t0;
       const text = completion.choices[0]?.message?.content || '';
