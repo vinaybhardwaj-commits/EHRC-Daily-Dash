@@ -1,10 +1,11 @@
 import { sql } from '@vercel/postgres';
-import { FORMS_BY_SLUG } from '@/lib/form-definitions';
+import { getFormConfig } from '@/lib/form-engine/registry';
+import { isFieldVisible, isFieldRequired } from '@/lib/form-engine/condition-evaluator';
 
 interface FormSubmissionBody {
   slug: string;
   date: string;
-  fields: Record<string, string | number>;
+  fields: Record<string, string | number | boolean | unknown[]>;
   submitted_by?: string;
   filler_name?: string;
   filler_device_id?: string;
@@ -31,7 +32,7 @@ function normalizeDate(dateStr: string): string {
     return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
   }
 
-  // Try DD-MM-YY format (2-digit year \u2014 assume 20xx)
+  // Try DD-MM-YY format (2-digit year — assume 20xx)
   const ddmmyy = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2})$/.exec(s);
   if (ddmmyy) {
     return `20${ddmmyy[3]}-${ddmmyy[2].padStart(2, '0')}-${ddmmyy[1].padStart(2, '0')}`;
@@ -40,13 +41,41 @@ function normalizeDate(dateStr: string): string {
   throw new Error(`Invalid date format: ${dateStr}. Expected DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD`);
 }
 
+// Serialize a field value for storage as a department_data entry value.
+// Repeater rows / arrays / objects become JSON; toggles become Yes/No; rest become strings.
+function serializeValue(value: unknown): string {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value !== null && typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+// Nursing fields that dual-write into the OT department row (DD.4)
+const NURSING_OT_FIELD_IDS = [
+  'otTotalCasesDoneToday',
+  'otFirstCaseOnTimeStart',
+  'otDelayReason',
+  'otCancellationsToday',
+  'otCancellationReasons',
+] as const;
+
+// Map nursing OT field IDs to OT form's field labels (ID-based, not label-based)
+const NURSING_OT_ID_TO_LABEL: Record<string, string> = {
+  otTotalCasesDoneToday: 'Total cases done today',
+  otFirstCaseOnTimeStart: 'First case on-time start?',
+  otDelayReason: 'If No: delay reason',
+  otCancellationsToday: 'Cancellations today',
+  otCancellationReasons: 'If any: cancellation reasons',
+};
+
 export async function POST(request: Request) {
   try {
     const body: FormSubmissionBody = await request.json();
     const { slug, date, fields, submitted_by, filler_name, filler_device_id } = body;
 
-    // Validate slug exists
-    const form = FORMS_BY_SLUG[slug];
+    // Validate slug exists — the smart-form registry is the single source of truth.
+    // (Previously this checked legacy FORMS_BY_SLUG, which silently lacked
+    // quality-accreditation + infection-control and dropped smart-form-only fields.)
+    const form = getFormConfig(slug);
     if (!form) {
       return Response.json(
         { error: `Form with slug "${slug}" not found` },
@@ -61,8 +90,10 @@ export async function POST(request: Request) {
       // Validate the date is a real calendar date (reject Feb 31, etc.)
       const dateCheck = new Date(normalizedDate + 'T00:00:00Z');
       if (isNaN(dateCheck.getTime())) throw new Error('Invalid calendar date: ' + normalizedDate);
-      // Reject future dates
-      if (dateCheck > new Date()) throw new Error('Date cannot be in the future: ' + normalizedDate);
+      // Reject future dates — compared against the current IST calendar date,
+      // not UTC midnight (night-shift fills between 00:00–05:30 IST used to 400 here).
+      const istToday = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      if (normalizedDate > istToday) throw new Error('Date cannot be in the future: ' + normalizedDate);
     } catch (e) {
       return Response.json(
         { error: (e as Error).message },
@@ -70,54 +101,33 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate required fields with conditional logic
-    const isNursingReportingOt = slug === 'nursing' && fields['alsoReportingOtData'] === 'Yes';
-    const isHrFillingPipeline = slug === 'hr-manpower' && fields['hiringPipelineApplicable'] === 'Yes';
-
-    // Fields that become required when their toggle is "Yes"
-    const conditionalRequired: Record<string, Record<string, boolean>> = {
-      'nursing': {
-        'otTotalCasesDoneToday': isNursingReportingOt,
-        'otFirstCaseOnTimeStart': isNursingReportingOt,
-        'otCancellationsToday': isNursingReportingOt,
-        // otDelayReason + otCancellationReasons stay optional (free-text follow-ups)
-      },
-      'hr-manpower': {
-        'openPositionsCount': isHrFillingPipeline,
-      },
-      'clinical-lab': {
-        'criticalValueDetails': fields['criticalValuesReportedToday'] === 'Yes',
-        'positiveCultureDetails': Number(fields['positiveCulturesToday']) > 0,
-      },
-    };
-
+    // Validate required fields using the smart-form config's native
+    // showWhen / requireWhen conditions (same rules the client renders with).
+    const state = fields as Record<string, string | number | boolean | string[] | undefined>;
     const missingRequired: string[] = [];
-    form.sections.forEach(section => {
-      section.fields.forEach(field => {
-        if (field.type === 'section') return;
 
-        // Determine if this field is required
-        const isOtField = ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id);
-        const isHrPipelineField = ['openPositionsCount', 'openPositionsList', 'interviewsScheduledThisWeek', 'offersExtendedThisWeek', 'expectedJoinersThisWeek', 'criticalVacancies'].includes(field.id);
+    for (const section of form.sections) {
+      if (!isFieldVisible(section.showWhen, state)) continue;
 
-        // Skip OT fields if not reporting OT, skip HR pipeline fields if not Monday
-        if (slug === 'nursing' && isOtField && !isNursingReportingOt) return;
-        if (slug === 'hr-manpower' && isHrPipelineField && !isHrFillingPipeline) return;
+      for (const field of section.fields) {
+        if (field.type === 'computed') continue;
+        if (!isFieldVisible(field.showWhen, state)) continue;
 
-        // Check if field is statically required OR conditionally required
-        const isConditionallyRequired = conditionalRequired[slug]?.[field.id] ?? false;
-        const isFieldRequired = field.required || isConditionallyRequired;
+        const required = isFieldRequired(field.required, field.requireWhen, state);
+        if (!required) continue;
 
-        if (isFieldRequired) {
-          const value = fields[field.id];
-          if (value === '' || value === undefined || value === null) {
-            missingRequired.push(field.label);
-          } else if (field.type === 'number' && isNaN(Number(value))) {
-            missingRequired.push(field.label + ' (must be a number)');
-          }
+        const value = state[field.id];
+        const isEmpty =
+          value === '' || value === undefined || value === null ||
+          (Array.isArray(value) && value.length === 0);
+
+        if (isEmpty) {
+          missingRequired.push(field.label);
+        } else if ((field.type === 'number' || field.type === 'currency') && isNaN(Number(value))) {
+          missingRequired.push(field.label + ' (must be a number)');
         }
-      });
-    });
+      }
+    }
 
     if (missingRequired.length > 0) {
       return Response.json(
@@ -126,32 +136,31 @@ export async function POST(request: Request) {
       );
     }
 
-    // Convert fields to DepartmentEntry format
+    // Convert fields to DepartmentEntry format.
+    // Only visible fields are persisted (hidden conditional fields with stale
+    // values are pruned), keyed by field label for dashboard compatibility.
     const entries: DepartmentEntry[] = [];
     const otEntries: DepartmentEntry[] = []; // For DD.4 dual-write
+    const isNursingReportingOt = slug === 'nursing' && fields['alsoReportingOtData'] === 'Yes';
 
-    form.sections.forEach(section => {
-      section.fields.forEach(field => {
-        if (field.type !== 'section' && field.id in fields) {
-          const entry = { key: field.label, value: String(fields[field.id]) };
+    for (const section of form.sections) {
+      if (!isFieldVisible(section.showWhen, state)) continue;
 
-          // Separate OT fields from nursing fields for dual-write
-          if (slug === 'nursing' && ['otTotalCasesDoneToday', 'otFirstCaseOnTimeStart', 'otDelayReason', 'otCancellationsToday', 'otCancellationReasons'].includes(field.id)) {
-            // Map nursing OT field IDs to OT form's field labels (ID-based, not label-based)
-            const otIdToLabel: Record<string, string> = {
-              'otTotalCasesDoneToday': 'Total cases done today',
-              'otFirstCaseOnTimeStart': 'First case on-time start?',
-              'otDelayReason': 'If No: delay reason',
-              'otCancellationsToday': 'Cancellations today',
-              'otCancellationReasons': 'If any: cancellation reasons',
-            };
-            otEntries.push({ key: otIdToLabel[field.id] || field.label, value: String(fields[field.id]) });
-          } else {
-            entries.push(entry);
-          }
+      for (const field of section.fields) {
+        if (field.type === 'computed') continue;
+        if (!isFieldVisible(field.showWhen, state)) continue;
+        if (!(field.id in fields)) continue;
+
+        const value = serializeValue(fields[field.id]);
+
+        // Separate OT fields from nursing fields for dual-write
+        if (slug === 'nursing' && (NURSING_OT_FIELD_IDS as readonly string[]).includes(field.id)) {
+          otEntries.push({ key: NURSING_OT_ID_TO_LABEL[field.id] || field.label, value });
+        } else {
+          entries.push({ key: field.label, value });
         }
-      });
-    });
+      }
+    }
 
     // Get current timestamp in IST
     const now = new Date();
@@ -182,7 +191,7 @@ export async function POST(request: Request) {
 
     // DD.4: If nursing is also reporting OT data, dual-write to OT department_data
     if (slug === 'nursing' && isNursingReportingOt && otEntries.length > 0) {
-      const otForm = FORMS_BY_SLUG['ot'];
+      const otForm = getFormConfig('ot');
       await sql`
         INSERT INTO department_data (date, date_d, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
         VALUES (${normalizedDate}, ${normalizedDate}::date, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
