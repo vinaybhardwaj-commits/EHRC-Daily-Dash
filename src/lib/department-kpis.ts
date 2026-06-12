@@ -125,7 +125,7 @@ export const DEPARTMENT_KPIS: DepartmentKPI[] = [
     unit: 'done',
     type: 'number',
     // Actual DB: "# of OT cases done (yesterday)"
-    fieldPatterns: ['ot cases done', 'ot cases'],
+    fieldPatterns: ['ot cases done', 'ot cases', 'total cases done'],
   },
   {
     slug: 'hr-manpower',
@@ -269,6 +269,8 @@ export const DEPARTMENT_SECONDARY_KPIS: Record<string, SecondaryKPI[]> = {
   ],
   'ot': [
     { label: '1st Case Delay', unit: 'min', type: 'number', fieldPatterns: ['first case delay', 'time in minutes'], invertTrend: true },
+    // Web-form OT data has no delay-minutes field — it captures on-time start Yes/No
+    { label: '1st Case On-time', type: 'text-status', fieldPatterns: ['first case on-time'], statusKeywords: { good: ['yes'], warning: [], bad: ['no'] } },
   ],
   'hr-manpower': [
     { label: 'Resignations', type: 'text-status', fieldPatterns: ['resignation', 'exit'], statusKeywords: { good: ['nil', 'none', 'no', 'na', 'nill', 'n/a', 'no resignations'], warning: ['in process', 'pending'], bad: ['resign', 'exit', 'left', 'quit', 'multiple'] } },
