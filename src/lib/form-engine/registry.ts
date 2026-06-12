@@ -30,6 +30,8 @@ import { biomedicalSmartForm } from './smart-forms/biomedical';
 // 2026-05-05: 2-new-depts launch — Quality & Accreditations + Infection Control.
 import { qualityAccreditationSmartForm } from './smart-forms/quality-accreditation';
 import { infectionControlSmartForm } from './smart-forms/infection-control';
+// 2026-06-12: GV.4 — Medical Superintendent OPPE/FPPE observation form.
+import { oppeObservationsSmartForm } from './smart-forms/oppe-observations';
 
 // Convert all legacy forms once at module load
 const legacyForms = adaptAllLegacyForms(FORMS_BY_SLUG);
@@ -63,6 +65,8 @@ const smartFormOverrides: Record<string, SmartFormConfig> = {
   // 2-new-depts launch (5 May 2026)
   'quality-accreditation': qualityAccreditationSmartForm,
   'infection-control': infectionControlSmartForm,
+  // GV.4 (12 Jun 2026)
+  'oppe-observations': oppeObservationsSmartForm,
 };
 
 /* ── Conditional Show/Hide Patches ─────────────────────────────────── */

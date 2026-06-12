@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateOtQuestions, generateCcQuestions } from '@/lib/governance/generator';
+import { generateOtQuestions, generateCcQuestions, generateNursingQuestions, generateOppeQuestions } from '@/lib/governance/generator';
 import { yesterdayIST } from '@/lib/governance/sheet-sync';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,9 @@ async function handle(req: NextRequest) {
   try {
     const ot = await generateOtQuestions(date);
     const cc = await generateCcQuestions(date);
-    return NextResponse.json({ ok: true, ot, cc });
+    const nursing = await generateNursingQuestions(date);
+    const oppe = await generateOppeQuestions(date);
+    return NextResponse.json({ ok: true, ot, cc, nursing, oppe });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'generate failed' }, { status: 500 });
   }

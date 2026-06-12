@@ -35,6 +35,32 @@ function otFlags(v: GroupValues): Flag[] {
   return flags;
 }
 
+function nurFlags(v: GroupValues, ctx: GroupCtx): Flag[] {
+  if (v.rounding === 'No') return [{
+    label: 'Not rounding on post-op patients', category: 'clinical', severity: 'medium',
+    detail: [ctx.patient && `patients: ${ctx.patient}`, v.roundingNote].filter(Boolean).join(' — ') || null,
+  }];
+  // 'Partially' is recorded in governance_responses but not auto-filed
+  return [];
+}
+
+function msFlags(v: GroupValues): Flag[] {
+  const flags: Flag[] = [];
+  if (v.concernToday === 'Yes') {
+    flags.push({ label: 'Observation concern (MS)', category: 'clinical', severity: 'medium', detail: v.concernDetails || null });
+  }
+  const domains: Array<[string, string]> = [
+    ['ratingClinical', 'Clinical judgement'], ['ratingDocumentation', 'Documentation'],
+    ['ratingCommunication', 'Communication'], ['ratingProfessionalism', 'Professionalism'],
+  ];
+  const low = domains.filter(([m]) => v[m] && Number(v[m]) > 0 && Number(v[m]) <= 2)
+    .map(([m, label]) => `${label}: ${v[m]}/5`);
+  if (low.length > 0) {
+    flags.push({ label: 'Low OPPE domain rating(s)', category: 'clinical', severity: 'medium', detail: low.join(', ') + (v.comment ? ` — ${v.comment}` : '') });
+  }
+  return flags;
+}
+
 function ccFlags(v: GroupValues): Flag[] {
   if (v.reportType === 'Complaint') return [{ label: 'Customer-care complaint', category: 'professionalism', severity: 'medium', detail: v.details || null }];
   if (v.reportType === 'Concern') return [{ label: 'Customer-care concern', category: 'professionalism', severity: 'low', detail: v.details || null }];
@@ -58,7 +84,11 @@ export async function autoFileGroup(
   const reportedBy = filler.name ? ` Reported by ${filler.name} (${slug} form).` : ` Reported via ${slug} form.`;
   let queued = 0;
 
-  const flags = templateGroup === 'ot' ? otFlags(values) : templateGroup === 'cc' ? ccFlags(values) : [];
+  const flags =
+    templateGroup === 'ot' ? otFlags(values) :
+    templateGroup === 'cc' ? ccFlags(values) :
+    templateGroup === 'nur' ? nurFlags(values, ctx) :
+    templateGroup === 'ms' ? msFlags(values) : [];
   if (flags.length > 0) {
     const severity = flags.reduce((s, f) => maxSev(s, f.severity), 'low');
     const category = flags.length === 1 ? flags[0].category : (flags.find(f => f.category === 'patient_safety') ? 'patient_safety' : flags[0].category);

@@ -40,6 +40,11 @@ const SECTION_GROUPS: { title: string; subtitle: string; slugs: string[] }[] = [
     subtitle: 'Back-office & business functions',
     slugs: ['billing', 'customer-care', 'finance', 'training'],
   },
+  {
+    title: 'Medical Governance',
+    subtitle: 'Medical Superintendent',
+    slugs: ['oppe-observations'],
+  },
 ];
 
 export default function FormIndexPage() {

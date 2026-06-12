@@ -7,13 +7,14 @@
 import { sql } from '@vercel/postgres';
 import type { SmartFormSection, SmartFormField } from '@/lib/form-engine/types';
 import { fetchRoster } from './elo';
-import { matchSurgeon, splitSurgeons, type MatchResult } from './name-match';
+import { matchSurgeon, splitSurgeons, normName, type MatchResult } from './name-match';
+import { createPool } from '@vercel/postgres';
 
 export const GENERATOR_VERSION = 'gv2.0';
 const MAX_CASES = 12; // question-fatigue cap (PRD §10)
 
 export interface CaseContext {
-  case_ref: string;
+  case_ref: string | null;
   surgeon_raw: string | null;
   physician_id: string | null;
   physician_name: string | null;
@@ -171,4 +172,159 @@ export async function generateCcQuestions(forDate: string): Promise<{ forDate: s
       generator_version = EXCLUDED.generator_version, generated_at = now();
   `;
   return { forDate, sections: sections.length, rosterSize: roster.length };
+}
+
+/* ── Nursing: per-surgeon post-op rounding ───────────────────────── */
+// Surgeons with cases in the trailing post-op window get one question each
+// (covering all their recent patients), answered by the Nursing HOD.
+
+const ROUNDING_WINDOW_DAYS = 5;
+
+export async function generateNursingQuestions(forDate: string): Promise<{ forDate: string; surgeons: number }> {
+  const to = forDate;
+  const from = new Date(new Date(forDate + 'T00:00:00Z').getTime() - ROUNDING_WINDOW_DAYS * 86400_000)
+    .toISOString().slice(0, 10);
+
+  const rows = await sql`
+    SELECT surgeon_raw, surgeon_physician_id, patient_name, procedure_name, case_date::text AS case_date
+    FROM ot_case_log
+    WHERE case_date >= ${from} AND case_date < ${to}
+      AND cancelled = false AND surgeon_raw IS NOT NULL AND patient_name IS NOT NULL
+    ORDER BY case_date DESC
+  `;
+
+  const roster = await fetchRoster();
+  const aliasRows = await sql`SELECT alias_norm, physician_id FROM gv_name_aliases`;
+  const aliases = new Map<string, string>(aliasRows.rows.map(r => [r.alias_norm as string, r.physician_id as string]));
+
+  // group by resolved identity (physician id when matched, else normalised raw)
+  interface SurgeonGroup { display: string; physicianId: string | null; raw: string; matchStatus: MatchResult['status']; patients: string[] }
+  const groups = new Map<string, SurgeonGroup>();
+  for (const r of rows.rows) {
+    const raw = String(r.surgeon_raw);
+    const primary = splitSurgeons(raw)[0] || raw;
+    let pid = (r.surgeon_physician_id as string) || null;
+    let status: MatchResult['status'] = pid ? 'matched' : 'unmatched';
+    let display = raw;
+    if (!pid && roster.length) {
+      const m = matchSurgeon(primary, roster, aliases);
+      if (m.status === 'matched' && m.physicianId) { pid = m.physicianId; display = m.physicianName || raw; status = 'matched'; }
+      else status = m.status;
+    } else if (pid) {
+      display = roster.find(p => p.id === pid)?.full_name || raw;
+    }
+    const key = pid || normName(primary);
+    if (!key) continue;
+    const g = groups.get(key) || { display, physicianId: pid, raw, matchStatus: status, patients: [] };
+    const label = `${r.patient_name}${r.procedure_name ? ' (' + r.procedure_name + ')' : ''} — ${r.case_date}`;
+    if (g.patients.length < 6 && !g.patients.includes(label)) g.patients.push(label);
+    groups.set(key, g);
+  }
+
+  const sections: SmartFormSection[] = [];
+  const context: { cases: Record<string, CaseContext> } = { cases: {} };
+  let i = 0;
+  for (const g of groups.values()) {
+    const key = `s${i++}`;
+    const id = (metric: string) => `gov__nur__${key}__${metric}`;
+    sections.push({
+      id: `gov-nur-${key}`,
+      title: `Post-op rounding — ${g.display}`,
+      description: `Recent post-op patients: ${g.patients.join('; ')}`,
+      fields: [
+        { id: id('rounding'), label: 'Is this surgeon rounding on their post-op patients?', type: 'radio', options: ['Yes', 'No', 'Partially', 'Not sure'] },
+        { id: id('roundingNote'), label: 'Details (which patients, what happened)', type: 'paragraph',
+          showWhen: { field: id('rounding'), operator: 'in', value: ['No', 'Partially'] },
+          requireWhen: { field: id('rounding'), operator: 'eq', value: 'No' } },
+      ],
+    });
+    context.cases[key] = {
+      case_ref: null,
+      surgeon_raw: g.raw,
+      physician_id: g.physicianId,
+      physician_name: g.physicianId ? g.display : null,
+      match_status: g.matchStatus,
+      procedure: null,
+      patient: g.patients.join('; '),
+    };
+  }
+
+  await sql`
+    INSERT INTO governance_question_sets (for_date, slug, sections, context, generator_version)
+    VALUES (${forDate}, ${'nursing'}, ${JSON.stringify(sections)}::jsonb, ${JSON.stringify(context)}::jsonb, ${GENERATOR_VERSION})
+    ON CONFLICT (for_date, slug) DO UPDATE SET
+      sections = EXCLUDED.sections, context = EXCLUDED.context,
+      generator_version = EXCLUDED.generator_version, generated_at = now();
+  `;
+  return { forDate, surgeons: sections.length };
+}
+
+/* ── Medical Superintendent: doctors under observation (OPPE/FPPE) ── */
+// Sources: open oppe_reviews in even-elo + the manual watch list in
+// gv_config key 'ms_observe_physician_ids' (JSON array of physician uuids) —
+// the manual list makes the form usable before the EPI OPPE scheduler runs.
+
+export async function generateOppeQuestions(forDate: string): Promise<{ forDate: string; doctors: number; fromReviews: number; fromManual: number }> {
+  const roster = await fetchRoster();
+  const byId = new Map(roster.map(r => [r.id, r.full_name]));
+
+  const watched = new Map<string, string>(); // id -> source
+  let fromReviews = 0;
+  const eloUrl = process.env.EVEN_ELO_READ_URL;
+  if (eloUrl) {
+    try {
+      const pool = createPool({ connectionString: eloUrl });
+      const r = await pool.query(
+        `SELECT DISTINCT physician_id::text AS id FROM oppe_reviews WHERE status IN ('pending','in_review','flagged')`,
+      );
+      for (const row of r.rows) { watched.set(row.id, 'oppe_review'); fromReviews++; }
+    } catch { /* even-elo read unavailable — manual list still works */ }
+  }
+  const cfg = await sql`SELECT value FROM gv_config WHERE key = 'ms_observe_physician_ids'`;
+  const manual: string[] = Array.isArray(cfg.rows[0]?.value) ? cfg.rows[0].value : [];
+  let fromManual = 0;
+  for (const id of manual) if (typeof id === 'string' && !watched.has(id)) { watched.set(id, 'manual'); fromManual++; }
+
+  const sections: SmartFormSection[] = [];
+  const context: { cases: Record<string, CaseContext> } = { cases: {} };
+  let i = 0;
+  for (const [pid, source] of watched) {
+    const name = byId.get(pid);
+    if (!name) continue; // not on the active roster
+    const key = `o${i++}`;
+    const id = (metric: string) => `gov__ms__${key}__${metric}`;
+    const concern = { field: id('concernToday'), operator: 'eq' as const, value: true };
+    sections.push({
+      id: `gov-ms-${key}`,
+      title: `Under observation — ${name}`,
+      description: source === 'oppe_review' ? 'Open OPPE review' : 'On the observation watch list',
+      fields: [
+        { id: id('ratingClinical'), label: 'Clinical judgement today (1–5)', type: 'rating' },
+        { id: id('ratingDocumentation'), label: 'Documentation (1–5)', type: 'rating' },
+        { id: id('ratingCommunication'), label: 'Communication (1–5)', type: 'rating' },
+        { id: id('ratingProfessionalism'), label: 'Professionalism (1–5)', type: 'rating' },
+        { id: id('concernToday'), label: 'Any specific concern today?', type: 'toggle' },
+        { id: id('concernDetails'), label: 'What happened?', type: 'paragraph', showWhen: concern, requireWhen: concern },
+        { id: id('comment'), label: 'Comment (optional)', type: 'text' },
+      ],
+    });
+    context.cases[key] = {
+      case_ref: null,
+      surgeon_raw: name,
+      physician_id: pid,
+      physician_name: name,
+      match_status: 'matched',
+      procedure: null,
+      patient: null,
+    };
+  }
+
+  await sql`
+    INSERT INTO governance_question_sets (for_date, slug, sections, context, generator_version)
+    VALUES (${forDate}, ${'oppe-observations'}, ${JSON.stringify(sections)}::jsonb, ${JSON.stringify(context)}::jsonb, ${GENERATOR_VERSION})
+    ON CONFLICT (for_date, slug) DO UPDATE SET
+      sections = EXCLUDED.sections, context = EXCLUDED.context,
+      generator_version = EXCLUDED.generator_version, generated_at = now();
+  `;
+  return { forDate, doctors: sections.length, fromReviews, fromManual };
 }
