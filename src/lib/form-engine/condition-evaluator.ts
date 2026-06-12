@@ -26,9 +26,18 @@ function evaluateCondition(condition: Condition, state: FormState): boolean {
   const fv = fieldValue;
   const tv = targetValue;
 
-  // Equality
-  if (operator === 'eq') return fv == tv; // eslint-disable-line eqeqeq
-  if (operator === 'neq') return fv != tv; // eslint-disable-line eqeqeq
+  // Equality — compare normalised string forms so 'Yes'/'Yes', 5/'5' and
+  // true/'true' all match, while ''/0 no longer do (loose == made '' == 0 true).
+  // Unanswered fields (undefined/null) satisfy neither eq nor neq.
+  const norm = (v: unknown): string => String(v);
+  if (operator === 'eq') {
+    if (fv === undefined || fv === null) return false;
+    return norm(fv) === norm(tv);
+  }
+  if (operator === 'neq') {
+    if (fv === undefined || fv === null) return false;
+    return norm(fv) !== norm(tv);
+  }
 
   // Numeric comparisons
   const numFv = typeof fv === 'string' ? parseFloat(fv) : typeof fv === 'number' ? fv : NaN;
@@ -39,14 +48,13 @@ function evaluateCondition(condition: Condition, state: FormState): boolean {
   if (operator === 'lt') return !isNaN(numFv) && !isNaN(numTv) && numFv < numTv;
   if (operator === 'lte') return !isNaN(numFv) && !isNaN(numTv) && numFv <= numTv;
 
-  // Array membership
-  if (operator === 'in') {
+  // Array membership — normalised string comparison (a numeric field value
+  // now matches ['5']); unanswered fields satisfy neither in nor not_in.
+  if (operator === 'in' || operator === 'not_in') {
+    if (fv === undefined || fv === null) return false;
     const arr = Array.isArray(tv) ? tv : [tv];
-    return arr.includes(fv as string);
-  }
-  if (operator === 'not_in') {
-    const arr = Array.isArray(tv) ? tv : [tv];
-    return !arr.includes(fv as string);
+    const included = arr.some(item => norm(item) === norm(fv));
+    return operator === 'in' ? included : !included;
   }
 
   // String contains
