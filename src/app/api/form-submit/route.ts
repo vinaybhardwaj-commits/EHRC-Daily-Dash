@@ -67,6 +67,39 @@ const NURSING_OT_ID_TO_LABEL: Record<string, string> = {
   otCancellationReasons: 'If any: cancellation reasons',
 };
 
+// Merge a new web-form submission's entries with what's already stored for
+// (date, slug). Existing keys keep their position; new values overwrite;
+// labels in `hiddenLabels` are removed (stale values of now-hidden conditional
+// fields). If the stored row isn't in the web-form {key,value}[] shape
+// (e.g. sheets-sync), the new entries replace it wholesale, as before.
+async function mergeWithExisting(
+  date: string,
+  slug: string,
+  newEntries: DepartmentEntry[],
+  hiddenLabels: string[],
+): Promise<DepartmentEntry[]> {
+  try {
+    const existing = await sql`
+      SELECT entries FROM department_data WHERE date = ${date} AND slug = ${slug} LIMIT 1
+    `;
+    const stored = existing.rows[0]?.entries;
+    if (!Array.isArray(stored) || stored.length === 0) return newEntries;
+    const isKeyValueShape = stored.every(
+      (e: unknown) => !!e && typeof (e as DepartmentEntry).key === 'string' && 'value' in (e as DepartmentEntry),
+    );
+    if (!isKeyValueShape) return newEntries;
+
+    const merged = new Map<string, string>();
+    for (const e of stored as DepartmentEntry[]) merged.set(e.key, e.value);
+    for (const label of hiddenLabels) merged.delete(label);
+    for (const e of newEntries) merged.set(e.key, e.value);
+    return Array.from(merged, ([key, value]) => ({ key, value }));
+  } catch {
+    // Merge is best-effort — fall back to replace-on-conflict (prior behaviour)
+    return newEntries;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body: FormSubmissionBody = await request.json();
@@ -141,14 +174,20 @@ export async function POST(request: Request) {
     // values are pruned), keyed by field label for dashboard compatibility.
     const entries: DepartmentEntry[] = [];
     const otEntries: DepartmentEntry[] = []; // For DD.4 dual-write
+    // Labels of fields currently hidden by conditions — pruned from any
+    // previously-stored entries during the merge below (stale conditional data).
+    const hiddenLabels: string[] = [];
     const isNursingReportingOt = slug === 'nursing' && fields['alsoReportingOtData'] === 'Yes';
 
     for (const section of form.sections) {
-      if (!isFieldVisible(section.showWhen, state)) continue;
+      const sectionVisible = isFieldVisible(section.showWhen, state);
 
       for (const field of section.fields) {
         if (field.type === 'computed') continue;
-        if (!isFieldVisible(field.showWhen, state)) continue;
+        if (!sectionVisible || !isFieldVisible(field.showWhen, state)) {
+          hiddenLabels.push(field.label);
+          continue;
+        }
         if (!(field.id in fields)) continue;
 
         const value = serializeValue(fields[field.id]);
@@ -176,10 +215,17 @@ export async function POST(request: Request) {
     const fillerDeviceId = (filler_device_id || '').trim().slice(0, 64) || null;
     const fillerClaimedAt = fillerName && fillerDeviceId ? isoNow : null;
 
+    // Merge with any existing web-form submission for this (date, slug):
+    // values submitted now win; previously-submitted fields absent from this
+    // submission are preserved (a quick second submit no longer wipes the
+    // first one's optional fields); fields currently hidden by conditions
+    // are dropped. Rows in the sheets-sync shape are replaced, not merged.
+    const mergedEntries = await mergeWithExisting(normalizedDate, slug, entries, hiddenLabels);
+
     // Insert/upsert department_data for the primary form
     await sql`
       INSERT INTO department_data (date, date_d, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
-      VALUES (${normalizedDate}, ${normalizedDate}::date, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(entries)}::jsonb, ${submittedBy}, ${submittedVia}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
+      VALUES (${normalizedDate}, ${normalizedDate}::date, ${slug}, ${form.department}, 'web-form', ${JSON.stringify(mergedEntries)}::jsonb, ${submittedBy}, ${submittedVia}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
       ON CONFLICT (date, slug) DO UPDATE SET
         entries = EXCLUDED.entries,
         submitted_by = EXCLUDED.submitted_by,
@@ -192,9 +238,10 @@ export async function POST(request: Request) {
     // DD.4: If nursing is also reporting OT data, dual-write to OT department_data
     if (slug === 'nursing' && isNursingReportingOt && otEntries.length > 0) {
       const otForm = getFormConfig('ot');
+      const mergedOtEntries = await mergeWithExisting(normalizedDate, 'ot', otEntries, []);
       await sql`
         INSERT INTO department_data (date, date_d, slug, name, tab, entries, submitted_by, submitted_via, filler_name, filler_device_id, filler_claimed_at)
-        VALUES (${normalizedDate}, ${normalizedDate}::date, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(otEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
+        VALUES (${normalizedDate}, ${normalizedDate}::date, ${'ot'}, ${otForm?.department || 'OT'}, 'web-form', ${JSON.stringify(mergedOtEntries)}::jsonb, ${submittedBy ? submittedBy + ' (via nursing form)' : 'Nursing HOD (via nursing form)'}, ${'nursing'}, ${fillerName}, ${fillerDeviceId}, ${fillerClaimedAt})
         ON CONFLICT (date, slug) DO UPDATE SET
           entries = EXCLUDED.entries,
           submitted_by = EXCLUDED.submitted_by,
