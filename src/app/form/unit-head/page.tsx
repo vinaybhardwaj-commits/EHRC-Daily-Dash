@@ -7,8 +7,8 @@ import { ArrowLeft, Upload, CheckCircle, AlertCircle, FileText, Info } from 'luc
 export default function UnitHeadUploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [date, setDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
+    // IST calendar date — plain toISOString() pre-filled *yesterday* before 05:30 IST
+    return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
   });
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
