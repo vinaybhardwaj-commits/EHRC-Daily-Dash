@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { buildAssessPayload, runSrewsAssessment } from '@/lib/surgical-risk/srews-bridge';
 import type { BookingFormData } from '@/lib/surgical-risk/booking-types';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -19,10 +20,7 @@ const LOCK_TTL_MS = 4 * 60_000;
  * safety net for bookings that miss their inline assessment).
  */
 async function handle(req: NextRequest) {
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
-  const auth = req.headers.get('authorization') || '';
-  const secret = process.env.SERVICE_OBSERVATIONS_SECRET;
-  if (!isVercelCron && !(secret && auth === `Bearer ${secret}`)) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

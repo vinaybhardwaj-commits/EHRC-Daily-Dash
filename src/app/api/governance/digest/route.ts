@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendDailyDigests } from '@/lib/governance/digest';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /** GV.6 — evening digest cron: one dated note line per observed physician. */
 async function handle(req: NextRequest) {
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
-  const auth = req.headers.get('authorization') || '';
-  const secret = process.env.SERVICE_OBSERVATIONS_SECRET;
-  if (!isVercelCron && !(secret && auth === `Bearer ${secret}`)) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const todayIST = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);

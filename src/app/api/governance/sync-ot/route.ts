@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncOtCases, yesterdayIST } from '@/lib/governance/sheet-sync';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -11,11 +12,7 @@ export const maxDuration = 60;
  * ?date=YYYY-MM-DD overrides the default (yesterday IST).
  */
 async function handle(req: NextRequest) {
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
-  const auth = req.headers.get('authorization') || '';
-  const secret = process.env.SERVICE_OBSERVATIONS_SECRET;
-  const bearerOk = !!secret && auth === `Bearer ${secret}`;
-  if (!isVercelCron && !bearerOk) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const date = req.nextUrl.searchParams.get('date') || yesterdayIST();

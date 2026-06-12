@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { drainOutbox } from '@/lib/governance/outbox';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /** GV.3 — hourly retry of undelivered EPI observations. */
 async function handle(req: NextRequest) {
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
-  const auth = req.headers.get('authorization') || '';
-  const secret = process.env.SERVICE_OBSERVATIONS_SECRET;
-  if (!isVercelCron && !(secret && auth === `Bearer ${secret}`)) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {

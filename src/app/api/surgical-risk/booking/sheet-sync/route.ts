@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { syncBookingSheet } from '@/lib/surgical-risk/sheet-bridge';
 import { buildAssessPayload, runSrewsAssessment } from '@/lib/surgical-risk/srews-bridge';
 import { sql } from '@vercel/postgres';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -14,10 +15,7 @@ const SREWS_CAP = 3; // LLM assessments per run; the rest catch up next hour
  * ?dry=1      — parse + classify only, no writes
  */
 async function handle(req: NextRequest) {
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
-  const auth = req.headers.get('authorization') || '';
-  const secret = process.env.SERVICE_OBSERVATIONS_SECRET;
-  if (!isVercelCron && !(secret && auth === `Bearer ${secret}`)) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const backfill = req.nextUrl.searchParams.get('backfill') === '1';
