@@ -29,7 +29,9 @@ export function parsePipeTokens(text: string): PipeToken[] {
  * Check if a string contains any pipe tokens.
  */
 export function hasPipeTokens(text: string): boolean {
-  return PIPE_REGEX.test(text);
+  // Fresh non-global regex: PIPE_REGEX has /g, and .test() on a global regex
+  // advances lastIndex — consecutive calls alternated true/false on identical strings.
+  return new RegExp(PIPE_REGEX.source).test(text);
 }
 
 /**
