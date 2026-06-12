@@ -25,6 +25,9 @@ interface OtCaseRow {
   synced_at: string;
 }
 
+interface UnmatchedRow { raw: string; norm: string; count: number; last_seen: string }
+interface RosterItem { id: string; name: string }
+
 function yesterdayIST(): string {
   return new Date(Date.now() + 5.5 * 3600_000 - 86400_000).toISOString().slice(0, 10);
 }
@@ -36,6 +39,11 @@ export default function GovernanceAdminPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncKey, setSyncKey] = useState('');
   const [message, setMessage] = useState('');
+  const [unmatched, setUnmatched] = useState<UnmatchedRow[]>([]);
+  const [roster, setRoster] = useState<RosterItem[]>([]);
+  const [outbox, setOutbox] = useState<Record<string, number>>({});
+  const [aliasPick, setAliasPick] = useState<Record<string, string>>({});
+  const [mapping, setMapping] = useState<string | null>(null);
 
   const load = useCallback(async (d: string) => {
     setLoading(true);
@@ -51,6 +59,41 @@ export default function GovernanceAdminPage() {
   }, []);
 
   useEffect(() => { load(date); }, [date, load]);
+
+  const loadUnmatched = useCallback(async () => {
+    try {
+      const res = await fetch('/api/governance/unmatched');
+      const data = await res.json();
+      setUnmatched(data.unmatched || []);
+      setRoster(data.roster || []);
+      setOutbox(data.outbox || {});
+    } catch { /* panel stays empty */ }
+  }, []);
+  useEffect(() => { loadUnmatched(); }, [loadUnmatched]);
+
+  const mapAlias = async (raw: string, norm: string) => {
+    const pickName = aliasPick[norm];
+    const phys = roster.find(r => r.name === pickName);
+    if (!syncKey) { setMessage('Enter the service secret to map names.'); return; }
+    if (!phys) { setMessage('Pick a roster physician from the list first.'); return; }
+    setMapping(raw);
+    try {
+      const res = await fetch('/api/governance/alias', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${syncKey}` },
+        body: JSON.stringify({ raw, physician_id: phys.id, physician_name: phys.name }),
+      });
+      const data = await res.json();
+      setMessage(res.ok
+        ? `Mapped "${raw}" → ${phys.name}: ${data.cases_updated} cases, ${data.responses_updated} responses updated, ${data.observations_filed} observations filed.`
+        : `Map failed: ${data.error || res.status}`);
+      await Promise.all([loadUnmatched(), load(date)]);
+    } catch {
+      setMessage('Map request failed');
+    } finally {
+      setMapping(null);
+    }
+  };
 
   const syncNow = async () => {
     if (!syncKey) { setMessage('Enter the service secret to trigger a manual sync.'); return; }
@@ -136,6 +179,55 @@ export default function GovernanceAdminPage() {
           )}
         </div>
         <p className="text-xs text-gray-400 mt-3">Cancelled rows are struck through. “Matched” shows whether the surgeon resolved to an EPI roster physician (GV.2).</p>
+
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-gray-900">Unmatched surgeons</h2>
+            <span className="text-xs text-gray-500">
+              EPI outbox: {outbox.sent || 0} sent · {(outbox.pending || 0) + (outbox.failed || 0)} queued
+            </span>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            {unmatched.length === 0 ? (
+              <div className="p-6 text-center text-gray-400 text-sm">No unmatched names in the last 30 days. 🎉</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                    <th className="px-3 py-2">Sheet name (raw)</th><th className="px-3 py-2">Seen</th>
+                    <th className="px-3 py-2">Last</th><th className="px-3 py-2">Map to roster physician</th><th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {unmatched.map(u => (
+                    <tr key={u.norm} className="border-b border-gray-50">
+                      <td className="px-3 py-2 font-medium">{u.raw}</td>
+                      <td className="px-3 py-2">{u.count}×</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{u.last_seen}</td>
+                      <td className="px-3 py-2">
+                        <input list="gv-roster" value={aliasPick[u.norm] || ''}
+                          onChange={e => setAliasPick(prev => ({ ...prev, [u.norm]: e.target.value }))}
+                          placeholder="Start typing a name…"
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => mapAlias(u.raw, u.norm)}
+                          disabled={mapping === u.raw}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
+                          {mapping === u.raw ? 'Mapping…' : 'Map'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <datalist id="gv-roster">
+            {roster.map(r => <option key={r.id} value={r.name} />)}
+          </datalist>
+          <p className="text-xs text-gray-400 mt-2">Mapping a name creates a permanent alias, re-matches old cases, upgrades held responses, and files any waiting observations to EPI.</p>
+        </div>
       </div>
     </div>
   );

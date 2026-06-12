@@ -120,3 +120,55 @@ export async function generateOtQuestions(forDate: string): Promise<GenerateResu
 
   return { forDate, casesDate, caseCount: rows.rows.length, matched, ambiguous, unmatched, sections: sections.length };
 }
+
+/* ── Customer Care standing block ─────────────────────────────────── */
+// Doctor-report slots (roster dropdown -> exact resolution on submit) plus
+// V's standing process-problems question. Regenerated nightly so the roster
+// options stay fresh.
+
+function ccSlot(key: string, roster: string[], showWhenPrev?: string): SmartFormSection {
+  const id = (metric: string) => `gov__cc__${key}__${metric}`;
+  const hasDoctor = { field: id('doctor'), operator: 'is_not_empty' as const };
+  return {
+    id: `gov-cc-${key}`,
+    title: key === 's0' ? 'Doctor report (optional)' : 'Another doctor report (optional)',
+    description: key === 's0'
+      ? 'Report any doctor in the EPI index — complaint, concern, or commendation. Leave blank if nothing to report.'
+      : undefined,
+    showWhen: showWhenPrev ? { field: showWhenPrev, operator: 'is_not_empty' as const } : undefined,
+    fields: [
+      { id: id('doctor'), label: 'Doctor', type: 'dropdown', options: roster },
+      { id: id('reportType'), label: 'Type of report', type: 'radio', options: ['Complaint', 'Concern', 'Commendation'], showWhen: hasDoctor, requireWhen: hasDoctor },
+      { id: id('details'), label: 'What happened?', type: 'paragraph', showWhen: hasDoctor, requireWhen: hasDoctor },
+    ],
+  };
+}
+
+/** Generate the customer-care standing governance sections for `forDate`. */
+export async function generateCcQuestions(forDate: string): Promise<{ forDate: string; sections: number; rosterSize: number }> {
+  const roster = await fetchRoster();
+  const names = roster.map(r => r.full_name);
+  const rosterMap: Record<string, string> = {};
+  for (const r of roster) rosterMap[r.full_name] = r.id;
+
+  const sections: SmartFormSection[] = [
+    {
+      id: 'gov-cc-process',
+      title: 'Process problems (standing question)',
+      fields: [
+        { id: 'gov__cc__p0__processProblems', label: 'Any process problems from yesterday that need reporting?', type: 'paragraph', placeholder: 'Leave blank if none' },
+      ],
+    },
+    ccSlot('s0', names),
+    ccSlot('s1', names, 'gov__cc__s0__doctor'),
+  ];
+
+  await sql`
+    INSERT INTO governance_question_sets (for_date, slug, sections, context, generator_version)
+    VALUES (${forDate}, ${'customer-care'}, ${JSON.stringify(sections)}::jsonb, ${JSON.stringify({ roster: rosterMap })}::jsonb, ${GENERATOR_VERSION})
+    ON CONFLICT (for_date, slug) DO UPDATE SET
+      sections = EXCLUDED.sections, context = EXCLUDED.context,
+      generator_version = EXCLUDED.generator_version, generated_at = now();
+  `;
+  return { forDate, sections: sections.length, rosterSize: roster.length };
+}
