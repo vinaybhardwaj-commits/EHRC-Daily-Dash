@@ -13,23 +13,37 @@ function normalizeDate(raw: string): string {
 
   // YYYY/MM/DD or YYYY-MM-DD (4-digit year first)
   let m = s.match(/^(\d{4})[/.\-](\d{1,2})[/.\-](\d{1,2})/);
-  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  if (m) return validCalendarDate(`${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`);
 
   // DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY (4-digit year last)
   m = s.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})/);
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  if (m) return validCalendarDate(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
 
   // DD-MM-YY, DD/MM/YY, DD.MM.YY (2-digit year last — assume 20xx)
   m = s.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2})$/);
-  if (m) return `20${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  if (m) return validCalendarDate(`20${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
 
   return s;
 }
 
+// Reject impossible calendar dates like 2026-02-31. Some engines roll the
+// overflow into the next month instead of yielding Invalid Date, so we
+// round-trip the components and require an exact match.
+function validCalendarDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const ok = dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  return ok ? iso : '';
+}
+
 function detectDepartment(headers: string[], filename: string): typeof DEPARTMENTS[number] | null {
   const fn = filename.toLowerCase();
+  const wordMatch = (needle: string) =>
+    new RegExp('(^|[^a-z0-9])' + needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])').test(fn);
   for (const dept of DEPARTMENTS) {
-    if (fn.includes(dept.slug.replace('-', ' ')) || fn.includes(dept.name.toLowerCase())) {
+    // Word-boundary match — plain substring made any filename containing
+    // "ot"/"it" (e.g. "accreditation") match OT/IT.
+    if (wordMatch(dept.slug.replace('-', ' ')) || wordMatch(dept.slug) || wordMatch(dept.name.toLowerCase())) {
       return dept;
     }
   }
@@ -83,7 +97,9 @@ export function parseCSV(csvText: string, filename: string): { byDate: Map<strin
       if (skipFields.has(h) || h.toLowerCase().includes('timestamp')) continue;
       const val = row[h]?.trim() || '';
       const num = parseFloat(val.replace(/[,\s]/g, ''));
-      fields[h] = !isNaN(num) && val.match(/^[\d,.\s-]+$/) ? num : val;
+      // Anchored numeric shape (optional sign, digits/commas/spaces, optional decimal)
+      // so date-like strings ("12-06-2026") and ranges are no longer coerced to numbers.
+      fields[h] = !isNaN(num) && val.match(/^-?[\d,\s]+(\.\d+)?$/) ? num : val;
     }
 
     const entry: DepartmentEntry = {
