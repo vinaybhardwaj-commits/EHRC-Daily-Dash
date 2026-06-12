@@ -36,7 +36,11 @@ async function handle(req: NextRequest) {
   `;
 
   const started = Date.now();
-  const origin = new URL(req.url).origin;
+  // Self-calls must use the PUBLIC origin: cron invocations arrive on the
+  // deployment-specific *.vercel.app URL, which sits behind Vercel deployment
+  // protection — fetching /assess there returns the auth wall, not the API.
+  const origin = process.env.SELF_ORIGIN || 'https://ehrc.evenos.app';
+  void req.url;
   let assessed = 0, failed = 0, remaining = 0;
   const results: string[] = [];
 

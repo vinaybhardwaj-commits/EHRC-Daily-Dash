@@ -26,7 +26,11 @@ async function handle(req: NextRequest) {
     // SREWS for newly imported future-dated bookings (capped per run)
     let assessed = 0;
     if (!dry && stats.srewsQueued.length > 0) {
-      const origin = new URL(req.url).origin;
+      // Self-calls must use the PUBLIC origin: cron invocations arrive on the
+  // deployment-specific *.vercel.app URL, which sits behind Vercel deployment
+  // protection — fetching /assess there returns the auth wall, not the API.
+  const origin = process.env.SELF_ORIGIN || 'https://ehrc.evenos.app';
+  void req.url;
       for (const id of stats.srewsQueued.slice(0, SREWS_CAP)) {
         try {
           const row = await sql`SELECT * FROM surgery_booking WHERE id = ${id}::uuid`;
