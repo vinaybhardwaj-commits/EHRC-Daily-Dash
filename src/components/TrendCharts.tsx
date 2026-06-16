@@ -10,7 +10,7 @@ interface Props {
 function extractNumeric(val: string | number | undefined): number | null {
   if (val === undefined || val === '') return null;
   if (typeof val === 'number') return val;
-  const cleaned = String(val).replace(/[,\sâ¹Rs.]/g, '');
+  const cleaned = String(val).replace(/[,\s₹Rs.]/g, '');
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
 }
@@ -20,14 +20,16 @@ interface ChartDataPoint {
   value: number;
 }
 
-function getDeptFieldTrend(snapshots: DaySnapshot[], deptSlug: string, fieldName: string): ChartDataPoint[] {
+function getDeptFieldTrend(snapshots: DaySnapshot[], deptSlug: string, fieldNames: string[]): ChartDataPoint[] {
   return snapshots
     .map(snapshot => {
       const dept = snapshot.departments.find(d => d.slug === deptSlug);
       if (!dept?.entries?.length) return null;
-      // Handle both stored entry shapes ({date,fields} and web-form {key,value}).
+      // Handle both stored entry shapes ({date,fields} and web-form {key,value}),
+      // and tolerate label drift between form eras by trying each candidate label.
       const fields = mergeEntryFields(dept.entries);
-      const val = extractNumeric(fields[fieldName]);
+      let val: number | null = null;
+      for (const fn of fieldNames) { val = extractNumeric(fields[fn]); if (val !== null) break; }
       return val !== null ? { date: snapshot.date, value: val } : null;
     })
     .filter((item): item is ChartDataPoint => item !== null);
@@ -123,11 +125,11 @@ export default function TrendCharts({ snapshots }: Props) {
   }
 
   const trends = [
-    { data: getDeptFieldTrend(snapshots, 'finance', 'Revenue for the day (Rs.)'), label: 'Daily Revenue', color: '#10b981' },
-    { data: getDeptFieldTrend(snapshots, 'finance', 'ARPOB â Avg Revenue Per Occupied Bed (Rs.)'), label: 'ARPOB', color: '#3b82f6' },
-    { data: getDeptFieldTrend(snapshots, 'emergency', '# of genuine walk-in / ambulance emergencies (last 24h)'), label: 'ED Cases', color: '#f59e0b' },
-    { data: getDeptFieldTrend(snapshots, 'ot', '# of OT cases done (yesterday)'), label: 'OT Cases', color: '#8b5cf6' },
-    { data: getDeptFieldTrend(snapshots, 'finance', 'Midnight census â total IP patients'), label: 'IP Census', color: '#ec4899' },
+    { data: getDeptFieldTrend(snapshots, 'finance', ['Revenue for the day (Rs.)']), label: 'Daily Revenue', color: '#10b981' },
+    { data: getDeptFieldTrend(snapshots, 'finance', ['ARPOB — Avg Revenue Per Occupied Bed (Rs.)', 'ARPOB — Avg Revenue Per Occupied Bed']), label: 'ARPOB', color: '#3b82f6' },
+    { data: getDeptFieldTrend(snapshots, 'emergency', ['# of genuine walk-in/ambulance emergencies (last 24h)', '# of genuine walk-in / ambulance emergencies (last 24h)']), label: 'ED Cases', color: '#f59e0b' },
+    { data: getDeptFieldTrend(snapshots, 'ot', ['Total cases done today', 'Total OT cases done today', '# of OT cases done (yesterday)']), label: 'OT Cases', color: '#8b5cf6' },
+    { data: getDeptFieldTrend(snapshots, 'finance', ['Midnight census — total IP patients']), label: 'IP Census', color: '#ec4899' },
   ].filter(t => t.data.length > 0);
 
   if (trends.length === 0) return null;

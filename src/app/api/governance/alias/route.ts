@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
       WHERE match_status IN ('unmatched','ambiguous') AND physician_name_raw IS NOT NULL
     `;
     let responsesUpdated = 0, filed = 0;
+    // Each governance slug maps to its autofile template group; the backfill must
+    // not collapse nursing/IPC/OPPE to 'ot' (autoFileGroup dispatches on this).
+    const SLUG_TO_GROUP: Record<string, string> = {
+      'ot': 'ot', 'customer-care': 'cc', 'nursing': 'nur', 'infection-control': 'ipc', 'oppe-observations': 'ms',
+    };
     for (const r of respRows.rows) {
       const rRaw = String(r.physician_name_raw);
       if (normName(splitSurgeons(rRaw)[0] || rRaw) !== norm) continue;
@@ -76,7 +81,7 @@ export async function POST(req: NextRequest) {
           physician_id: pid, physician_name: body.physician_name || null,
           surgeon_raw: rRaw, match_status: 'matched', case_ref: (g.case_ref as string) || null,
         };
-        const templateGroup = g.slug === 'customer-care' ? 'cc' : 'ot';
+        const templateGroup = SLUG_TO_GROUP[g.slug as string] ?? (g.slug as string);
         filed += await autoFileGroup(g.for_date as string, g.slug as string, templateGroup,
           (g.case_ref as string) || 'backfill', ctx, g.values as GroupValues, { name: (g.filler_name as string) || null, deviceId: null });
       }

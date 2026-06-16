@@ -29,8 +29,13 @@ export async function getOrCreateShift(date: string, shiftType: string): Promise
 }
 
 export async function getCurrentShift(): Promise<HKShiftRow | null> {
-  const date = getTodayIST();
   const shiftType = getCurrentShiftType();
+  // NIGHT spans 20:00-08:00; its post-midnight hours (00:00-08:00 IST) belong to
+  // the shift row created the previous calendar day, so look it up under yesterday.
+  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const date = (shiftType === 'NIGHT' && istNow.getUTCHours() < 8)
+    ? new Date(istNow.getTime() - 86400_000).toISOString().split('T')[0]
+    : getTodayIST();
   const result = await sql`
     SELECT * FROM hk_shifts WHERE date = ${date} AND shift_type = ${shiftType}
   `;

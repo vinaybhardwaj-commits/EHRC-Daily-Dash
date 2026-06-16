@@ -83,18 +83,14 @@ export default function Home() {
   }, [activeDept]);
 
   const fetchAllSnapshots = useCallback(async () => {
-    const res = await fetch('/api/days');
-    const data = await res.json();
-    const days: string[] = data.days || [];
-    const snapshots: DaySnapshot[] = [];
-    for (const day of days) {
-      try {
-        const r = await fetch(`/api/days?date=${day}`);
-        if (r.ok) snapshots.push(await r.json());
-      } catch { /* skip */ }
-    }
-    snapshots.sort((a, b) => a.date.localeCompare(b.date));
-    setAllSnapshots(snapshots);
+    try {
+      const res = await fetch('/api/days?all=1');
+      if (!res.ok) return;
+      const data = await res.json();
+      const snapshots: DaySnapshot[] = data.snapshots || [];
+      snapshots.sort((a, b) => a.date.localeCompare(b.date));
+      setAllSnapshots(snapshots);
+    } catch { /* skip */ }
   }, []);
 
   const syncFromSheets = useCallback(async () => {
@@ -115,16 +111,13 @@ export default function Home() {
           setSnapshot(await dayRes.json());
         }
 
-        const allDays: string[] = daysData.days || [];
-        const snaps: DaySnapshot[] = [];
-        for (const day of allDays) {
-          try {
-            const r = await fetch(`/api/days?date=${day}`);
-            if (r.ok) snaps.push(await r.json());
-          } catch { /* skip */ }
+        const allRes = await fetch('/api/days?all=1');
+        if (allRes.ok) {
+          const allData = await allRes.json();
+          const snaps: DaySnapshot[] = allData.snapshots || [];
+          snaps.sort((a, b) => a.date.localeCompare(b.date));
+          setAllSnapshots(snaps);
         }
-        snaps.sort((a, b) => a.date.localeCompare(b.date));
-        setAllSnapshots(snaps);
 
         if (data.datesUpdated === 0) {
           setSyncError('No new data found');

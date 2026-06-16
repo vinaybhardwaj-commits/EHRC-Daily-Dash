@@ -6,6 +6,25 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get('date');
 
+  // Bulk: all snapshots in ONE query (replaces 260 serial /api/days?date= round-trips).
+  if (req.nextUrl.searchParams.get('all')) {
+    const rows = await sql`
+      SELECT date, slug, name, tab, entries
+      FROM department_data
+      ORDER BY date ASC, slug ASC;
+    `;
+    const byDate = new Map<string, { date: string; departments: { name: string; slug: string; tab: string; entries: unknown }[]; huddleSummaries: never[]; updatedAt: string }>();
+    for (const row of rows.rows) {
+      const d = row.date as string;
+      if (!byDate.has(d)) byDate.set(d, { date: d, departments: [], huddleSummaries: [], updatedAt: '' });
+      byDate.get(d)!.departments.push({
+        name: row.name, slug: row.slug, tab: row.tab,
+        entries: typeof row.entries === 'string' ? JSON.parse(row.entries) : row.entries,
+      });
+    }
+    return NextResponse.json({ snapshots: Array.from(byDate.values()) });
+  }
+
   if (date) {
     // Fetch all department data for this date from Postgres
     const deptResult = await sql`

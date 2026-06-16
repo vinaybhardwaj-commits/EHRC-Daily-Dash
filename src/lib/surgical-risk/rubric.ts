@@ -246,6 +246,7 @@ export const PAC_ADVICE_POINTS: Record<string, number> = {
   NEEDS_WORK_UP_TESTS_ONLY: 2,
   NEEDS_WORK_UP_AND_SPECIALIST_CONSULTS: 3,
   NEED_TO_DISCUSS_WITH_SURGEON: 3,
+  UNFIT: 3,
   PAC_NOT_YET_DONE: 0,
 };
 
@@ -254,7 +255,8 @@ export const PAC_ADVICE_DETECT: Array<{ key: string; matches: string[] }> = [
   { key: 'NEEDS_WORK_UP_AND_SPECIALIST_CONSULTS', matches: ['specialist consult', 'work up and specialist'] },
   { key: 'NEEDS_WORK_UP_TESTS_ONLY', matches: ['needs further work up', 'needs work up', 'tests only'] },
   { key: 'PROVISIONALLY_FIT', matches: ['provisionally fit'] },
-  { key: 'FIT', matches: ['fit for surgery', ' fit', 'fit '] },
+  { key: 'UNFIT', matches: ['not fit', 'unfit', 'un fit'] },
+  { key: 'FIT', matches: ['fit for surgery'] },
   { key: 'PAC_NOT_YET_DONE', matches: ['pac not yet done', 'not yet done'] },
 ];
 

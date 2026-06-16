@@ -310,11 +310,17 @@ export function computeSystemRisk(form: SurgeryBookingPayload, rubric: RuntimeRu
   }
 
   // PAC ADVICE (independent from status)
-  const pacAdviceKey = findKeyByDetect(form.pac_advice || '', rubric.pac_advice_detect);
-  if (pacAdviceKey && rubric.pac_advice_points[pacAdviceKey] > 0) {
+  let pacAdviceKey = findKeyByDetect(form.pac_advice || '', rubric.pac_advice_detect);
+  // 'not fit' / 'unfit' must NEVER score as FIT — the FIT detect substrings
+  // ('fit for surgery', ' fit') falsely match the negation. Force UNFIT.
+  if (/\b(not fit|un ?fit)\b/.test(lc(form.pac_advice || ''))) pacAdviceKey = 'UNFIT';
+  const pacAdvicePoints = pacAdviceKey
+    ? (rubric.pac_advice_points[pacAdviceKey] ?? (pacAdviceKey === 'UNFIT' ? 3 : 0))
+    : 0;
+  if (pacAdviceKey && pacAdvicePoints > 0) {
     factors.push({
       factor: `PAC advice: ${pacAdviceKey.toLowerCase().replace(/_/g, ' ')}`,
-      points: rubric.pac_advice_points[pacAdviceKey],
+      points: pacAdvicePoints,
       detail: form.pac_advice || '',
     });
   }
