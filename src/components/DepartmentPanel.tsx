@@ -2,6 +2,7 @@
 
 import { DepartmentData } from '@/lib/types';
 import { FORM_DEFINITIONS, FormField, DepartmentFormDef } from '@/lib/form-definitions';
+import { normalizeEntries } from '@/lib/entry-fields';
 
 interface Props {
   dept: DepartmentData;
@@ -16,12 +17,12 @@ function getRadioBadgeColor(value: string): { bg: string; text: string } {
 }
 
 /** Check if any entry for this department has WhatsApp-sourced data */
-function hasWhatsAppData(entries: DepartmentData['entries']): boolean {
+function hasWhatsAppData(entries: { fields: Record<string, string | number> }[]): boolean {
   return entries.some(e => e.fields['_source'] === 'whatsapp');
 }
 
 /** Check if a specific field value came from WhatsApp source */
-function isWhatsAppField(entries: DepartmentData['entries'], fieldName: string): boolean {
+function isWhatsAppField(entries: { fields: Record<string, string | number> }[], fieldName: string): boolean {
   for (const entry of entries) {
     if (entry.fields['_source'] !== 'whatsapp') continue;
     if (entry.fields[fieldName] !== undefined) return true;
@@ -35,7 +36,7 @@ function isWhatsAppField(entries: DepartmentData['entries'], fieldName: string):
 }
 
 /** Get field metadata (sender, confidence, context) for a WhatsApp-sourced field */
-function getFieldMeta(entries: DepartmentData['entries'], fieldName: string): { sender?: string; confidence?: string; context?: string } | null {
+function getFieldMeta(entries: { fields: Record<string, string | number> }[], fieldName: string): { sender?: string; confidence?: string; context?: string } | null {
   for (const entry of entries) {
     if (entry.fields['_source'] !== 'whatsapp') continue;
     try {
@@ -47,7 +48,7 @@ function getFieldMeta(entries: DepartmentData['entries'], fieldName: string): { 
 }
 
 /** Source badge component */
-function SourceBadge({ fieldName, entries }: { fieldName: string; entries: DepartmentData['entries'] }) {
+function SourceBadge({ fieldName, entries }: { fieldName: string; entries: { fields: Record<string, string | number> }[] }) {
   if (!isWhatsAppField(entries, fieldName)) return null;
   const meta = getFieldMeta(entries, fieldName);
 
@@ -65,10 +66,12 @@ export default function DepartmentPanel({ dept }: Props) {
   // Merge all entries (form + whatsapp) into a combined fields object
   // Form entries take precedence; WhatsApp fills gaps
   const mergedFields: Record<string, string | number> = {};
-  const hasWA = hasWhatsAppData(dept.entries);
+  // Normalize both stored entry shapes ({date,fields} and web-form {key,value}) up front.
+  const entries = normalizeEntries(dept.entries);
+  const hasWA = hasWhatsAppData(entries);
 
   // First pass: form entries (no _source or _source !== 'whatsapp')
-  for (const entry of dept.entries) {
+  for (const entry of entries) {
     if (entry.fields['_source'] === 'whatsapp') continue;
     for (const [key, val] of Object.entries(entry.fields)) {
       if (!key.startsWith('_') && val !== undefined && val !== '') {
@@ -78,7 +81,7 @@ export default function DepartmentPanel({ dept }: Props) {
   }
 
   // Second pass: WhatsApp entries (only fill gaps)
-  for (const entry of dept.entries) {
+  for (const entry of entries) {
     if (entry.fields['_source'] !== 'whatsapp') continue;
     for (const [key, val] of Object.entries(entry.fields)) {
       if (!key.startsWith('_') && val !== undefined && val !== '' && mergedFields[key] === undefined) {
@@ -166,7 +169,7 @@ export default function DepartmentPanel({ dept }: Props) {
                 >
                   <p className="text-xs font-medium text-slate-500 uppercase tracking-wider leading-tight mb-2 line-clamp-2" title={item.fieldName}>
                     {item.fieldName}
-                    <SourceBadge fieldName={item.fieldName} entries={dept.entries} />
+                    <SourceBadge fieldName={item.fieldName} entries={entries} />
                   </p>
                   {isRadio ? (
                     <p className={`text-sm font-semibold ${badgeColor?.text}`}>{item.value}</p>
@@ -211,7 +214,7 @@ export default function DepartmentPanel({ dept }: Props) {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-800">
                           {field.name}
-                          <SourceBadge fieldName={fieldName} entries={dept.entries} />
+                          <SourceBadge fieldName={fieldName} entries={entries} />
                         </p>
                         {field.helper && (
                           <p className="text-xs text-slate-400 mt-0.5">{field.helper}</p>

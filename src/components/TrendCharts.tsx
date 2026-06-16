@@ -1,6 +1,7 @@
 'use client';
 
 import { DaySnapshot } from '@/lib/types';
+import { mergeEntryFields } from '@/lib/entry-fields';
 
 interface Props {
   snapshots: DaySnapshot[];
@@ -23,8 +24,10 @@ function getDeptFieldTrend(snapshots: DaySnapshot[], deptSlug: string, fieldName
   return snapshots
     .map(snapshot => {
       const dept = snapshot.departments.find(d => d.slug === deptSlug);
-      if (!dept?.entries.length) return null;
-      const val = extractNumeric(dept.entries[dept.entries.length - 1].fields[fieldName]);
+      if (!dept?.entries?.length) return null;
+      // Handle both stored entry shapes ({date,fields} and web-form {key,value}).
+      const fields = mergeEntryFields(dept.entries);
+      const val = extractNumeric(fields[fieldName]);
       return val !== null ? { date: snapshot.date, value: val } : null;
     })
     .filter((item): item is ChartDataPoint => item !== null);
