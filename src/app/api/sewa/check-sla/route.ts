@@ -85,11 +85,11 @@ export async function GET(request: Request) {
       `;
       const newTodayResult = await sql`
         SELECT COUNT(*) as cnt FROM sewa_requests
-        WHERE created_at >= ${today}::date;
+        WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ${today}::date;
       `;
       const resolvedTodayResult = await sql`
         SELECT COUNT(*) as cnt FROM sewa_requests
-        WHERE resolved_at >= ${today}::date AND status = 'RESOLVED';
+        WHERE (resolved_at AT TIME ZONE 'Asia/Kolkata')::date = ${today}::date AND status = 'RESOLVED';
       `;
       const breachedResult = await sql`
         SELECT target_dept, COUNT(*) as cnt

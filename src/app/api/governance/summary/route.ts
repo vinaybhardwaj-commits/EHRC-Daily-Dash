@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       SELECT
         (SELECT count(*)::int FROM governance_responses WHERE for_date = ${date}) AS responses,
         (SELECT count(DISTINCT physician_id)::int FROM governance_responses WHERE for_date = ${date} AND physician_id IS NOT NULL) AS physicians,
-        (SELECT count(*)::int FROM governance_outbox WHERE status = 'sent' AND sent_at::date = ${date}::date) AS filed,
+        (SELECT count(*)::int FROM governance_outbox WHERE status = 'sent' AND (sent_at AT TIME ZONE 'Asia/Kolkata')::date = ${date}::date) AS filed,
         (SELECT count(*)::int FROM governance_outbox WHERE status IN ('pending','failed')) AS queued,
         (SELECT count(*)::int FROM governance_watchlist WHERE status = 'open') AS watch_open,
         (SELECT count(*)::int FROM governance_watchlist WHERE status = 'escalated') AS watch_escalated,

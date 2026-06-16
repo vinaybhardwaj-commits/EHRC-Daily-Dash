@@ -110,7 +110,7 @@ export function computePatientRisk(form: SurgeryBookingPayload, rubric: RuntimeR
   const comorbText = form.comorbidities || '';
   const detectedComorbs = new Set<string>();
   for (const entry of rubric.comorbidity_detect) {
-    if (entry.matches.some(m => lc(comorbText).includes(m))) {
+    if (entry.matches.some(m => lc(comorbText).includes(m.toLowerCase()))) {
       detectedComorbs.add(entry.key);
     }
   }
@@ -147,7 +147,7 @@ export function computePatientRisk(form: SurgeryBookingPayload, rubric: RuntimeR
   const habitText = form.habits || '';
   const detectedHabits = new Set<string>();
   for (const entry of rubric.habit_detect) {
-    if (entry.matches.some(m => lc(habitText).includes(m))) {
+    if (entry.matches.some(m => lc(habitText).includes(m.toLowerCase()))) {
       detectedHabits.add(entry.key);
     }
   }
@@ -174,7 +174,7 @@ export function computePatientRisk(form: SurgeryBookingPayload, rubric: RuntimeR
   // ≥3 distinct comorbidities (use RAW count BEFORE HTN+DM merging, since the
   // PRD says "≥ 3 distinct conditions present")
   const rawCount = rubric.comorbidity_detect.filter(e =>
-    e.matches.some(m => lc(comorbText).includes(m))
+    e.matches.some(m => lc(comorbText).includes(m.toLowerCase()))
   ).length;
   if (rawCount >= rubric.complexity_multiplier_threshold) {
     factors.push({

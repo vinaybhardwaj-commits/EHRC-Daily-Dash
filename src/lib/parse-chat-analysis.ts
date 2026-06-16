@@ -235,7 +235,7 @@ export function parseChatAnalysisMd(content: string): ChatAnalysisResult {
         slug: entry.slug,
         tab: deptInfo?.tab || entry.slug,
         entries: [{
-          timestamp: `${entry.date}T${entry.sourceTime || '00:00'}:00.000Z`,
+          timestamp: `${entry.date}T${entry.sourceTime || '00:00'}:00.000+05:30`,
           date: entry.date,
           fields: {},
         }],
@@ -285,7 +285,7 @@ export function parseChatAnalysisMd(content: string): ChatAnalysisResult {
         slug: issueSlug,
         tab: deptInfo?.tab || issueSlug,
         entries: [{
-          timestamp: `${issue.date}T${issue.sourceTime || '00:00'}:00.000Z`,
+          timestamp: `${issue.date}T${issue.sourceTime || '00:00'}:00.000+05:30`,
           date: issue.date,
           fields: { '_source': 'whatsapp' },
         }],
