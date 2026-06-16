@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { sendWhatsApp } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,37 +77,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'No phone number configured for this department. Please add it in Admin > Contacts.' }, { status: 400 });
       }
 
-      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-      const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
-      const twilioFrom = process.env.TWILIO_WHATSAPP_FROM;
+      const waResult = await sendWhatsApp(contact.phone, messageBody.replace(/\*/g, ''));
 
-      if (!twilioSid || !twilioAuth || !twilioFrom) {
-        return NextResponse.json({ error: 'Twilio WhatsApp not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_FROM in environment variables.' }, { status: 500 });
+      if (!waResult.success) {
+        return NextResponse.json({ error: 'WhatsApp send failed', details: waResult.error }, { status: 500 });
       }
 
-      const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
-      const twilioBody = new URLSearchParams({
-        From: `whatsapp:${twilioFrom}`,
-        To: `whatsapp:${contact.phone}`,
-        Body: messageBody.replace(/\*/g, ''),
-      });
-
-      const twilioRes = await fetch(twilioUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(`${twilioSid}:${twilioAuth}`).toString('base64'),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: twilioBody.toString(),
-      });
-
-      const twilioResult = await twilioRes.json();
-
-      if (!twilioRes.ok) {
-        return NextResponse.json({ error: 'WhatsApp send failed', details: twilioResult }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, channel: 'whatsapp', to: contact.phone, sid: twilioResult.sid });
+      return NextResponse.json({ success: true, channel: 'whatsapp', to: contact.phone, sid: waResult.sid });
 
     } else {
       return NextResponse.json({ error: 'Invalid channel. Use "email" or "whatsapp".' }, { status: 400 });

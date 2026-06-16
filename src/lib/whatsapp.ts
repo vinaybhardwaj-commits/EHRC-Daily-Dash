@@ -1,33 +1,24 @@
 // ═══════════════════════════════════════════════════════════════════
-// WhatsApp Notification Utility via Twilio
-// Lazy-init pattern (same as Resend) to avoid build-time env crashes
+// WhatsApp Notification Utility via WaSenderAPI
+// Unofficial WhatsApp API (own linked number, Bearer-token REST send).
+// Env is read lazily inside sendWhatsApp to avoid build-time crashes.
 // ═══════════════════════════════════════════════════════════════════
 
-import twilio from 'twilio';
+const WASENDER_SEND_URL =
+  process.env.WASENDER_API_URL || 'https://www.wasenderapi.com/api/send-message';
 
-// Lazy-init: must NOT create client at module scope
-function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) {
-    throw new Error('Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN');
-  }
-  return twilio(sid, token);
-}
-
-function getFromNumber(): string {
-  return process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+// WaSenderAPI wants the recipient in plain E.164 (no Twilio 'whatsapp:' prefix).
+function normalizeRecipient(to: string): string {
+  return to.trim().replace(/^whatsapp:/i, '').replace(/\s+/g, '');
 }
 
 // ── Notification recipients ──────────────────────────────────────
-// V's number (sandbox-connected) — add more as they join sandbox
-const ADMIN_PHONES = ['whatsapp:+916362191675'];
+// Admin recipient(s) in plain E.164. (Same number is linked as the WaSender sender.)
+const ADMIN_PHONES = ['+916362191675'];
 
-// Department head WhatsApp numbers (add as they join sandbox)
-// For now, all notifications go to admin
+// Department head WhatsApp numbers in plain E.164.
 const DEPT_HEAD_PHONES: Record<string, string> = {
-  // 'emergency': 'whatsapp:+91XXXXXXXXXX',
-  // Add department heads as they join the Twilio sandbox
+  // 'emergency': '+91XXXXXXXXXX',
 };
 
 export interface WhatsAppResult {
@@ -42,14 +33,30 @@ export async function sendWhatsApp(
   to: string,
   body: string
 ): Promise<WhatsAppResult> {
+  const apiKey = process.env.WASENDER_API_KEY;
+  if (!apiKey) {
+    const error = 'Missing WASENDER_API_KEY';
+    console.error(`[WhatsApp] ${error}`);
+    return { success: false, error };
+  }
   try {
-    const client = getTwilioClient();
-    const message = await client.messages.create({
-      from: getFromNumber(),
-      to,
-      body,
+    const res = await fetch(WASENDER_SEND_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to: normalizeRecipient(to), text: body }),
     });
-    return { success: true, sid: message.sid };
+    const data = (await res.json().catch(() => null)) as
+      | { success?: boolean; data?: { msgId?: number | string; status?: string }; message?: string }
+      | null;
+    if (!res.ok || !data?.success) {
+      const error = data?.message || `WaSenderAPI HTTP ${res.status}`;
+      console.error(`[WhatsApp] Failed to send to ${to}:`, error);
+      return { success: false, error };
+    }
+    return { success: true, sid: data.data?.msgId != null ? String(data.data.msgId) : undefined };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error(`[WhatsApp] Failed to send to ${to}:`, errorMsg);
