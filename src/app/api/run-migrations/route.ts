@@ -367,6 +367,51 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_sra_removed_at ON surgical_risk_assessments(removed_at)`,
     ],
   },
+  {
+    version: 16,
+    name: 'create_adaptive_form_questions',
+    statements: [
+      // F.0 — Adaptive Forms Intelligence foundation. The nightly Gemini-Pro
+      // gap-analysis (F.1) writes candidate questions here; the form renderer
+      // (F.2) injects open ones into the right HOD's daily form. field_spec is a
+      // full SmartFormField (any of the engine's 16 types). No rows are created
+      // until F.1 ships AND ADAPTIVE_FORMS_ENABLED=1 — this migration is inert
+      // scaffolding.
+      `CREATE TABLE IF NOT EXISTS adaptive_form_questions (
+        id SERIAL PRIMARY KEY,
+        dept_slug TEXT NOT NULL,
+        field_spec JSONB NOT NULL,
+        rationale TEXT,
+        priority INTEGER NOT NULL DEFAULT 3,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','answered','expired','retired')),
+        recurrence TEXT NOT NULL DEFAULT 'until_answered' CHECK (recurrence IN ('once','until_answered')),
+        first_shown_date DATE,
+        last_shown_date DATE,
+        days_shown INTEGER NOT NULL DEFAULT 0,
+        answered_date DATE,
+        answer_value JSONB,
+        dedupe_key TEXT,
+        source TEXT NOT NULL DEFAULT 'gap_analysis',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_afq_dept_status ON adaptive_form_questions(dept_slug, status)`,
+      `CREATE INDEX IF NOT EXISTS idx_afq_status ON adaptive_form_questions(status)`,
+      // One OPEN question per (dept, gap) — stops the nightly job re-asking the same gap.
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_afq_open_dedupe ON adaptive_form_questions(dept_slug, dedupe_key) WHERE status = 'open' AND dedupe_key IS NOT NULL`,
+      // Immutable audit of every lifecycle event (actor = 'even-ai' or an admin).
+      `CREATE TABLE IF NOT EXISTS adaptive_question_events (
+        id SERIAL PRIMARY KEY,
+        question_id INTEGER REFERENCES adaptive_form_questions(id) ON DELETE CASCADE,
+        event TEXT NOT NULL,
+        actor TEXT NOT NULL DEFAULT 'even-ai',
+        detail JSONB,
+        at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_aqe_question ON adaptive_question_events(question_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_aqe_at ON adaptive_question_events(at)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
