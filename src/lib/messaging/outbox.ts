@@ -4,6 +4,15 @@ import { sendWhatsApp } from '@/lib/whatsapp';
 // WaSender 'account protection' allows 1 message / 5 seconds. Default to 6s
 // spacing to stay under it; tune via MSG_SEND_SPACING_MS.
 const SEND_SPACING_MS = Number(process.env.MSG_SEND_SPACING_MS || 6000);
+const DAILY_CAP = Number(process.env.MSG_DAILY_CAP || 25); // per-number runaway guard
+function istHour(): number { return new Date(Date.now() + 5.5 * 3600_000).getUTCHours(); }
+function inQuietHours(): boolean {
+  const s = process.env.MSG_QUIET_START, e = process.env.MSG_QUIET_END;
+  if (s === undefined || e === undefined) return false;
+  const start = Number(s), end = Number(e), h = istHour();
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  return start <= end ? (h >= start && h < end) : (h >= start || h < end);
+}
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 export interface EnqueueArgs {
@@ -41,6 +50,8 @@ interface ClaimRow {
 
 /** Claim due pending rows atomically (safe under concurrent drains) and send them. */
 export async function drainOutbox(limit = 20): Promise<DrainResult> {
+  // Quiet hours: leave messages pending until the window ends (config-gated).
+  if (inQuietHours()) return { claimed: 0, sent: 0, failed: 0, retried: 0 };
   const claimed = await sql`
     UPDATE notification_outbox o SET status = 'sending', claimed_at = NOW()
     WHERE o.id IN (
@@ -57,6 +68,16 @@ export async function drainOutbox(limit = 20): Promise<DrainResult> {
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+    // Per-number daily cap (ban-safety runaway guard).
+    if (DAILY_CAP > 0) {
+      const c = await sql`SELECT count(*)::int AS n FROM notification_outbox
+        WHERE to_address = ${row.to_address} AND status IN ('sent','delivered','read')
+          AND sent_at > NOW() - INTERVAL '20 hours'`;
+      if ((c.rows[0]?.n as number ?? 0) >= DAILY_CAP) {
+        await sql`UPDATE notification_outbox SET status='skipped', last_error='daily cap', claimed_at=NULL WHERE id=${row.id}`;
+        continue;
+      }
+    }
     let ok = false, err = '';
     let providerId: string | undefined;
     try {
@@ -110,5 +131,7 @@ export async function outboxStatus() {
   const counts = await sql`SELECT status, count(*)::int AS n FROM notification_outbox GROUP BY status ORDER BY status`;
   const recent = await sql`SELECT event_type, channel, status, provider_msg_id, detail, at
                            FROM notification_log ORDER BY at DESC LIMIT 10`;
-  return { byStatus: counts.rows, recentLog: recent.rows };
+  const today = await sql`SELECT status, count(*)::int AS n FROM notification_log
+                          WHERE at > NOW() - INTERVAL '20 hours' GROUP BY status ORDER BY status`;
+  return { byStatus: counts.rows, today: today.rows, recentLog: recent.rows };
 }

@@ -21,6 +21,7 @@ export default function MessagingAdmin() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [log, setLog] = useState<LogRow[]>([]);
   const [byStatus, setByStatus] = useState<{ status: string; n: number }[]>([]);
+  const [today, setToday] = useState<{ status: string; n: number }[]>([]);
   const [flash, setFlash] = useState('');
   const [testTo, setTestTo] = useState('');
 
@@ -31,7 +32,7 @@ export default function MessagingAdmin() {
     try {
       const r = await (await fetch('/api/messaging/recipients')).json(); setRecipients(r.recipients || []);
       const t = await (await fetch('/api/messaging/templates')).json(); setTemplates(t.templates || []);
-      const s = await (await fetch('/api/notifications/status')).json(); setLog(s.recentLog || []); setByStatus(s.byStatus || []);
+      const s = await (await fetch('/api/notifications/status')).json(); setLog(s.recentLog || []); setByStatus(s.byStatus || []); setToday(s.today || []);
     } catch { /* ignore */ }
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -94,8 +95,9 @@ export default function MessagingAdmin() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white border rounded-lg p-3"><div className="text-2xl font-bold text-emerald-600">{verified}/{hods.length}</div><div className="text-xs text-slate-500">HODs with verified number</div></div>
-        {byStatus.map(s => <div key={s.status} className="bg-white border rounded-lg p-3"><div className="text-2xl font-bold text-slate-800">{s.n}</div><div className="text-xs text-slate-500 capitalize">{s.status}</div></div>)}
+        {byStatus.map(s => <div key={s.status} className="bg-white border rounded-lg p-3"><div className="text-2xl font-bold text-slate-800">{s.n}</div><div className="text-xs text-slate-500 capitalize">{s.status} (all-time)</div></div>)}
       </div>
+      {today.length > 0 && <div className="text-xs text-slate-500">Today: {today.map(t => `${t.n} ${t.status}`).join(' · ')}</div>}
 
       <section>
         <h2 className="font-semibold text-slate-800 mb-2">Schedule (Mon–Sat, IST)</h2>
