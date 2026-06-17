@@ -112,3 +112,57 @@ export async function retireQuestion(id: number, actor: string): Promise<boolean
   await recordEvent(id, 'retired_by_admin', actor);
   return true;
 }
+
+/* ── F.1 — gap-analysis writes ───────────────────────────────────── */
+
+export interface NewQuestion {
+  dept_slug: string;
+  field_spec: SmartFormField;
+  rationale: string;
+  priority: number;
+  recurrence: AdaptiveRecurrence;
+  dedupe_key: string;
+  source?: string;
+}
+
+/**
+ * Insert one generated question. Idempotent on the partial unique index
+ * (dept_slug, dedupe_key) WHERE status='open' — a re-asked open gap is a no-op.
+ * Returns the new id, or null if it conflicted (already open).
+ */
+export async function insertQuestion(q: NewQuestion): Promise<number | null> {
+  const res = await sql`
+    INSERT INTO adaptive_form_questions
+      (dept_slug, field_spec, rationale, priority, recurrence, dedupe_key, source)
+    VALUES (
+      ${q.dept_slug}, ${JSON.stringify(q.field_spec)}::jsonb, ${q.rationale},
+      ${q.priority}, ${q.recurrence}, ${q.dedupe_key}, ${q.source ?? 'gap_analysis'}
+    )
+    ON CONFLICT (dept_slug, dedupe_key) WHERE status = 'open' DO NOTHING
+    RETURNING id`;
+  const id = res.rows[0]?.id as number | undefined;
+  if (id) await recordEvent(id, 'published', 'even-ai', { dept: q.dept_slug, dedupe_key: q.dedupe_key });
+  return id ?? null;
+}
+
+/** How many questions are currently OPEN for a department (flood guard). */
+export async function countOpenByDept(slug: string): Promise<number> {
+  const res = await sql`
+    SELECT COUNT(*)::int AS n FROM adaptive_form_questions
+    WHERE dept_slug = ${slug} AND status = 'open'`;
+  return Number(res.rows[0]?.n ?? 0);
+}
+
+/**
+ * Dedupe keys for a dept that were recently answered/expired/retired — so the
+ * nightly job doesn't immediately re-ask a gap that was just resolved.
+ */
+export async function recentlyResolvedDedupeKeys(slug: string, days = 14): Promise<Set<string>> {
+  const res = await sql`
+    SELECT DISTINCT dedupe_key FROM adaptive_form_questions
+    WHERE dept_slug = ${slug}
+      AND dedupe_key IS NOT NULL
+      AND status IN ('answered','expired','retired')
+      AND updated_at > NOW() - make_interval(days => ${days})`;
+  return new Set(res.rows.map(r => r.dedupe_key as string));
+}

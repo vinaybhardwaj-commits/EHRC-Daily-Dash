@@ -67,6 +67,10 @@
     {
       "path": "/api/messaging/run?step=escalation",
       "schedule": "15 4 * * 1-6"
+    },
+    {
+      "path": "/api/ai-intelligence/gap-analysis",
+      "schedule": "0 18 * * *"
     }
   ],
   "git": {
