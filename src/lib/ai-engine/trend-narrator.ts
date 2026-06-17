@@ -3,7 +3,7 @@
    Falls back to template-based narratives if LLM unavailable
    ────────────────────────────────────────────────────────────────── */
 
-import { llm, LLM_MODELS, routedChat, geminiConfigured } from '@/lib/llm';
+import { llm, LLM_MODELS, routedChat, geminiConfigured, isTierOnGemini } from '@/lib/llm';
 import type { DepartmentTrendData, FieldTrend } from './trend-analyzer';
 
 export interface TrendNarrative {
@@ -203,9 +203,11 @@ Rules:
 export async function generateAllNarratives(
   trendData: DepartmentTrendData[]
 ): Promise<TrendNarrative[]> {
-  // Run in parallel but with a small batch size to not overwhelm Qwen
+  // Run in parallel. On the single Mac Mini, keep the batch small so we don't
+  // overwhelm Qwen; on Vertex/Gemini (no single-box bottleneck) widen it so the
+  // per-department narratives complete much closer to a single call's latency.
   const results: TrendNarrative[] = [];
-  const batchSize = 3;
+  const batchSize = isTierOnGemini('utility') ? 8 : 3;
 
   for (let i = 0; i < trendData.length; i += batchSize) {
     const batch = trendData.slice(i, i + batchSize);

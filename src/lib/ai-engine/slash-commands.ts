@@ -4,7 +4,7 @@
    ────────────────────────────────────────────────────────────────── */
 
 import { sql } from '@vercel/postgres';
-import { llm, LLM_MODELS } from '@/lib/llm';
+import { llm, LLM_MODELS, routedChat, geminiConfigured } from '@/lib/llm';
 import { analyzeDepartmentTrends, type DepartmentTrendData } from './trend-analyzer';
 import { runCorrelationAnalysis } from './correlation-engine';
 
@@ -119,11 +119,10 @@ async function handleBriefing(date: string): Promise<SlashCommandResult> {
       return { slug: d.form_slug, name, criticals, highs, total: anomalies.length, status: d.status };
     }).filter(d => d.total > 0);
 
-    // 4. Try Qwen for executive narrative
-    const client = llm();
+    // 4. Try the LLM (utility tier → Flash when on) for the executive narrative
     let narrative: string;
 
-    if (client && deptSummaries.length > 0) {
+    if ((llm() || geminiConfigured()) && deptSummaries.length > 0) {
       try {
         const deptLines = deptSummaries.map(d =>
           `${d.name}: ${d.total} anomalies (${d.criticals} critical, ${d.highs} high) — ${d.status}`
@@ -144,7 +143,7 @@ ${corrLines}
 
 Format: Start with a 1-line overall status (green/amber/red day), then list top 3-5 items needing GM attention, then any positive notes. Keep it under 200 words.`;
 
-        const response = await client.chat.completions.create({
+        const response = await routedChat('utility', {
           model: LLM_MODELS.FAST,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.3,
@@ -360,11 +359,10 @@ async function handlePredict(slug: string, date: string): Promise<SlashCommandRe
 
     const name = DEPT_NAMES[slug] || slug;
 
-    // Try Qwen for prediction
-    const client = llm();
+    // Try the LLM (utility tier → Flash when on) for the prediction
     let prediction: string = '';
 
-    if (client) {
+    if (llm() || geminiConfigured()) {
       try {
         const trendLines = trends.trends.map(t =>
           `${t.label}: ${t.direction} (${t.change_pct > 0 ? '+' : ''}${t.change_pct}%), streak=${t.streak}d, current=${t.current}, avg=${t.avg}`
@@ -386,7 +384,7 @@ ${corrLines}
 
 Format: 3-5 bullet predictions, each starting with a risk level emoji (🔴 high risk, 🟡 watch, 🟢 positive). Keep under 150 words.`;
 
-        const response = await client.chat.completions.create({
+        const response = await routedChat('utility', {
           model: LLM_MODELS.FAST,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.3,

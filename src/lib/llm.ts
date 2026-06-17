@@ -100,6 +100,14 @@ function geminiModelForTier(tier: LlmTier): string | undefined {
   return all || process.env.GEMINI_UTILITY === '1' ? GEMINI_FLASH_MODEL : undefined;
 }
 
+/**
+ * True if this tier currently routes to Gemini (configured + flagged on). Call
+ * sites use this to widen concurrency when there's no single-Mac-Mini bottleneck.
+ */
+export function isTierOnGemini(tier: LlmTier): boolean {
+  return !!geminiModelForTier(tier);
+}
+
 type ChatParams = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
 type ChatResult = OpenAI.Chat.Completions.ChatCompletion;
 
