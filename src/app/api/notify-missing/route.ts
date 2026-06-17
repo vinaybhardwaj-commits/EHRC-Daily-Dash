@@ -5,6 +5,7 @@ import { SHEET_TAB_MAP, getSheetCsvUrl } from '@/lib/sheets-config';
 import { DEPARTMENT_CONTACTS, CONTACTS_BY_SLUG } from '@/lib/department-contacts';
 import Papa from 'papaparse';
 import { notifyAdmins, buildMissingDeptMessage } from '@/lib/whatsapp';
+import { messagingEnabled } from '@/lib/messaging/notify';
 
 // Lazy-init: Resend client must NOT be created at module scope because
 // process.env.RESEND_API_KEY is unavailable during the Next.js build step.
@@ -209,8 +210,11 @@ export async function GET(request: Request) {
           notified: false,
         });
       } else if (resolvedContact) {
-        // Send reminder email
-        const emailResult = await sendReminderEmail(resolvedContact, today, slug);
+        // HOD reminder email — retired once the WhatsApp engine is live (MESSAGING_ENABLED).
+        // Until then it keeps running so there is no reminder gap during rollout.
+        const emailResult = messagingEnabled()
+          ? { success: false, error: 'email retired (WhatsApp engine enabled)' }
+          : await sendReminderEmail(resolvedContact, today, slug);
         results.push({
           slug,
           department: resolvedContact.department,
