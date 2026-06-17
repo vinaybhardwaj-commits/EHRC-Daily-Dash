@@ -7,7 +7,7 @@ import { drainOutbox } from '@/lib/messaging/outbox';
 import { CONTACTS_BY_SLUG } from '@/lib/department-contacts';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const FORM_BASE = process.env.MSG_FORM_BASE || 'https://ehrc.evenos.app/form';
 

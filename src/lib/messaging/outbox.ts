@@ -1,7 +1,9 @@
 import { sql } from '@vercel/postgres';
 import { sendWhatsApp } from '@/lib/whatsapp';
 
-const SEND_SPACING_MS = Number(process.env.MSG_SEND_SPACING_MS || 1200);
+// WaSender 'account protection' allows 1 message / 5 seconds. Default to 6s
+// spacing to stay under it; tune via MSG_SEND_SPACING_MS.
+const SEND_SPACING_MS = Number(process.env.MSG_SEND_SPACING_MS || 6000);
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 export interface EnqueueArgs {
