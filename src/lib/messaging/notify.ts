@@ -19,6 +19,7 @@ export interface NotifyOpts {
   vars?: Record<string, string | number>;               // shared template vars
   perRecipientVars?: (r: Recipient) => Record<string, string | number>;
   dedupSuffix?: string;                                  // appended to dedup key (e.g. the date)
+  templateKey?: string;                                 // override the event's template
   force?: boolean;                                       // bypass enabled/flag (controlled test paths)
 }
 
@@ -42,7 +43,7 @@ export async function notify(eventType: string, opts: NotifyOpts = {}): Promise<
     return { skipped: 'disabled', enqueued: 0, recipients: 0 };
   }
 
-  const templateKey = ev.template_key || eventType;
+  const templateKey = opts.templateKey || ev.template_key || eventType;
   const recips = opts.recipients ?? await getRecipientsByRole(ev.audience as RecipientRole);
 
   let enqueued = 0;

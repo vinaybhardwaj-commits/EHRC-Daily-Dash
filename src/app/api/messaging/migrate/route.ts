@@ -10,6 +10,7 @@ const ADMIN_E164 = '+916362191675';
 const FORM_LINK_BODY = 'Good morning {{name}}.\nPlease submit the *{{department}}* daily form for {{date}}:\n{{link}}';
 const NUDGE_BODY = 'Reminder: the *{{department}}* daily form for {{date}} has not been submitted yet.\nSubmit now: {{link}}';
 const ESCALATION_BODY = '*EHRC — Missing submissions ({{date}})*\n{{n}}/{{total}} departments still pending:\n{{missing_list}}';
+const STALE_BODY = 'Your *{{department}}* daily form is overdue — no submission for the last *{{days}} days* (including today).\nPlease update it now: {{link}}';
 
 async function createTables() {
   await sql`CREATE TABLE IF NOT EXISTS notification_recipients (
@@ -105,6 +106,7 @@ async function seed() {
   for (const [key, body] of [
     ['form_link', FORM_LINK_BODY],
     ['form_nudge', NUDGE_BODY],
+    ['form_stale', STALE_BODY],
     ['escalation_missing', ESCALATION_BODY],
   ] as const) {
     await sql`
