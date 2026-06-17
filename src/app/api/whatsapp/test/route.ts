@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 /**
  * GET /api/whatsapp/test?to=+916362191675&msg=Hello
@@ -8,6 +9,7 @@ import { sendWhatsApp } from '@/lib/whatsapp';
  * Only works when WASENDER_API_KEY is set and a WhatsApp session is connected.
  */
 export async function GET(request: Request) {
+  if (!isAuthorizedCron(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const url = new URL(request.url);
   const to = url.searchParams.get('to') || '+916362191675';
   const msg = url.searchParams.get('msg') || `*EHRC Dashboard Test*\n\nWhatsApp integration is working!\nTimestamp: ${new Date().toISOString()}`;

@@ -5,6 +5,7 @@ import {
   buildDailySummaryMessage,
 } from '@/lib/whatsapp';
 import { SEWA_DEPARTMENTS } from '@/lib/sewa-config';
+import { isAuthorizedCron } from '@/lib/cron-auth';
 
 /**
  * GET /api/sewa/check-sla
@@ -17,6 +18,7 @@ import { SEWA_DEPARTMENTS } from '@/lib/sewa-config';
  *   - mode: 'breach' (check for new breaches) | 'summary' (daily summary) | 'both' (default)
  */
 export async function GET(request: Request) {
+  if (!isAuthorizedCron(request)) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const url = new URL(request.url);
   const mode = url.searchParams.get('mode') || 'both';
 
