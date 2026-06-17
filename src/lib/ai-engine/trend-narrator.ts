@@ -3,7 +3,7 @@
    Falls back to template-based narratives if LLM unavailable
    ────────────────────────────────────────────────────────────────── */
 
-import { llm, LLM_MODELS } from '@/lib/llm';
+import { llm, LLM_MODELS, routedChat, geminiConfigured } from '@/lib/llm';
 import type { DepartmentTrendData, FieldTrend } from './trend-analyzer';
 
 export interface TrendNarrative {
@@ -114,8 +114,8 @@ export async function generateTrendNarrative(data: DepartmentTrendData): Promise
     return generateTemplateNarrative(data);
   }
 
-  const client = llm();
-  if (!client) {
+  // Need at least one backend (local Ollama OR Vertex/Gemini); else template fallback.
+  if (!llm() && !geminiConfigured()) {
     return generateTemplateNarrative(data);
   }
 
@@ -154,7 +154,8 @@ Rules:
 - Be specific about numbers and percentages
 - Write for a hospital GM who needs actionable insights`;
 
-    const response = await client.chat.completions.create({
+    // Utility tier → Gemini 2.5-flash when flagged on, else Ollama (soft-fail safe).
+    const response = await routedChat('utility', {
       model: LLM_MODELS.FAST,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
