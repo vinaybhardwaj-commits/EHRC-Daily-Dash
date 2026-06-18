@@ -59,16 +59,36 @@ export async function GET(req: NextRequest) {
   const n = Math.min(Math.max(Number(url.searchParams.get('n')) || 5, 1), 8);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
 
-  // Genuine qwen-scored rows only (skip deterministic fallbacks), most recent first.
-  const rows = (await sql`
-    SELECT id, risk_tier, llm_model, raw_form_data
+  // Population by stored tier (so we know how many RED/CRITICAL exist to test).
+  const population = (await sql`
+    SELECT risk_tier, COUNT(*)::int AS n
     FROM surgical_risk_assessments
-    WHERE raw_form_data IS NOT NULL
-      AND removed_at IS NULL
+    WHERE raw_form_data IS NOT NULL AND removed_at IS NULL
       AND (llm_model IS NULL OR llm_model NOT LIKE 'fallback%')
-    ORDER BY submission_timestamp DESC
-    LIMIT ${n} OFFSET ${offset}
+    GROUP BY risk_tier
   `).rows;
+
+  // Genuine qwen-scored rows, most recent first. Optional ?tier=RED,CRITICAL
+  // targets specific stored tiers (string_to_array keeps params Primitive-typed).
+  const tierParam = (url.searchParams.get('tier') || '').trim().toUpperCase();
+  const rows = tierParam
+    ? (await sql.query(
+        `SELECT id, risk_tier, llm_model, raw_form_data
+         FROM surgical_risk_assessments
+         WHERE raw_form_data IS NOT NULL AND removed_at IS NULL
+           AND (llm_model IS NULL OR llm_model NOT LIKE 'fallback%')
+           AND risk_tier = ANY(string_to_array($1, ','))
+         ORDER BY submission_timestamp DESC LIMIT $2 OFFSET $3`,
+        [tierParam, n, offset],
+      )).rows
+    : (await sql`
+        SELECT id, risk_tier, llm_model, raw_form_data
+        FROM surgical_risk_assessments
+        WHERE raw_form_data IS NOT NULL AND removed_at IS NULL
+          AND (llm_model IS NULL OR llm_model NOT LIKE 'fallback%')
+        ORDER BY submission_timestamp DESC
+        LIMIT ${n} OFFSET ${offset}
+      `).rows;
 
   const config = await getActiveConfig();
   const systemPrompt = config?.system_prompt ?? SREWS_SYSTEM_PROMPT;
@@ -118,5 +138,5 @@ export async function GET(req: NextRequest) {
     less_safe_disagreements: results.filter(r => r.direction === 'less_safe').length,
   };
 
-  return NextResponse.json({ offset, model: GEMINI_MODEL, summary, results });
+  return NextResponse.json({ offset, model: GEMINI_MODEL, population, summary, results });
 }
