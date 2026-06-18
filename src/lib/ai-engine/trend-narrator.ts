@@ -121,13 +121,12 @@ export async function generateTrendNarrative(data: DepartmentTrendData): Promise
     return generateTemplateNarrative(data);
   }
 
-  try {
-    const trendSummaries = data.trends.map(t => {
-      const arrow = t.direction === 'rising' ? '↑' : t.direction === 'falling' ? '↓' : t.direction === 'volatile' ? '~' : '→';
-      return `${t.label}: ${arrow} ${t.direction} (${t.change_pct > 0 ? '+' : ''}${t.change_pct}%), current=${t.current}, avg=${t.avg}, streak=${t.streak}d, values=[${t.values.join(',')}]`;
-    }).join('\n');
+  const trendSummaries = data.trends.map(t => {
+    const arrow = t.direction === 'rising' ? '↑' : t.direction === 'falling' ? '↓' : t.direction === 'volatile' ? '~' : '→';
+    return `${t.label}: ${arrow} ${t.direction} (${t.change_pct > 0 ? '+' : ''}${t.change_pct}%), current=${t.current}, avg=${t.avg}, streak=${t.streak}d, values=[${t.values.join(',')}]`;
+  }).join('\n');
 
-    const prompt = `You are a hospital operations analyst at EHRC (Even Hospital Race Course Road).
+  const prompt = `You are a hospital operations analyst at EHRC (Even Hospital Race Course Road).
 Analyze these ${data.data_days_available}-day trends for ${data.department_name} and generate a JSON response.
 
 TREND DATA:
@@ -156,47 +155,51 @@ Rules:
 - Be specific about numbers and percentages
 - Write for a hospital GM who needs actionable insights`;
 
-    // Utility tier → Gemini 2.5-flash when flagged on, else Ollama (soft-fail safe).
-    const response = await routedChat('utility', {
-      model: LLM_MODELS.FAST,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-      max_tokens: 600,
-    });
-
-    const content = response.choices[0]?.message?.content || '';
-
-    // Parse JSON
-    let cleaned = content.replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
-    const objMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (objMatch) cleaned = objMatch[0];
-
-    const parsed = JSON.parse(cleaned);
-
-    if (parsed.summary && Array.isArray(parsed.highlights)) {
-      return {
-        slug: data.slug,
-        department_name: data.department_name,
-        summary: String(parsed.summary),
-        highlights: parsed.highlights.slice(0, 5).map((h: Record<string, unknown>) => ({
-          field: String(h.field || ''),
-          label: String(h.label || ''),
-          direction: data.trends.find(t => t.field === h.field)?.direction || 'stable',
-          severity: ['good', 'warning', 'concern', 'neutral'].includes(String(h.severity))
-            ? String(h.severity) as TrendHighlight['severity']
-            : 'neutral',
-          text: String(h.text || ''),
-        })),
-        data_days: data.data_days_available,
-        generated_by: 'qwen',
-      };
+  // One LLM attempt: routedChat (utility → Flash) + tolerant JSON parse. Returns
+  // null on any failure so the caller can retry before giving up to template.
+  const attempt = async (): Promise<TrendNarrative | null> => {
+    try {
+      const response = await routedChat('utility', {
+        model: LLM_MODELS.FAST,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 600,
+      });
+      const content = response.choices[0]?.message?.content || '';
+      let cleaned = content.replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (objMatch) cleaned = objMatch[0];
+      const parsed = JSON.parse(cleaned);
+      if (parsed.summary && Array.isArray(parsed.highlights)) {
+        return {
+          slug: data.slug,
+          department_name: data.department_name,
+          summary: String(parsed.summary),
+          highlights: parsed.highlights.slice(0, 5).map((h: Record<string, unknown>) => ({
+            field: String(h.field || ''),
+            label: String(h.label || ''),
+            direction: data.trends.find(t => t.field === h.field)?.direction || 'stable',
+            severity: ['good', 'warning', 'concern', 'neutral'].includes(String(h.severity))
+              ? String(h.severity) as TrendHighlight['severity']
+              : 'neutral',
+            text: String(h.text || ''),
+          })),
+          data_days: data.data_days_available,
+          generated_by: 'qwen',
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error('[TrendNarrator] attempt failed:', err);
+      return null;
     }
+  };
 
-    return generateTemplateNarrative(data);
-  } catch (err) {
-    console.error('[TrendNarrator] Qwen failed, falling back to template:', err);
-    return generateTemplateNarrative(data);
-  }
+  // B.3 — retry once before falling to template. Flash occasionally returns
+  // malformed JSON; a single retry recovers most of these (was the cause of the
+  // intermittent "some departments show templates" inconsistency).
+  const result = (await attempt()) ?? (await attempt());
+  return result ?? generateTemplateNarrative(data);
 }
 
 /**

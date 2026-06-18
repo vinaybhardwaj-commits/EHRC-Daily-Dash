@@ -151,38 +151,46 @@ Return STRICT JSON only (no prose, no code fences):
 }
 Rules: at most 4 patterns, only genuine CROSS-department stories. If nothing meaningfully connects departments, return an empty patterns array and say so in exec_summary. For "forecasts", give 3-6 of the most decision-relevant KPIs for the GM (e.g. inpatient census, length of stay, OT utilisation, no-shows, ED door-to-doctor, AR days, daily revenue): project realistically from the trends above, set horizon to next_day or next_week, and name the driver. Be specific with the numbers above.`;
 
-  try {
-    const resp = await routedChat('reasoning', {
-      model: LLM_MODELS.PRIMARY,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      max_tokens: 1800,
-    });
-    let c = (resp.choices[0]?.message?.content || '')
-      .replace(/^```json\n?/i, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
-    const m = c.match(/\{[\s\S]*\}/);
-    if (m) c = m[0];
-    const p = JSON.parse(c) as Record<string, unknown>;
-    const day = String(p.day_status ?? '');
-    const patterns = Array.isArray(p.patterns)
-      ? (p.patterns as Record<string, unknown>[]).slice(0, 4).map(normPattern).filter((x): x is CrossDeptPattern => x !== null)
-      : [];
-    const forecasts = Array.isArray(p.forecasts)
-      ? (p.forecasts as Record<string, unknown>[]).slice(0, 6).map(normForecast).filter((x): x is Forecast => x !== null)
-      : [];
-    return {
-      cross_dept: {
-        day_status: (['green', 'amber', 'red'].includes(day) ? day : 'amber') as CrossDeptSynthesis['day_status'],
-        headline: String(p.headline ?? '').slice(0, 240) || fallbackSynthesis(correlations, summary).headline,
-        patterns,
-        exec_summary: String(p.exec_summary ?? '').slice(0, 1200),
-        source: 'gemini',
-      },
-      forecasts,
-    };
-  } catch {
-    return { cross_dept: fallbackSynthesis(correlations, summary), forecasts: [] };
-  }
+  type SynthResult = { cross_dept: CrossDeptSynthesis; forecasts: Forecast[] };
+
+  const attempt = async (): Promise<SynthResult | null> => {
+    try {
+      const resp = await routedChat('reasoning', {
+        model: LLM_MODELS.PRIMARY,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 1800,
+      });
+      let c = (resp.choices[0]?.message?.content || '')
+        .replace(/^```json\n?/i, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
+      const m = c.match(/\{[\s\S]*\}/);
+      if (m) c = m[0];
+      const p = JSON.parse(c) as Record<string, unknown>;
+      const day = String(p.day_status ?? '');
+      const patterns = Array.isArray(p.patterns)
+        ? (p.patterns as Record<string, unknown>[]).slice(0, 4).map(normPattern).filter((x): x is CrossDeptPattern => x !== null)
+        : [];
+      const forecasts = Array.isArray(p.forecasts)
+        ? (p.forecasts as Record<string, unknown>[]).slice(0, 6).map(normForecast).filter((x): x is Forecast => x !== null)
+        : [];
+      return {
+        cross_dept: {
+          day_status: (['green', 'amber', 'red'].includes(day) ? day : 'amber') as CrossDeptSynthesis['day_status'],
+          headline: String(p.headline ?? '').slice(0, 240) || fallbackSynthesis(correlations, summary).headline,
+          patterns,
+          exec_summary: String(p.exec_summary ?? '').slice(0, 1200),
+          source: 'gemini',
+        },
+        forecasts,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  // B.3 — retry once before falling back to the deterministic synthesis.
+  const result = (await attempt()) ?? (await attempt());
+  return result ?? { cross_dept: fallbackSynthesis(correlations, summary), forecasts: [] };
 }
 
 /** Compute the full overview intelligence payload for a date. */
