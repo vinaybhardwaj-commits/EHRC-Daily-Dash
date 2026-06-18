@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     if (!questions.length) return NextResponse.json({ sections: [] });
 
     const fields = questions.map(q => ({
-      ...(q.field_spec as Record<string, unknown>),
+      ...q.field_spec,
       id: `aiq_${q.id}`,      // stable, parseable key for answer capture
       required: false,         // never block a daily submit
     }));
