@@ -24,6 +24,8 @@ export default function FormPage({ params }: PageProps) {
   const [chatSlot, setChatSlot] = useState<HTMLElement | null>(null);
   // GV.2 — today's generated governance sections (empty when the flag is off)
   const [govSections, setGovSections] = useState<SmartFormSection[]>([]);
+  // F.2 — today's adaptive (Even AI) gap-question section (empty when the engine is off)
+  const [adaptiveSections, setAdaptiveSections] = useState<SmartFormSection[]>([]);
 
   useEffect(() => {
     params.then(p => setSlug(p.slug));
@@ -38,6 +40,19 @@ export default function FormPage({ params }: PageProps) {
     fetch(`/api/governance/question-set?slug=${encodeURIComponent(slug)}`)
       .then(r => (r.ok ? r.json() : { sections: [] }))
       .then(d => { if (!cancelled && Array.isArray(d.sections)) setGovSections(d.sections); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  // F.2 — merge today's adaptive (Even AI) gap-question section. The API returns
+  // [] when ADAPTIVE_FORMS_ENABLED is off or there are no open questions for this
+  // department, so the form is unchanged in every other case.
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    fetch(`/api/ai-intelligence/form-questions?slug=${encodeURIComponent(slug)}`)
+      .then(r => (r.ok ? r.json() : { sections: [] }))
+      .then(d => { if (!cancelled && Array.isArray(d.sections)) setAdaptiveSections(d.sections); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [slug]);
@@ -71,8 +86,9 @@ export default function FormPage({ params }: PageProps) {
   }
 
   const baseConfig = getFormConfig(slug);
-  const config = baseConfig && govSections.length > 0
-    ? { ...baseConfig, sections: [...baseConfig.sections, ...govSections] }
+  const extraSections = [...govSections, ...adaptiveSections];
+  const config = baseConfig && extraSections.length > 0
+    ? { ...baseConfig, sections: [...baseConfig.sections, ...extraSections] }
     : baseConfig;
 
   if (!config) {

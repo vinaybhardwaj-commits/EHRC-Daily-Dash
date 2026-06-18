@@ -3,6 +3,7 @@ import { getFormConfig } from '@/lib/form-engine/registry';
 import { isFieldVisible, isFieldRequired } from '@/lib/form-engine/condition-evaluator';
 import { captureGovernanceResponses } from '@/lib/governance/capture';
 import { captureEdContactIncidents } from '@/lib/governance/ed-contact';
+import { captureAdaptiveAnswers } from '@/lib/adaptive-forms/capture';
 
 interface FormSubmissionBody {
   slug: string;
@@ -270,6 +271,14 @@ export async function POST(request: Request) {
       }
     }
 
+    // F.2 — capture answers to any injected Even AI (adaptive) questions.
+    let aiqCaptured = 0;
+    try {
+      aiqCaptured = (await captureAdaptiveAnswers(fields)).answered;
+    } catch (e) {
+      console.error('adaptive capture failed (submit unaffected):', e);
+    }
+
     // Upsert day_snapshots
     await sql`
       INSERT INTO day_snapshots (date, updated_at)
@@ -295,6 +304,7 @@ export async function POST(request: Request) {
       date: normalizedDate,
       dual_write: slug === 'nursing' && isNursingReportingOt ? 'OT data also saved' : undefined,
       governance_captured: govCaptured > 0 ? govCaptured : undefined,
+      adaptive_captured: aiqCaptured > 0 ? aiqCaptured : undefined,
     });
   } catch (error) {
     console.error('Form submission error:', error);

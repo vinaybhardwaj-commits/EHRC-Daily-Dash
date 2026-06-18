@@ -166,3 +166,27 @@ export async function recentlyResolvedDedupeKeys(slug: string, days = 14): Promi
       AND updated_at > NOW() - make_interval(days => ${days})`;
   return new Set(res.rows.map(r => r.dedupe_key as string));
 }
+
+/* ── F.2 — form injection + answer capture ───────────────────────── */
+
+/** Open questions for a department, highest-priority first — for form injection. */
+export async function listOpenForDept(slug: string): Promise<AdaptiveQuestion[]> {
+  const res = await sql`
+    SELECT * FROM adaptive_form_questions
+    WHERE dept_slug = ${slug} AND status = 'open'
+    ORDER BY priority ASC, created_at ASC`;
+  return res.rows as AdaptiveQuestion[];
+}
+
+/** Record a HOD's answer to a question and close it (stops recurrence). */
+export async function answerQuestion(id: number, value: unknown): Promise<boolean> {
+  const res = await sql`
+    UPDATE adaptive_form_questions
+    SET status = 'answered', answer_value = ${JSON.stringify(value ?? null)}::jsonb,
+        answered_date = CURRENT_DATE, updated_at = NOW()
+    WHERE id = ${id} AND status = 'open'
+    RETURNING id`;
+  if (res.rowCount === 0) return false;
+  await recordEvent(id, 'answered', 'hod', { value });
+  return true;
+}
