@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
       });
       const parsed = parseLLMResponse(completion.choices[0]?.message?.content || '');
       if (!parsed) return { id, stored_tier, pro_tier: null, agree: false, direction: 'na', note: 'pro_parse_fail' };
-      const pro_tier = recalculateFromLLMOutput(parsed, body, runtimeRubric).assessment.risk_tier;
+      const pro_tier = recalculateFromLLMOutput(parsed, body, runtimeRubric).assessment.composite.tier;
       const agree = pro_tier === stored_tier;
       const ps = TIER_RANK[pro_tier] ?? -1;
       const ss = TIER_RANK[stored_tier] ?? -1;
