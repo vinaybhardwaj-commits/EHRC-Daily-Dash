@@ -23,10 +23,14 @@ export interface OvCrossDept {
   day_status: 'green' | 'amber' | 'red'; headline: string;
   patterns: OvPattern[]; exec_summary: string; source: string;
 }
+export interface OvForecast {
+  metric: string; horizon: 'next_day' | 'next_week'; current: string; projection: string;
+  direction: 'up' | 'down' | 'flat'; confidence: 'low' | 'medium' | 'high'; driver: string;
+}
 export interface OvSummary { concerns: number; warnings: number; positive: number; total_highlights: number; }
 export interface OverviewPayload {
   date: string; dept_narratives: OvNarrative[]; cross_dept: OvCrossDept;
-  summary: OvSummary; generated_at: string;
+  forecasts: OvForecast[]; summary: OvSummary; generated_at: string;
 }
 
 interface OverviewState {

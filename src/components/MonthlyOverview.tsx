@@ -10,6 +10,7 @@ import SparklineHeatmap from './SparklineHeatmap';
 import DepartmentAccordion from './DepartmentAccordion';
 import AIFollowUpBadge from './AIFollowUpBadge';
 import SystemAlertsCard from './SystemAlertsCard';
+import ForecastCard from './ForecastCard';
 import TrendInsightsCard from './TrendInsightsCard';
 
 interface DailyMetric {
@@ -678,6 +679,9 @@ const MonthlyOverview: React.FC<Props> = ({ onNavigateToDashboard, onNavigateToD
 
       {/* ===== CROSS-DEPARTMENT ANALYSIS ===== */}
       <SystemAlertsCard date={new Date().toISOString().slice(0, 10)} />
+
+      {/* ===== FORECASTS (B.2) ===== */}
+      <ForecastCard date={new Date().toISOString().slice(0, 10)} />
 
       {/* ===== TREND INTELLIGENCE ===== */}
       <TrendInsightsCard date={new Date().toISOString().slice(0, 10)} />

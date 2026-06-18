@@ -34,10 +34,20 @@ export interface OverviewSummary {
   positive: number;
   total_highlights: number;
 }
+export interface Forecast {
+  metric: string;
+  horizon: 'next_day' | 'next_week';
+  current: string;
+  projection: string;
+  direction: 'up' | 'down' | 'flat';
+  confidence: 'low' | 'medium' | 'high';
+  driver: string;
+}
 export interface OverviewPayload {
   date: string;
   dept_narratives: TrendNarrative[];
   cross_dept: CrossDeptSynthesis;
+  forecasts: Forecast[];
   summary: OverviewSummary;
   generated_at: string;
 }
@@ -54,6 +64,27 @@ function normPattern(p: Record<string, unknown>): CrossDeptPattern | null {
     mechanism: String(p.mechanism ?? '').slice(0, 500),
     recommendation: String(p.recommendation ?? '').slice(0, 400),
     severity: (SEV.includes(sev) ? sev : 'medium') as CrossDeptPattern['severity'],
+  };
+}
+
+const DIRS: ReadonlyArray<string> = ['up', 'down', 'flat'];
+const CONFS: ReadonlyArray<string> = ['low', 'medium', 'high'];
+const HORIZONS: ReadonlyArray<string> = ['next_day', 'next_week'];
+
+function normForecast(f: Record<string, unknown>): Forecast | null {
+  const metric = String(f.metric ?? '').trim();
+  if (!metric) return null;
+  const horizon = String(f.horizon ?? '');
+  const direction = String(f.direction ?? '');
+  const confidence = String(f.confidence ?? '');
+  return {
+    metric: metric.slice(0, 80),
+    horizon: (HORIZONS.includes(horizon) ? horizon : 'next_day') as Forecast['horizon'],
+    current: String(f.current ?? '').slice(0, 60),
+    projection: String(f.projection ?? '').slice(0, 60),
+    direction: (DIRS.includes(direction) ? direction : 'flat') as Forecast['direction'],
+    confidence: (CONFS.includes(confidence) ? confidence : 'medium') as Forecast['confidence'],
+    driver: String(f.driver ?? '').slice(0, 300),
   };
 }
 
@@ -77,12 +108,12 @@ function fallbackSynthesis(correlations: CorrelationResult[], summary: OverviewS
   };
 }
 
-async function synthesizeCrossDept(
+async function synthesizeIntelligence(
   date: string,
   trendData: DepartmentTrendData[],
   correlations: CorrelationResult[],
   summary: OverviewSummary,
-): Promise<CrossDeptSynthesis> {
+): Promise<{ cross_dept: CrossDeptSynthesis; forecasts: Forecast[] }> {
   const deptLines = trendData
     .map(d => {
       const notable = d.trends
@@ -113,16 +144,19 @@ Return STRICT JSON only (no prose, no code fences):
   "patterns": [
     { "title": "...", "departments": ["Finance","Emergency"], "mechanism": "the causal story linking these departments", "recommendation": "a specific action", "severity": "high|medium|low" }
   ],
-  "exec_summary": "3-5 sentence prescriptive brief: what's happening, why, what to do, and the single missing signal that would sharpen the call"
+  "exec_summary": "3-5 sentence prescriptive brief: what's happening, why, what to do, and the single missing signal that would sharpen the call",
+  "forecasts": [
+    { "metric": "Inpatient census", "horizon": "next_day", "current": "e.g. 142", "projection": "e.g. 150", "direction": "up|down|flat", "confidence": "low|medium|high", "driver": "the main reason, grounded in the trends" }
+  ]
 }
-Rules: at most 4 patterns, only genuine CROSS-department stories. If nothing meaningfully connects departments, return an empty patterns array and say so in exec_summary. Be specific with the numbers above.`;
+Rules: at most 4 patterns, only genuine CROSS-department stories. If nothing meaningfully connects departments, return an empty patterns array and say so in exec_summary. For "forecasts", give 3-6 of the most decision-relevant KPIs for the GM (e.g. inpatient census, length of stay, OT utilisation, no-shows, ED door-to-doctor, AR days, daily revenue): project realistically from the trends above, set horizon to next_day or next_week, and name the driver. Be specific with the numbers above.`;
 
   try {
     const resp = await routedChat('reasoning', {
       model: LLM_MODELS.PRIMARY,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
-      max_tokens: 1400,
+      max_tokens: 1800,
     });
     let c = (resp.choices[0]?.message?.content || '')
       .replace(/^```json\n?/i, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
@@ -133,15 +167,21 @@ Rules: at most 4 patterns, only genuine CROSS-department stories. If nothing mea
     const patterns = Array.isArray(p.patterns)
       ? (p.patterns as Record<string, unknown>[]).slice(0, 4).map(normPattern).filter((x): x is CrossDeptPattern => x !== null)
       : [];
+    const forecasts = Array.isArray(p.forecasts)
+      ? (p.forecasts as Record<string, unknown>[]).slice(0, 6).map(normForecast).filter((x): x is Forecast => x !== null)
+      : [];
     return {
-      day_status: (['green', 'amber', 'red'].includes(day) ? day : 'amber') as CrossDeptSynthesis['day_status'],
-      headline: String(p.headline ?? '').slice(0, 240) || fallbackSynthesis(correlations, summary).headline,
-      patterns,
-      exec_summary: String(p.exec_summary ?? '').slice(0, 1200),
-      source: 'gemini',
+      cross_dept: {
+        day_status: (['green', 'amber', 'red'].includes(day) ? day : 'amber') as CrossDeptSynthesis['day_status'],
+        headline: String(p.headline ?? '').slice(0, 240) || fallbackSynthesis(correlations, summary).headline,
+        patterns,
+        exec_summary: String(p.exec_summary ?? '').slice(0, 1200),
+        source: 'gemini',
+      },
+      forecasts,
     };
   } catch {
-    return fallbackSynthesis(correlations, summary);
+    return { cross_dept: fallbackSynthesis(correlations, summary), forecasts: [] };
   }
 }
 
@@ -159,8 +199,8 @@ export async function computeOverviewIntelligence(date: string): Promise<Overvie
     positive: allHi.filter(h => h.severity === 'good').length,
     total_highlights: allHi.length,
   };
-  const cross_dept = await synthesizeCrossDept(date, trendData, correlations, summary);
-  return { date, dept_narratives: narratives, cross_dept, summary, generated_at: new Date().toISOString() };
+  const { cross_dept, forecasts } = await synthesizeIntelligence(date, trendData, correlations, summary);
+  return { date, dept_narratives: narratives, cross_dept, forecasts, summary, generated_at: new Date().toISOString() };
 }
 
 /* ── Cache ──────────────────────────────────────────────────────── */
