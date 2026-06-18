@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -13,6 +13,7 @@ import {
   BarChart3,
   Minus,
 } from 'lucide-react';
+import { useOverviewIntelligence } from './useOverviewIntelligence';
 
 interface TrendHighlight {
   field: string;
@@ -55,6 +56,17 @@ export default function TrendInsightsCard({ date }: TrendInsightsCardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedDept, setExpandedDept] = useState<string | null>(null);
+
+  // B.1b — default-on: populate from the cached Gemini snapshot as soon as it
+  // arrives, so the card shows real AI narratives without a click. Manual
+  // buttons below still let the user re-run on demand.
+  const { payload: cachedOv, computing: ovComputing } = useOverviewIntelligence(date);
+  useEffect(() => {
+    if (cachedOv && narratives === null) {
+      setNarratives(cachedOv.dept_narratives as unknown as TrendNarrative[]);
+      setSummary(cachedOv.summary as unknown as TrendSummary);
+    }
+  }, [cachedOv, narratives]);
 
   async function runAnalysis(useAI = false) {
     setLoading(true);
@@ -107,6 +119,12 @@ export default function TrendInsightsCard({ date }: TrendInsightsCardProps) {
           {narratives !== null && narratives.length === 0 && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
               Insufficient data
+            </span>
+          )}
+          {ovComputing && narratives === null && (
+            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Even AI analyzing…
             </span>
           )}
         </div>

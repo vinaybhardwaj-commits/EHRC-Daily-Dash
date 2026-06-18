@@ -88,9 +88,11 @@ function generateTemplateNarrative(data: DepartmentTrendData): TrendNarrative {
   if (highlights.length === 0) {
     summary = `${data.department_name}: Insufficient trend data (${data.data_days_available} days available).`;
   } else if (concerns.length > 0) {
-    summary = `${data.department_name}: ${concerns.length} concern${concerns.length !== 1 ? 's' : ''} — ${concerns.map(c => c.text.split('.')[0]).join('; ')}.`;
+    // First sentence only — split on ". " (sentence boundary), NOT on every "."
+    // so decimals like "-21.8%" aren't truncated to "-21".
+    summary = `${data.department_name}: ${concerns.length} concern${concerns.length !== 1 ? 's' : ''} — ${concerns.map(c => c.text.split(/\.\s/)[0]).join('; ')}.`;
   } else if (goods.length > 0) {
-    summary = `${data.department_name}: Positive trends — ${goods.map(g => g.text.split('.')[0]).join('; ')}.`;
+    summary = `${data.department_name}: Positive trends — ${goods.map(g => g.text.split(/\.\s/)[0]).join('; ')}.`;
   } else {
     summary = `${data.department_name}: All tracked metrics are stable or volatile over ${data.data_days_available} days.`;
   }

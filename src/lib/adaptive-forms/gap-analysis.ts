@@ -56,11 +56,20 @@ async function deptBlock(slug: string, config: SmartFormConfig, date: string): P
   ].join('\n');
 }
 
+export interface GapCandidate {
+  dept: string;
+  label: string;
+  type: string;
+  rationale: string;
+  priority: number;
+  recurrence: string;
+}
 export interface GapRunResult {
   ok: boolean;
   generated: number;
   inserted: number;
   insertedIds: number[];
+  candidates: GapCandidate[];   // every candidate that passed validation (preview, even on dry runs)
   skipped: { reason: string; dept?: string; key?: string }[];
   error?: string;
   sample?: string;
@@ -135,7 +144,7 @@ ${context}`;
     });
     content = resp.choices[0]?.message?.content || '';
   } catch (e) {
-    return { ok: false, generated: 0, inserted: 0, insertedIds: [], skipped: [], error: 'llm_failed: ' + String((e as Error).message).slice(0, 160) };
+    return { ok: false, generated: 0, inserted: 0, insertedIds: [], candidates: [], skipped: [], error: 'llm_failed: ' + String((e as Error).message).slice(0, 160) };
   }
 
   // 3. Parse strict JSON.
@@ -147,12 +156,13 @@ ${context}`;
     const parsed = JSON.parse(cleaned) as { gaps?: RawGap[] };
     gaps = Array.isArray(parsed?.gaps) ? parsed.gaps : [];
   } catch {
-    return { ok: false, generated: 0, inserted: 0, insertedIds: [], skipped: [], error: 'parse_failed', sample: content.slice(0, 200) };
+    return { ok: false, generated: 0, inserted: 0, insertedIds: [], candidates: [], skipped: [], error: 'parse_failed', sample: content.slice(0, 200) };
   }
 
   // 4. Validate → guardrail → insert.
   const skipped: GapRunResult['skipped'] = [];
   const insertedIds: number[] = [];
+  const candidates: GapCandidate[] = [];
   const perDeptThisRun: Record<string, number> = {};
   const resolvedCache: Record<string, Set<string>> = {};
 
@@ -191,6 +201,8 @@ ${context}`;
     const recurrence: AdaptiveRecurrence = g.recurrence === 'once' ? 'once' : 'until_answered';
     const priority = Math.min(5, Math.max(1, Math.round(Number(g.priority) || 3)));
 
+    candidates.push({ dept: slug, label, type, rationale: String(g.rationale || '').slice(0, 300), priority, recurrence });
+
     if (opts.dryRun) {
       insertedIds.push(-1);
       perDeptThisRun[slug] = thisRun + 1;
@@ -206,5 +218,5 @@ ${context}`;
     else skipped.push({ reason: 'already_open', dept: slug, key: dedupe_key });
   }
 
-  return { ok: true, generated: gaps.length, inserted: insertedIds.length, insertedIds, skipped };
+  return { ok: true, generated: gaps.length, inserted: insertedIds.length, insertedIds, candidates, skipped };
 }

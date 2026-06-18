@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Zap,
 } from 'lucide-react';
+import { useOverviewIntelligence } from './useOverviewIntelligence';
 
 interface MatchedSignal {
   department: string;
@@ -78,6 +79,12 @@ export default function SystemAlertsCard({ date }: SystemAlertsCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedPattern, setExpandedPattern] = useState<string | null>(null);
 
+  // B.1b — primary view is the cached Gemini cross-department synthesis.
+  const { payload: cachedOv, computing: ovComputing } = useOverviewIntelligence(date);
+  const synth = cachedOv?.cross_dept ?? null;
+  const statusPill = (s: string) =>
+    s === 'red' ? 'bg-red-100 text-red-700' : s === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
+
   async function runAnalysis() {
     setLoading(true);
     setError(null);
@@ -107,6 +114,16 @@ export default function SystemAlertsCard({ date }: SystemAlertsCardProps) {
         <div className="flex items-center gap-3">
           <Zap className="w-5 h-5 text-purple-600" />
           <span className="text-sm font-semibold text-gray-800">Cross-Department Analysis</span>
+          {synth && (
+            <>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusPill(synth.day_status)}`}>
+                {synth.day_status.toUpperCase()}
+              </span>
+              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200 font-medium">
+                EVEN AI
+              </span>
+            </>
+          )}
           {results !== null && results.length > 0 && (
             <>
               {criticalCount > 0 && (
@@ -152,6 +169,62 @@ export default function SystemAlertsCard({ date }: SystemAlertsCardProps) {
       {error && (
         <div className="mt-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
           {error}
+        </div>
+      )}
+
+      {/* ── B.1b: Gemini cross-department synthesis (default view) ── */}
+      {ovComputing && !synth && (
+        <div className="mt-2 px-4 py-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-700 flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Even AI is analyzing cross-department patterns…
+        </div>
+      )}
+      {synth && (
+        <div className="mt-2 bg-white border border-purple-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
+            <p className="text-sm font-semibold text-gray-800">{synth.headline}</p>
+            {synth.exec_summary && (
+              <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">{synth.exec_summary}</p>
+            )}
+          </div>
+          {synth.patterns.length > 0 ? (
+            <div className="divide-y divide-gray-100">
+              {synth.patterns.map((p, i) => {
+                const st = SEVERITY_STYLES[p.severity] || SEVERITY_STYLES.medium;
+                return (
+                  <div key={i} className="px-5 py-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${st.badge}`}>{p.severity}</span>
+                      <p className={`text-sm font-medium ${st.text}`}>{p.title}</p>
+                    </div>
+                    {p.departments.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {p.departments.map((d, j) => (
+                          <span key={j} className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-700 leading-relaxed">{p.mechanism}</p>
+                    {p.recommendation && (
+                      <div className={`mt-2 p-2.5 rounded-lg ${st.bg} border ${st.border}`}>
+                        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-0.5">Recommended action</p>
+                        <p className={`text-xs ${st.text} leading-relaxed`}>{p.recommendation}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-5 py-3 text-xs text-gray-500 italic">No cross-department patterns connect today&apos;s signals.</div>
+          )}
+          {synth.source === 'fallback' && (
+            <div className="px-5 py-2 text-[10px] text-amber-600 bg-amber-50 border-t border-amber-100">
+              Rule-based fallback — AI synthesis was unavailable.
+            </div>
+          )}
         </div>
       )}
 
