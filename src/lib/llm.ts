@@ -8,7 +8,17 @@
 // Uses OpenAI SDK (both Ollama and Vertex expose an OpenAI-compatible API).
 
 import OpenAI from 'openai';
+import { sql } from '@vercel/postgres';
 import { getVertexAccessToken } from './gcp-auth';
+
+/** G.3 — per-call metric for the cost/latency panel. Awaited but fully caught:
+ *  a metrics failure (e.g. table not migrated) must never affect inference. */
+async function logLlmMetric(provider: string, tier: string, latencyMs: number, tokens: number | null): Promise<void> {
+  try {
+    await sql`INSERT INTO llm_metrics (provider, tier, latency_ms, total_tokens)
+              VALUES (${provider}, ${tier}, ${latencyMs}, ${tokens})`;
+  } catch { /* ignore */ }
+}
 
 function getLLMClient(): OpenAI | null {
   const baseURL = process.env.LLM_BASE_URL;
@@ -134,9 +144,10 @@ export async function routedChat(tier: LlmTier, params: ChatParams): Promise<Cha
         max_tokens: baseMax + pad,
       };
       const completion = await client.chat.completions.create(gParams);
-      console.log(
-        `[routedChat] provider=gemini:${tier === 'reasoning' ? 'pro' : 'flash'} model=${geminiModel} ms=${Date.now() - started}`,
-      );
+      const ms = Date.now() - started;
+      const provider = `gemini:${tier === 'reasoning' ? 'pro' : 'flash'}`;
+      console.log(`[routedChat] provider=${provider} model=${geminiModel} ms=${ms}`);
+      await logLlmMetric(provider, tier, ms, completion.usage?.total_tokens ?? null);
       return completion;
     } catch (e) {
       // Log the fallback so silent Mac-Mini usage (e.g. Flash unavailable) is visible.
@@ -153,6 +164,8 @@ export async function routedChat(tier: LlmTier, params: ChatParams): Promise<Cha
   }
   const started = Date.now();
   const completion = await client.chat.completions.create(params);
-  console.log(`[routedChat] provider=ollama:${params.model} ms=${Date.now() - started}`);
+  const ms = Date.now() - started;
+  console.log(`[routedChat] provider=ollama:${params.model} ms=${ms}`);
+  await logLlmMetric('ollama', tier, ms, completion.usage?.total_tokens ?? null);
   return completion;
 }

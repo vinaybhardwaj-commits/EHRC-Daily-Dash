@@ -25,10 +25,6 @@
       "schedule": "0 2 * * *"
     },
     {
-      "path": "/api/cron/llm-warmup",
-      "schedule": "*/4 0-16 * * *"
-    },
-    {
       "path": "/api/governance/sync-ot",
       "schedule": "50 22 * * *"
     },

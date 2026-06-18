@@ -427,6 +427,23 @@ const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    version: 18,
+    name: 'create_llm_metrics',
+    statements: [
+      // G.3 — per-call LLM metrics (provider/tier/latency/tokens) for the
+      // Gemini cost+latency panel. routedChat awaits a caught insert per call.
+      `CREATE TABLE IF NOT EXISTS llm_metrics (
+        id SERIAL PRIMARY KEY,
+        ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        provider TEXT NOT NULL,
+        tier TEXT,
+        latency_ms INTEGER,
+        total_tokens INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_llm_metrics_ts ON llm_metrics(ts)`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
