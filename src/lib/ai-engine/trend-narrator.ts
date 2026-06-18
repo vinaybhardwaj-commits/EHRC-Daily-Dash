@@ -212,7 +212,7 @@ export async function generateAllNarratives(
   // overwhelm Qwen; on Vertex/Gemini (no single-box bottleneck) widen it so the
   // per-department narratives complete much closer to a single call's latency.
   const results: TrendNarrative[] = [];
-  const batchSize = isTierOnGemini('utility') ? 8 : 3;
+  const batchSize = isTierOnGemini('utility') ? 4 : 3;
 
   for (let i = 0; i < trendData.length; i += batchSize) {
     const batch = trendData.slice(i, i + batchSize);
