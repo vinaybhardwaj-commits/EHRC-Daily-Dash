@@ -59,6 +59,68 @@ export async function GET(req: NextRequest) {
   const n = Math.min(Math.max(Number(url.searchParams.get('n')) || 5, 1), 8);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
 
+  // ── Detail mode: ?ids=186,159 → side-by-side qwen (stored) vs Pro sub-scores
+  //    + booking context, so a clinician can see WHAT Pro discounted. ──────────
+  const idsParam = (url.searchParams.get('ids') || '').trim();
+  if (idsParam) {
+    const ids = idsParam.split(',').map(s => s.trim()).filter(s => /^\d+$/.test(s)).slice(0, 8);
+    if (!ids.length) return NextResponse.json({ error: 'no valid ids' }, { status: 400 });
+
+    const stored = (await sql.query(
+      `SELECT id, risk_tier, composite_risk_score, assessment_json, raw_form_data
+       FROM surgical_risk_assessments WHERE id = ANY(string_to_array($1, ',')::int[])`,
+      [ids.join(',')],
+    )).rows;
+
+    const dConfig = await getActiveConfig();
+    const dSystemPrompt = dConfig?.system_prompt ?? SREWS_SYSTEM_PROMPT;
+    const dRubric = buildRuntimeRubric(dConfig);
+
+    const proAssess = async (body: SurgeryBookingPayload): Promise<RiskAssessment | null> => {
+      const client = await getGeminiChatClient();
+      const completion = await client.chat.completions.create({
+        model: vertexModelName(GEMINI_MODEL),
+        messages: [{ role: 'system', content: dSystemPrompt }, { role: 'user', content: buildUserPrompt(body) }],
+        temperature: 0.2,
+        max_tokens: 1500 + 8192,
+      });
+      const parsed = parseLLMResponse(completion.choices[0]?.message?.content || '');
+      return parsed ? recalculateFromLLMOutput(parsed, body, dRubric).assessment : null;
+    };
+
+    const view = (a: RiskAssessment | null) => a ? {
+      tier: a.composite.tier,
+      composite: a.composite.score,
+      override_applied: a.composite.override_applied,
+      override_reason: a.composite.override_reason,
+      patient_risk: a.patient_risk,
+      procedure_risk: a.procedure_risk,
+      system_risk: a.system_risk,
+      summary: a.summary,
+      recommended_actions: a.recommended_actions,
+    } : null;
+
+    const cases = await Promise.all(stored.map(async row => {
+      const body = row.raw_form_data as SurgeryBookingPayload;
+      let pro: RiskAssessment | null = null;
+      try { pro = await proAssess(body); } catch { pro = null; }
+      return {
+        id: Number(row.id),
+        booking: {
+          age: body.age ?? null, sex: body.sex ?? null,
+          procedure: body.proposed_procedure ?? null, specialty: body.surgical_specialty ?? null,
+          urgency: body.urgency ?? null, anaesthesia: body.anaesthesia ?? null,
+          comorbidities: body.comorbidities ?? null, habits: body.habits ?? null,
+          pac_status: body.pac_status ?? null, clinical_justification: body.clinical_justification ?? null,
+        },
+        qwen: view(row.assessment_json as RiskAssessment),
+        pro: view(pro),
+      };
+    }));
+
+    return NextResponse.json({ mode: 'detail', model: GEMINI_MODEL, cases });
+  }
+
   // Population by stored tier (so we know how many RED/CRITICAL exist to test).
   const population = (await sql`
     SELECT risk_tier, COUNT(*)::int AS n
