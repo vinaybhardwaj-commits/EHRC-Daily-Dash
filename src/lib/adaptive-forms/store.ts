@@ -190,3 +190,14 @@ export async function answerQuestion(id: number, value: unknown): Promise<boolea
   await recordEvent(id, 'answered', 'hod', { value });
   return true;
 }
+
+/** F.2b — 'until_answered' questions that expired unanswered recently, for V's
+    09:45 escalation digest. (Default 26h window covers the day's lifecycle run.) */
+export async function recentlyExpiredUnanswered(hours = 26): Promise<{ dept_slug: string; label: string }[]> {
+  const res = await sql`
+    SELECT dept_slug, field_spec FROM adaptive_form_questions
+    WHERE status = 'expired' AND recurrence = 'until_answered'
+      AND updated_at > NOW() - make_interval(hours => ${hours})
+    ORDER BY updated_at DESC LIMIT 20`;
+  return res.rows.map(r => ({ dept_slug: r.dept_slug as string, label: (r.field_spec as SmartFormField)?.label || '' }));
+}

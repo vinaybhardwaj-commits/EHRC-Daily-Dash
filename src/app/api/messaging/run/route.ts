@@ -5,6 +5,7 @@ import { notify } from '@/lib/messaging/notify';
 import { getActiveHods, getRecipientsByRole, type Recipient } from '@/lib/messaging/recipients';
 import { drainOutbox } from '@/lib/messaging/outbox';
 import { CONTACTS_BY_SLUG } from '@/lib/department-contacts';
+import { adaptiveFormsEnabled, recentlyExpiredUnanswered } from '@/lib/adaptive-forms/store';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -77,9 +78,18 @@ export async function GET(req: NextRequest) {
         ? `⚠️ Chronic (3+ days): ${chronic.map((c) => `${c.name} (${c.days}d)`).join(', ')}\n\n`
         : '';
       const admins = await getRecipientsByRole('admin');
+      // F.2b — append any Even AI gaps that expired unanswered (5 working days).
+      let gapsLine = '';
+      if (adaptiveFormsEnabled()) {
+        const gaps = await recentlyExpiredUnanswered(26);
+        if (gaps.length) {
+          gapsLine = `\n\nEven AI — gaps unfilled ${process.env.ADAPTIVE_RECUR_DAYS || 5}d:\n` +
+            gaps.map((g) => `• ${deptName(g.dept_slug)} — ${g.label}`).join('\n');
+        }
+      }
       const result = await notify('escalation_missing', {
         recipients: admins, dedupSuffix: date,
-        vars: { date, n: missing.length, total: hods.length, missing_list: chronicLine + (lines.join('\n') || 'None — all submitted ✅') },
+        vars: { date, n: missing.length, total: hods.length, missing_list: chronicLine + (lines.join('\n') || 'None — all submitted ✅') + gapsLine },
       });
       const drain = await drainOutbox(10);
       return NextResponse.json({ ok: true, step, date, missing: missing.length, chronic: chronic.length, result, drain });
