@@ -412,6 +412,21 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_aqe_at ON adaptive_question_events(at)`,
     ],
   },
+  {
+    version: 17,
+    name: 'create_overview_intelligence_cache',
+    statements: [
+      // B.1a — Part B intelligence uplift. One row per date caches the nightly
+      // (or on-demand) Gemini overview synthesis so the Overview reads instantly.
+      // model='computing' is a transient claim-lock marker during generation.
+      `CREATE TABLE IF NOT EXISTS overview_intelligence (
+        date DATE PRIMARY KEY,
+        payload JSONB NOT NULL,
+        model TEXT,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    ],
+  },
 ];
 
 export async function GET(req: NextRequest) {
