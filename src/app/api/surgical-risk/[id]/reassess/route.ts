@@ -23,7 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { llm, LLM_MODELS } from '@/lib/llm';
+import { llm, LLM_MODELS, routedChat, geminiConfigured, isTierOnGemini, GEMINI_MODEL } from '@/lib/llm';
 import { checkAdminKey } from '@/lib/surgical-risk/admin-auth';
 import { SREWS_SYSTEM_PROMPT, buildUserPrompt } from '@/lib/surgical-risk/prompt';
 import { getActiveConfig } from '@/lib/surgical-risk/config-store';
@@ -122,18 +122,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     // 4. Re-run scoring (mirrors /assess flow)
     let assessment: RiskAssessment;
-    let llmModel = LLM_MODELS.PRIMARY as string;
+    let llmModel = (isTierOnGemini('reasoning') ? GEMINI_MODEL : LLM_MODELS.PRIMARY) as string;
     let llmLatencyMs: number | null = null;
     let divergenceFlagged = false;
 
-    const client = llm();
-    if (!client) {
+    if (!llm() && !geminiConfigured()) {
       assessment = computeDeterministicRisk(formData, runtimeRubric);
-      llmModel = 'fallback-no-tunnel';
+      llmModel = 'fallback-no-llm';
     } else {
       try {
         const t0 = Date.now();
-        const completion = await client.chat.completions.create({
+        // G.2 — reasoning tier → Gemini 2.5-pro (validated) when GEMINI_REASONING
+        // is on, else local Ollama. Soft-fail safe → deterministic fallback.
+        const completion = await routedChat('reasoning', {
           model: LLM_MODELS.PRIMARY,
           messages: [
             { role: 'system', content: systemPrompt },

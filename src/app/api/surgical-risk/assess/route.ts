@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
-import { llm, LLM_MODELS } from '@/lib/llm';
+import { llm, LLM_MODELS, routedChat, geminiConfigured, isTierOnGemini, GEMINI_MODEL } from '@/lib/llm';
 import { checkWebhookSecret } from '@/lib/surgical-risk/webhook-auth';
 import { SREWS_SYSTEM_PROMPT, buildUserPrompt } from '@/lib/surgical-risk/prompt';
 import { getActiveConfig } from '@/lib/surgical-risk/config-store';
@@ -139,19 +139,21 @@ export async function POST(req: NextRequest) {
 
   // 4. + 5. + 6. Call LLM, parse, recalc — with deterministic fallback
   let assessment: RiskAssessment;
-  let llmModel = LLM_MODELS.PRIMARY as string;
+  let llmModel = (isTierOnGemini('reasoning') ? GEMINI_MODEL : LLM_MODELS.PRIMARY) as string;
   let llmLatencyMs: number | null = null;
   let divergenceFlagged = false;
 
-  const client = llm();
-  if (!client) {
-    // No LLM client configured — go straight to fallback
+  if (!llm() && !geminiConfigured()) {
+    // No LLM available at all — go straight to the deterministic fallback
     assessment = computeDeterministicRisk(body, runtimeRubric);
-    llmModel = 'fallback-no-tunnel';
+    llmModel = 'fallback-no-llm';
   } else {
     try {
       const t0 = Date.now();
-      const completion = await client.chat.completions.create({
+      // G.2 (18 Jun) — reasoning tier → Gemini 2.5-pro when GEMINI_REASONING is on
+      // (SREWS scoring validated on Pro; qwen over-flagged borderline cases), else
+      // local Ollama. Soft-fail safe: any error drops to the deterministic fallback.
+      const completion = await routedChat('reasoning', {
         model: LLM_MODELS.PRIMARY,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -159,11 +161,6 @@ export async function POST(req: NextRequest) {
         ],
         temperature: 0.2,
         max_tokens: 1500,
-      }, {
-        // Full SREWS generations run 35-60s on qwen2.5:14b (~25 tok/s warm);
-        // the llm() client default of 30s was killing them mid-generation and
-        // silently flipping every assessment to fallback-llm-error.
-        timeout: 55_000,
       });
       llmLatencyMs = Date.now() - t0;
       const text = completion.choices[0]?.message?.content || '';
