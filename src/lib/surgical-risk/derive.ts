@@ -96,10 +96,19 @@ export function needsReview(row: SurgicalRiskAssessmentRow, nowMs: number): bool
   return t >= nowMs - 24 * 3600_000 && t <= nowMs + 48 * 3600_000;
 }
 
-/** 'YYYY-MM-DD' surgery date key for Schedule/Calendar grouping, or null. */
+/**
+ * Local-day 'YYYY-MM-DD' surgery key for Schedule/Calendar grouping, or null.
+ * `surgery_date` may arrive as a full ISO timestamp (with a T-time portion), so
+ * we parse and re-format in the browser's local zone (IST) — matching what the
+ * card's formatDate() shows, so a case lands on the same day the user sees.
+ */
 export function surgeryDateKey(row: SurgicalRiskAssessmentRow): string | null {
-  const raw = row.surgery_date || (row.surgery_datetime ? row.surgery_datetime.slice(0, 10) : null);
-  return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+  const raw = row.surgery_date || row.surgery_datetime;
+  if (!raw) return null;
+  const d = new Date(raw.includes('T') ? raw : raw + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 /** Composite-desc comparator (stable-ish; tier as tiebreaker). */
