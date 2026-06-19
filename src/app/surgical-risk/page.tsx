@@ -16,7 +16,7 @@ import type { RiskTier, SurgicalRiskAssessmentRow } from '@/lib/surgical-risk/ty
 import { TIER_STYLES, TIER_ORDER } from '@/components/surgical-risk/tier-styles';
 import SurgicalRiskCaseCard from '@/components/surgical-risk/SurgicalRiskCaseCard';
 import SrewsViewToggle, { type SrewsView } from '@/components/surgical-risk/SrewsViewToggle';
-import { needsReview, byCompositeDesc } from '@/lib/surgical-risk/derive';
+import { needsReview, byCompositeDesc, surgeryDateKey } from '@/lib/surgical-risk/derive';
 
 interface ApiList {
   ok: boolean;
@@ -54,6 +54,7 @@ export default function SurgicalRiskPage() {
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('');
   const [llmHealth, setLlmHealth] = useState<'healthy' | 'down' | 'unknown'>('unknown');
   const [view, setView] = useState<SrewsView>('risk');
+  const [scheduleSort, setScheduleSort] = useState<'asc' | 'desc'>('asc');
 
   // Restore view from ?view= / localStorage
   useEffect(() => {
@@ -143,6 +144,22 @@ export default function SurgicalRiskPage() {
     return { needs, groups };
   }, [visibleAssessments]);
 
+  // Schedule view derivation: group by surgery date, sortable; undated go last
+  const scheduleGroups = useMemo(() => {
+    const map = new Map<string, SurgicalRiskAssessmentRow[]>();
+    const undated: SurgicalRiskAssessmentRow[] = [];
+    for (const a of visibleAssessments) {
+      const k = surgeryDateKey(a);
+      if (!k) { undated.push(a); continue; }
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(a);
+    }
+    const keys = Array.from(map.keys()).sort();
+    if (scheduleSort === 'desc') keys.reverse();
+    const days = keys.map(k => ({ key: k, rows: map.get(k)!.slice().sort(byCompositeDesc) }));
+    return { days, undated };
+  }, [visibleAssessments, scheduleSort]);
+
   const specialties = useMemo(() => {
     if (!data?.assessments) return [];
     const set = new Set<string>();
@@ -169,17 +186,36 @@ export default function SurgicalRiskPage() {
   }
 
   // Shared card renderer
-  function card(row: SurgicalRiskAssessmentRow, compact: boolean) {
+  function card(row: SurgicalRiskAssessmentRow, compact: boolean, hideDate = false) {
     return (
       <SurgicalRiskCaseCard
         key={row.id}
         row={row}
         compact={compact}
+        hideDate={hideDate}
         onReviewed={reload}
         onRemoved={reload}
         onRestored={reload}
       />
     );
+  }
+
+  // Schedule day header label: "Today · Fri, 19 Jun 2026" etc.
+  function dayLabel(key: string): string {
+    const d = new Date(key + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return key;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+    const rel = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : '';
+    const full = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    return rel ? `${rel} · ${full}` : full;
+  }
+
+  // Per-day tier counts for the schedule header chips
+  function dayTierCounts(rows: SurgicalRiskAssessmentRow[]): { tier: RiskTier; n: number }[] {
+    return TIER_ORDER
+      .map(tier => ({ tier, n: rows.filter(r => r.risk_tier === tier).length }))
+      .filter(t => t.n > 0);
   }
 
   return (
@@ -319,10 +355,47 @@ export default function SurgicalRiskPage() {
           </div>
         )}
 
-        {/* SCHEDULE VIEW — date-ordered list (API order). R2 adds day headers + sort. */}
+        {/* SCHEDULE VIEW — grouped by surgery date, day headers + sort toggle */}
         {!loading && !error && view === 'schedule' && visibleAssessments.length > 0 && (
-          <div className="space-y-3">
-            {visibleAssessments.map(row => card(row, false))}
+          <div>
+            <div className="flex items-center justify-end mb-3">
+              <button
+                onClick={() => setScheduleSort(s => (s === 'asc' ? 'desc' : 'asc'))}
+                className="text-xs px-2.5 py-1 border border-slate-300 rounded-lg bg-white text-slate-600 hover:bg-slate-50"
+                title="Toggle date order"
+              >
+                {scheduleSort === 'asc' ? 'Soonest first' : 'Latest first'} ⇅
+              </button>
+            </div>
+            {scheduleGroups.days.map(day => (
+              <div key={day.key} className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-semibold text-slate-700">{dayLabel(day.key)}</span>
+                  <span className="text-xs text-slate-400">{day.rows.length} case{day.rows.length > 1 ? 's' : ''}</span>
+                  <span className="flex items-center gap-2 ml-1">
+                    {dayTierCounts(day.rows).map(({ tier, n }) => (
+                      <span key={tier} className="inline-flex items-center gap-1 text-xs text-slate-500">
+                        <span className={`w-2 h-2 rounded-full ${TIER_STYLES[tier].bar}`} />{n}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {day.rows.map(row => card(row, true, true))}
+                </div>
+              </div>
+            ))}
+            {scheduleGroups.undated.length > 0 && (
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-semibold text-slate-500">Unscheduled</span>
+                  <span className="text-xs text-slate-400">{scheduleGroups.undated.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {scheduleGroups.undated.map(row => card(row, true, true))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

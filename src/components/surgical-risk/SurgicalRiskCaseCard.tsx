@@ -20,6 +20,8 @@ interface Props {
   row: SurgicalRiskAssessmentRow;
   /** R1 — render as a dense one-line row when collapsed (GREEN / reviewed). */
   compact?: boolean;
+  /** R2 — hide the per-row surgery date (Schedule view shows it in the day header). */
+  hideDate?: boolean;
   onReviewed?: (id: number, reviewedBy: string, reviewedAt: string) => void;
   /** SPAS.5 — called after a successful reassess so parent can refresh the row */
   onReassessed?: (id: number) => void;
@@ -42,7 +44,7 @@ function formatDateTime(iso: string | null): string {
   return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export default function SurgicalRiskCaseCard({ row, compact, onReviewed, onReassessed, onRemoved, onRestored }: Props) {
+export default function SurgicalRiskCaseCard({ row, compact, hideDate, onReviewed, onReassessed, onRemoved, onRestored }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [reviewerName, setReviewerName] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
@@ -192,7 +194,7 @@ export default function SurgicalRiskCaseCard({ row, compact, onReviewed, onReass
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.bar}`} />
       <span className="text-sm font-medium text-slate-800 truncate" style={{ minWidth: 110 }}>{row.patient_name}</span>
       <span className="text-xs text-slate-500 truncate flex-1 min-w-0">{row.proposed_procedure || '—'}</span>
-      {row.surgery_date && <span className="text-xs text-slate-400 flex-shrink-0">{formatDate(row.surgery_date)}</span>}
+      {!hideDate && row.surgery_date && <span className="text-xs text-slate-400 flex-shrink-0">{formatDate(row.surgery_date)}</span>}
       <span className={`text-sm font-bold flex-shrink-0 ${s.text}`}>{Number(row.composite_risk_score).toFixed(1)}</span>
       {reviewed
         ? <span className="text-emerald-600 flex-shrink-0" title={`Reviewed by ${row.reviewed_by}`}>✓</span>

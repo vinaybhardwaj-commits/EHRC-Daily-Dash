@@ -96,6 +96,12 @@ export function needsReview(row: SurgicalRiskAssessmentRow, nowMs: number): bool
   return t >= nowMs - 24 * 3600_000 && t <= nowMs + 48 * 3600_000;
 }
 
+/** 'YYYY-MM-DD' surgery date key for Schedule/Calendar grouping, or null. */
+export function surgeryDateKey(row: SurgicalRiskAssessmentRow): string | null {
+  const raw = row.surgery_date || (row.surgery_datetime ? row.surgery_datetime.slice(0, 10) : null);
+  return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
 /** Composite-desc comparator (stable-ish; tier as tiebreaker). */
 export function byCompositeDesc(a: SurgicalRiskAssessmentRow, b: SurgicalRiskAssessmentRow): number {
   const d = Number(b.composite_risk_score) - Number(a.composite_risk_score);
