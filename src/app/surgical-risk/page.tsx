@@ -2,19 +2,21 @@
 
 /**
  * /surgical-risk standalone page.
- * Per Mockup.jsx + PRD v2 §6 + §14.4.
  *
- * Layout: top nav (matches EHRC pattern) + KPI strip (5 MetricCards) +
- * filter bar (tier toggle pills + specialty dropdown) + case cards list.
- *
- * Default range: today + 3 days forward (PRD §6 v1 scope).
- * Per decision #22: search + historical + trends deferred to v1.x.
+ * R1 (UI overhaul): three views — Risk (default), Schedule, Calendar(R3).
+ * Risk view = a "needs review now" band (unreviewed RED+ within 48h) pinned
+ * above tier-grouped cards, risk-first; GREEN + reviewed cases collapse to
+ * dense rows. Schedule view = the date-ordered list. All views share the
+ * enriched card; every existing action (review, re-assess, remove, override)
+ * is preserved.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import type { RiskTier, SurgicalRiskAssessmentRow } from '@/lib/surgical-risk/types';
 import { TIER_STYLES, TIER_ORDER } from '@/components/surgical-risk/tier-styles';
 import SurgicalRiskCaseCard from '@/components/surgical-risk/SurgicalRiskCaseCard';
+import SrewsViewToggle, { type SrewsView } from '@/components/surgical-risk/SrewsViewToggle';
+import { needsReview, byCompositeDesc } from '@/lib/surgical-risk/derive';
 
 interface ApiList {
   ok: boolean;
@@ -33,6 +35,15 @@ const KPI_CARDS = [
   { key: 'unreviewed', label: 'Unreviewed',         color: 'bg-purple-50 border-purple-200 text-purple-700' },
 ] as const;
 
+const AVAILABLE_VIEWS: SrewsView[] = ['risk', 'schedule']; // Calendar lands in R3
+
+const TIER_LABEL: Record<RiskTier, string> = {
+  CRITICAL: 'Critical',
+  RED: 'Red — high risk',
+  AMBER: 'Attention — amber',
+  GREEN: 'Cleared — green',
+};
+
 export default function SurgicalRiskPage() {
   const [data, setData] = useState<ApiList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +53,34 @@ export default function SurgicalRiskPage() {
   const [removedExpanded, setRemovedExpanded] = useState(false);
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('');
   const [llmHealth, setLlmHealth] = useState<'healthy' | 'down' | 'unknown'>('unknown');
+  const [view, setView] = useState<SrewsView>('risk');
+
+  // Restore view from ?view= / localStorage
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('view') as SrewsView | null;
+      const stored = localStorage.getItem('srews_view') as SrewsView | null;
+      const pick = (v: SrewsView | null) => (v && AVAILABLE_VIEWS.includes(v) ? v : null);
+      setView(pick(fromUrl) || pick(stored) || 'risk');
+    } catch { /* default risk */ }
+  }, []);
+
+  function changeView(v: SrewsView) {
+    setView(v);
+    try {
+      localStorage.setItem('srews_view', v);
+      const u = new URL(window.location.href);
+      u.searchParams.set('view', v);
+      window.history.replaceState({}, '', u);
+    } catch { /* ignore */ }
+  }
+
+  function reload() {
+    fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`)
+      .then(r => r.json())
+      .then((j: ApiList) => { if (j.ok) setData(j); });
+  }
 
   // Fetch list
   useEffect(() => {
@@ -52,12 +91,8 @@ export default function SurgicalRiskPage() {
         const r = await fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`);
         const json: ApiList = await r.json();
         if (!cancelled) {
-          if (json.ok) {
-            setData(json);
-            setError(null);
-          } else {
-            setError(json.error || 'Failed to load assessments');
-          }
+          if (json.ok) { setData(json); setError(null); }
+          else { setError(json.error || 'Failed to load assessments'); }
         }
       } catch (e) {
         if (!cancelled) setError(String(e));
@@ -79,7 +114,7 @@ export default function SurgicalRiskPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Derived: filtered + sorted assessments — split into active + removed (DASH.1)
+  // Active (non-removed), tier+specialty filtered
   const visibleAssessments = useMemo(() => {
     if (!data?.assessments) return [];
     return data.assessments
@@ -96,13 +131,22 @@ export default function SurgicalRiskPage() {
       .filter(a => !specialtyFilter || (a.surgical_specialty || '').toLowerCase().includes(specialtyFilter.toLowerCase()));
   }, [data, tierFilter, specialtyFilter]);
 
-  // Derived: distinct specialties for the dropdown
+  // Risk view derivation: needs-review band + tier groups (risk-first)
+  const riskGroups = useMemo(() => {
+    const now = Date.now();
+    const needs = visibleAssessments.filter(a => needsReview(a, now)).sort(byCompositeDesc);
+    const needsIds = new Set(needs.map(a => a.id));
+    const rest = visibleAssessments.filter(a => !needsIds.has(a.id));
+    const groups = TIER_ORDER
+      .map(tier => ({ tier, rows: rest.filter(a => a.risk_tier === tier).sort(byCompositeDesc) }))
+      .filter(g => g.rows.length > 0);
+    return { needs, groups };
+  }, [visibleAssessments]);
+
   const specialties = useMemo(() => {
     if (!data?.assessments) return [];
     const set = new Set<string>();
-    for (const a of data.assessments) {
-      if (a.surgical_specialty) set.add(a.surgical_specialty);
-    }
+    for (const a of data.assessments) if (a.surgical_specialty) set.add(a.surgical_specialty);
     return Array.from(set).sort();
   }, [data]);
 
@@ -114,7 +158,6 @@ export default function SurgicalRiskPage() {
     });
   }
 
-  // KPI value lookup
   function kpiValue(key: string): number {
     if (!data?.summary) return 0;
     if (key === 'total') return data.summary.total;
@@ -125,9 +168,23 @@ export default function SurgicalRiskPage() {
     return 0;
   }
 
+  // Shared card renderer
+  function card(row: SurgicalRiskAssessmentRow, compact: boolean) {
+    return (
+      <SurgicalRiskCaseCard
+        key={row.id}
+        row={row}
+        compact={compact}
+        onReviewed={reload}
+        onRemoved={reload}
+        onRestored={reload}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Top nav — matches EHRC pattern */}
+      {/* Top nav */}
       <nav className="bg-gradient-to-r from-blue-900 to-blue-950 text-white sticky top-0 z-50 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -159,12 +216,18 @@ export default function SurgicalRiskPage() {
           ))}
         </div>
 
+        {/* View toggle */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <SrewsViewToggle view={view} views={AVAILABLE_VIEWS} onChange={changeView} />
+          <span className="text-xs text-slate-500">{data?.assessments ? `${data.assessments.length} shown` : ''}</span>
+        </div>
+
         {/* Filter bar */}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tier:</span>
             {TIER_ORDER.map(tier => {
-              const s = TIER_STYLES[tier];
+              const stl = TIER_STYLES[tier];
               const active = tierFilter.has(tier);
               const count = data?.assessments?.filter(a => a.risk_tier === tier).length || 0;
               return (
@@ -172,7 +235,7 @@ export default function SurgicalRiskPage() {
                   key={tier}
                   onClick={() => toggleTier(tier)}
                   className={`text-xs font-bold px-3 py-1 rounded-full border transition-all ${
-                    active ? `${s.badge} ${s.border}` : 'bg-slate-100 text-slate-400 border-slate-200'
+                    active ? `${stl.badge} ${stl.border}` : 'bg-slate-100 text-slate-400 border-slate-200'
                   }`}
                 >
                   {tier} {active && count > 0 && <span className="ml-1 opacity-60">({count})</span>}
@@ -203,18 +266,11 @@ export default function SurgicalRiskPage() {
               <option value="7d">Past 7d + upcoming</option>
               <option value="30d">Past 30d + upcoming</option>
             </select>
-            <span className="text-xs text-slate-500">
-              {data?.range?.mode === 'all' ? 'all dates' :
-               data?.range?.start && data?.range?.end ? `${data.range.start} → ${data.range.end}` : ''}
-              {data?.assessments && ` · ${data.assessments.length} shown`}
-            </span>
           </div>
         </div>
 
         {/* Body */}
-        {loading && (
-          <div className="text-center py-16 text-slate-400">Loading assessments…</div>
-        )}
+        {loading && <div className="text-center py-16 text-slate-400">Loading assessments…</div>}
         {error && !loading && (
           <div className="text-center py-16 text-red-600">
             <p className="text-lg mb-1">Failed to load</p>
@@ -226,33 +282,51 @@ export default function SurgicalRiskPage() {
             <p className="text-lg mb-1">No cases match the selected filters</p>
             <p className="text-sm">
               {data?.summary?.total === 0
-                ? 'No upcoming surgical bookings in the database. New form submissions will appear here within seconds via the Apps Script webhook (or hourly via the safety-net polling).'
+                ? 'No upcoming surgical bookings yet. New submissions appear here within seconds.'
                 : 'Try toggling more tier filters or clearing the specialty filter.'}
             </p>
           </div>
         )}
-        {!loading && !error && visibleAssessments.length > 0 && (
-          <div className="space-y-3">
-            {visibleAssessments.map(row => (
-              <SurgicalRiskCaseCard
-                key={row.id}
-                row={row}
-                onReviewed={() => {
-                  // Reload to refresh "reviewed" badge
-                  fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
-                }}
-                onRemoved={() => {
-                  fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
-                }}
-                onRestored={() => {
-                  fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
-                }}
-              />
+
+        {/* RISK VIEW */}
+        {!loading && !error && view === 'risk' && visibleAssessments.length > 0 && (
+          <div>
+            {riskGroups.needs.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-rose-600" aria-hidden>⚠</span>
+                  <span className="text-sm font-semibold text-rose-700">Needs review now</span>
+                  <span className="text-xs text-slate-400">unreviewed · RED+ · surgery within 48h</span>
+                  <span className="ml-auto text-xs font-bold text-rose-700">{riskGroups.needs.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {riskGroups.needs.map(row => card(row, false))}
+                </div>
+              </div>
+            )}
+            {riskGroups.groups.map(g => (
+              <div key={g.tier} className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`w-2.5 h-2.5 rounded ${TIER_STYLES[g.tier].bar}`} />
+                  <span className="text-sm font-medium text-slate-600">{TIER_LABEL[g.tier]}</span>
+                  <span className="text-xs text-slate-400">{g.rows.length}</span>
+                </div>
+                <div className={g.tier === 'GREEN' ? 'space-y-2' : 'space-y-3'}>
+                  {g.rows.map(row => card(row, g.tier === 'GREEN' || !!row.reviewed_at))}
+                </div>
+              </div>
             ))}
           </div>
         )}
 
-        {/* DASH.1 — Removed group (collapsible). Hidden when empty. */}
+        {/* SCHEDULE VIEW — date-ordered list (API order). R2 adds day headers + sort. */}
+        {!loading && !error && view === 'schedule' && visibleAssessments.length > 0 && (
+          <div className="space-y-3">
+            {visibleAssessments.map(row => card(row, false))}
+          </div>
+        )}
+
+        {/* Removed group (collapsible) */}
         {!loading && !error && removedAssessments.length > 0 && (
           <div className="mt-8 border-t border-slate-200 pt-4">
             <button
@@ -265,21 +339,7 @@ export default function SurgicalRiskPage() {
             </button>
             {removedExpanded && (
               <div className="space-y-3 opacity-70">
-                {removedAssessments.map(row => (
-                  <SurgicalRiskCaseCard
-                    key={row.id}
-                    row={row}
-                    onReviewed={() => {
-                      fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
-                    }}
-                    onRemoved={() => {
-                      fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
-                    }}
-                    onRestored={() => {
-                      fetch(`/api/surgical-risk?range=${rangeMode}&include_removed=true`).then(r => r.json()).then((j: ApiList) => { if (j.ok) setData(j); });
-                    }}
-                  />
-                ))}
+                {removedAssessments.map(row => card(row, false))}
               </div>
             )}
           </div>
@@ -287,7 +347,7 @@ export default function SurgicalRiskPage() {
 
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-slate-400">
-          Risk scores computed by Qwen 2.5 14B via Ollama · Arithmetic validated server-side per PRD §13.3 · Even Hospitals, Race Course Road
+          Risk scores computed by Gemini 2.5 Pro on Vertex · Arithmetic validated server-side per PRD §13.3 · Even Hospitals, Race Course Road
         </div>
       </div>
     </div>

@@ -13,11 +13,13 @@
 import React, { useState } from 'react';
 import type { SurgicalRiskAssessmentRow } from '@/lib/surgical-risk/types';
 import { TIER_STYLES } from './tier-styles';
-import ScoreGauge from './ScoreGauge';
 import FactorTable from './FactorTable';
+import { topDriver, topAction, dominantDimension, type Dimension } from '@/lib/surgical-risk/derive';
 
 interface Props {
   row: SurgicalRiskAssessmentRow;
+  /** R1 — render as a dense one-line row when collapsed (GREEN / reviewed). */
+  compact?: boolean;
   onReviewed?: (id: number, reviewedBy: string, reviewedAt: string) => void;
   /** SPAS.5 — called after a successful reassess so parent can refresh the row */
   onReassessed?: (id: number) => void;
@@ -40,7 +42,7 @@ function formatDateTime(iso: string | null): string {
   return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, onRemoved, onRestored }: Props) {
+export default function SurgicalRiskCaseCard({ row, compact, onReviewed, onReassessed, onRemoved, onRestored }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [reviewerName, setReviewerName] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
@@ -64,6 +66,12 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
   const reviewed = !!row.reviewed_at;
   // LEGAL.4 — collect any Legal: factors so we can badge them prominently
   const legalFactors = (a?.system_risk?.factors || []).filter(f => /^Legal:/i.test(f.factor || ''));
+
+  // R1 — collapsed-card enrichments (deterministic reads, GREEN kept clean)
+  const driver = row.risk_tier === 'GREEN' ? null : topDriver(row);
+  const action = row.risk_tier === 'GREEN' ? null : topAction(row);
+  const dim = dominantDimension(row);
+  const reviewPending = !reviewed && !row.removed_at && (row.risk_tier === 'RED' || row.risk_tier === 'CRITICAL');
 
   // DASH.1 — soft-remove
   async function submitRemove(e: React.MouseEvent) {
@@ -178,63 +186,96 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
     }
   }
 
-  return (
-    <div
-      className={`rounded-xl border-2 ${s.border} ${s.glow} overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      {/* Main card row */}
-      <div className="flex">
-        {/* Left tier color bar (6px) */}
-        <div className={`w-1.5 ${s.bar} flex-shrink-0`} />
-        <div className="flex-1 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <h3 className="font-semibold text-slate-900 truncate">{row.patient_name}</h3>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>{row.risk_tier}</span>
-                {a?.composite?.override_applied && (
-                  <span className="text-xs text-amber-600" title={a.composite.override_reason || undefined}>⚠ Override</span>
-                )}
-                {legalFactors.length > 0 && (
-                  <span
-                    className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
-                    title={legalFactors.map(f => f.factor.replace(/^Legal:\s*/i,'') + ': ' + (f.detail||'')).join('\n')}
-                  >
-                    ⚖ {legalFactors.length === 1 ? 'Legal flag' : `${legalFactors.length} legal flags`}
-                  </span>
-                )}
-                {reviewed && (
-                  <span className="text-xs text-emerald-600" title={`Reviewed by ${row.reviewed_by} at ${formatDateTime(row.reviewed_at)}`}>
-                    ✓ Reviewed
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-slate-600 truncate">{row.proposed_procedure || '—'}</p>
-              <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400 flex-wrap">
-                {row.age && row.sex && <span>{row.age}/{row.sex[0]}</span>}
-                {row.surgeon_name && <><span>·</span><span>{row.surgeon_name}</span></>}
-                {row.surgical_specialty && <><span>·</span><span>{row.surgical_specialty}</span></>}
-                {a?.recommended_actions && a.recommended_actions.length > 0 && (
-                  <><span>·</span><span>{a.recommended_actions.length} action{a.recommended_actions.length > 1 ? 's' : ''}</span></>
-                )}
-              </div>
+  // Dense one-line row (GREEN / already-reviewed). Clicking still expands to full detail.
+  const denseRow = (
+    <div className="flex items-center gap-3 px-3 py-2.5">
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.bar}`} />
+      <span className="text-sm font-medium text-slate-800 truncate" style={{ minWidth: 110 }}>{row.patient_name}</span>
+      <span className="text-xs text-slate-500 truncate flex-1 min-w-0">{row.proposed_procedure || '—'}</span>
+      {row.surgery_date && <span className="text-xs text-slate-400 flex-shrink-0">{formatDate(row.surgery_date)}</span>}
+      <span className={`text-sm font-bold flex-shrink-0 ${s.text}`}>{Number(row.composite_risk_score).toFixed(1)}</span>
+      {reviewed
+        ? <span className="text-emerald-600 flex-shrink-0" title={`Reviewed by ${row.reviewed_by}`}>✓</span>
+        : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 flex-shrink-0">{row.risk_tier}</span>}
+      <span className="text-slate-300 flex-shrink-0">▾</span>
+    </div>
+  );
+
+  // Enriched header (RED / AMBER / CRITICAL, or any expanded card).
+  const fullHeader = (
+    <div className="flex">
+      <div className={`w-1.5 ${s.bar} flex-shrink-0`} />
+      <div className="flex-1 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h3 className="font-semibold text-slate-900 truncate">{row.patient_name}</h3>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>{row.risk_tier}</span>
+              {reviewPending && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">⏱ review pending</span>
+              )}
+              {a?.composite?.override_applied && (
+                <span className="text-xs text-amber-600" title={a.composite.override_reason || undefined}>⚠ Override</span>
+              )}
+              {legalFactors.length > 0 && (
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
+                  title={legalFactors.map(f => f.factor.replace(/^Legal:\s*/i,'') + ': ' + (f.detail||'')).join('\n')}
+                >
+                  ⚖ {legalFactors.length === 1 ? 'Legal flag' : `${legalFactors.length} legal flags`}
+                </span>
+              )}
+              {reviewed && (
+                <span className="text-xs text-emerald-600" title={`Reviewed by ${row.reviewed_by} at ${formatDateTime(row.reviewed_at)}`}>
+                  ✓ Reviewed
+                </span>
+              )}
             </div>
-            <div className="text-right flex-shrink-0">
-              <div className={`text-2xl font-bold ${s.text}`}>{Number(row.composite_risk_score).toFixed(1)}</div>
-              <div className="text-xs text-slate-400">/ 10</div>
-              <div className="text-xs text-slate-500 mt-1">{formatDate(row.surgery_date)}</div>
+            <p className="text-sm text-slate-600 truncate">{row.proposed_procedure || '—'}</p>
+            <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400 flex-wrap">
+              {row.age && row.sex && <span>{row.age}/{row.sex[0]}</span>}
+              {row.surgeon_name && <><span>·</span><span>{row.surgeon_name}</span></>}
+              {row.surgical_specialty && <><span>·</span><span>{row.surgical_specialty}</span></>}
             </div>
           </div>
-
-          {/* Inline gauge strip */}
-          <div className="flex gap-4 mt-3">
-            <ScoreGauge label="Patient" score={Number(row.patient_risk_score)} />
-            <ScoreGauge label="Procedure" score={Number(row.procedure_risk_score)} />
-            <ScoreGauge label="System" score={Number(row.system_risk_score)} />
+          <div className="text-right flex-shrink-0">
+            <div className={`text-2xl font-bold ${s.text}`}>{Number(row.composite_risk_score).toFixed(1)}</div>
+            <div className="text-xs text-slate-400">/ 10</div>
+            <div className="text-xs text-slate-500 mt-1">{formatDate(row.surgery_date)}</div>
           </div>
         </div>
+
+        {/* Why — dominant risk driver (surfaced from the highest-points factor) */}
+        {driver && (
+          <p className="text-sm text-slate-600 mt-2.5">
+            <span className="font-semibold text-slate-800">Why:</span>{' '}
+            {driver.factor}{driver.detail ? <span className="text-slate-500"> — {driver.detail}</span> : null}
+          </p>
+        )}
+        {/* Top recommended action */}
+        {action && (
+          <p className="text-sm text-slate-700 mt-1">
+            <span className={`font-bold ${s.text}`}>→</span> {action.first}
+            {action.rest > 0 && <span className="text-slate-400"> · +{action.rest} more</span>}
+          </p>
+        )}
+
+        {/* Sub-score strip with dominant dimension highlighted */}
+        <SubScoreStrip row={row} dim={dim} />
       </div>
+    </div>
+  );
+
+  return (
+    <div
+      className={
+        compact && !expanded
+          ? 'rounded-lg border border-slate-200 bg-white hover:bg-slate-50 overflow-hidden transition-colors cursor-pointer'
+          : `rounded-xl border-2 ${s.border} ${s.glow} overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer`
+      }
+      onClick={() => setExpanded(!expanded)}
+    >
+      {compact && !expanded ? denseRow : fullHeader}
 
       {/* Expanded detail */}
       {expanded && (
@@ -441,6 +482,47 @@ export default function SurgicalRiskCaseCard({ row, onReviewed, onReassessed, on
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// R1 — sub-score strip with the dominant dimension emphasised
+// ─────────────────────────────────────────────────────────────────────────
+
+function SubScoreStrip({ row, dim }: { row: SurgicalRiskAssessmentRow; dim: Dimension }) {
+  const items: { key: Dimension; label: string; score: number }[] = [
+    { key: 'patient', label: 'Patient', score: Number(row.patient_risk_score) },
+    { key: 'procedure', label: 'Procedure', score: Number(row.procedure_risk_score) },
+    { key: 'system', label: 'System', score: Number(row.system_risk_score) },
+  ];
+  const fill = (sc: number) =>
+    sc >= 7.5 ? 'bg-red-500' : sc >= 5 ? 'bg-amber-500' : sc >= 2.5 ? 'bg-yellow-400' : 'bg-emerald-500';
+
+  return (
+    <div className="grid grid-cols-3 gap-3 mt-3">
+      {items.map(it => {
+        const dominant = it.key === dim;
+        return (
+          <div key={it.key}>
+            <div className="flex justify-between items-baseline mb-1">
+              <span className={`text-xs uppercase tracking-wider ${dominant ? 'font-semibold text-slate-700' : 'font-medium text-slate-400'}`}>
+                {it.label}
+                {dominant && <span className="ml-1 normal-case tracking-normal text-slate-400">· driver</span>}
+              </span>
+              <span className={dominant ? 'text-sm font-bold text-slate-900' : 'text-sm font-medium text-slate-500'}>
+                {it.score.toFixed(1)}
+              </span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${fill(it.score)} ${dominant ? '' : 'opacity-50'}`}
+                style={{ width: `${Math.min(100, (it.score / 10) * 100)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
