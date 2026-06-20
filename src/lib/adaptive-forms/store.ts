@@ -127,7 +127,9 @@ export interface NewQuestion {
 
 /**
  * Insert one generated question. Idempotent on the partial unique index
- * (dept_slug, dedupe_key) WHERE status='open' — a re-asked open gap is a no-op.
+ * uq_afq_open_dedupe (dept_slug, dedupe_key) WHERE status='open' AND dedupe_key
+ * IS NOT NULL — the ON CONFLICT predicate below MUST match that index predicate
+ * exactly or Postgres can't use it as an arbiter. A re-asked open gap is a no-op.
  * Returns the new id, or null if it conflicted (already open).
  */
 export async function insertQuestion(q: NewQuestion): Promise<number | null> {
@@ -138,7 +140,7 @@ export async function insertQuestion(q: NewQuestion): Promise<number | null> {
       ${q.dept_slug}, ${JSON.stringify(q.field_spec)}::jsonb, ${q.rationale},
       ${q.priority}, ${q.recurrence}, ${q.dedupe_key}, ${q.source ?? 'gap_analysis'}
     )
-    ON CONFLICT (dept_slug, dedupe_key) WHERE status = 'open' DO NOTHING
+    ON CONFLICT (dept_slug, dedupe_key) WHERE status = 'open' AND dedupe_key IS NOT NULL DO NOTHING
     RETURNING id`;
   const id = res.rows[0]?.id as number | undefined;
   if (id) await recordEvent(id, 'published', 'even-ai', { dept: q.dept_slug, dedupe_key: q.dedupe_key });
