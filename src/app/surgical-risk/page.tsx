@@ -16,6 +16,7 @@ import type { RiskTier, SurgicalRiskAssessmentRow } from '@/lib/surgical-risk/ty
 import { TIER_STYLES, TIER_ORDER } from '@/components/surgical-risk/tier-styles';
 import SurgicalRiskCaseCard from '@/components/surgical-risk/SurgicalRiskCaseCard';
 import SrewsViewToggle, { type SrewsView } from '@/components/surgical-risk/SrewsViewToggle';
+import SrewsCalendar from '@/components/surgical-risk/SrewsCalendar';
 import { needsReview, byCompositeDesc, surgeryDateKey } from '@/lib/surgical-risk/derive';
 
 interface ApiList {
@@ -35,7 +36,7 @@ const KPI_CARDS = [
   { key: 'unreviewed', label: 'Unreviewed',         color: 'bg-purple-50 border-purple-200 text-purple-700' },
 ] as const;
 
-const AVAILABLE_VIEWS: SrewsView[] = ['risk', 'schedule']; // Calendar lands in R3
+const AVAILABLE_VIEWS: SrewsView[] = ['risk', 'schedule', 'calendar'];
 
 const TIER_LABEL: Record<RiskTier, string> = {
   CRITICAL: 'Critical',
@@ -399,8 +400,13 @@ export default function SurgicalRiskPage() {
           </div>
         )}
 
-        {/* Removed group (collapsible) */}
-        {!loading && !error && removedAssessments.length > 0 && (
+        {/* CALENDAR VIEW — month grid bucketed by surgery date */}
+        {!loading && !error && view === 'calendar' && visibleAssessments.length > 0 && (
+          <SrewsCalendar rows={visibleAssessments} renderCase={(row) => card(row, true, true)} />
+        )}
+
+        {/* Removed group (collapsible) — hidden in calendar view */}
+        {!loading && !error && view !== 'calendar' && removedAssessments.length > 0 && (
           <div className="mt-8 border-t border-slate-200 pt-4">
             <button
               onClick={() => setRemovedExpanded(v => !v)}
