@@ -36,6 +36,13 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Once-a-Day rhythm (Phase 1): which day this department reports.
+  // null until /api/reporting-day resolves; the editable band is shown only
+  // for pilot ('eod') departments — non-pilot forms render exactly as before.
+  const [reporting, setReporting] = useState<
+    { rhythm: 'eod' | 'today'; date: string; label: string; todayIso: string } | null
+  >(null);
+
   // Layout / wizard state
   // 'responsive' picks wizard on first render when viewport < 640px; HOD can flip any time.
   const computeInitialMode = (): 'scroll' | 'wizard' => {
@@ -97,6 +104,24 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     return () => window.removeEventListener('beforeunload', handleUnload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Once-a-Day rhythm: resolve the active reporting day from the server,
+  //    the single source of truth for EOD_RHYTHM_SLUGS. For pilot ('eod')
+  //    departments this overrides the "today" default above; if the request
+  //    fails we keep the client default, so non-pilot forms are unchanged. ──
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    fetch(`/api/reporting-day?slug=${encodeURIComponent(slug)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d || !d.date) return;
+        setReporting({ rhythm: d.rhythm, date: d.date, label: d.label, todayIso: d.todayIso });
+        if (d.rhythm === 'eod') setFormData(prev => ({ ...prev, date: d.date }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [slug]);
 
   // Keep currentStep state in range when sections hide
   useEffect(() => {
@@ -412,6 +437,18 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
       <div className="min-h-screen bg-gray-50">
         <FormHeader title={config.title} subtitle={config.department} viewMode={viewMode} onToggleMode={toggleMode} showToggle={isResponsive} />
 
+        {reporting?.rhythm === 'eod' && typeof formData.date === 'string' && (
+          <ReportingDateBand
+            label={reporting.label}
+            iso={ddmmyyyyToIso(formData.date as string)}
+            todayIso={reporting.todayIso}
+            onChange={(iso) => {
+              setFormData(prev => ({ ...prev, date: isoToDdmmyyyy(iso) }));
+              setReporting(r => (r ? { ...r, label: labelFromIso(iso) } : r));
+            }}
+          />
+        )}
+
         {/* Progress bar */}
         <div className="max-w-2xl mx-auto px-4 pt-6">
           <div className="flex items-center justify-between mb-2">
@@ -492,6 +529,18 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
     <div className="min-h-screen bg-gray-50">
       <FormHeader title={config.title} subtitle={config.department} viewMode={viewMode} onToggleMode={toggleMode} showToggle={isResponsive} />
 
+      {reporting?.rhythm === 'eod' && typeof formData.date === 'string' && (
+        <ReportingDateBand
+          label={reporting.label}
+          iso={ddmmyyyyToIso(formData.date as string)}
+          todayIso={reporting.todayIso}
+          onChange={(iso) => {
+            setFormData(prev => ({ ...prev, date: isoToDdmmyyyy(iso) }));
+            setReporting(r => (r ? { ...r, label: labelFromIso(iso) } : r));
+          }}
+        />
+      )}
+
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Description */}
         {config.description && (
@@ -537,6 +586,54 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 }
 
 /* ── Sub-components ───────────────────────────────────────────────── */
+
+// Once-a-Day rhythm date helpers (client-side display only).
+function isoToDdmmyyyy(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}-${m}-${y}`;
+}
+function ddmmyyyyToIso(s: string): string {
+  const [d, m, y] = s.split('-');
+  return `${y}-${m}-${d}`;
+}
+function labelFromIso(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+    weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+  });
+}
+
+// Pilot-only banner: makes the reported day explicit and editable so an HOD
+// always knows which completed day they're filling and can catch up a missed one.
+function ReportingDateBand({ label, iso, todayIso, onChange }: {
+  label: string;
+  iso: string;
+  todayIso: string;
+  onChange: (iso: string) => void;
+}) {
+  return (
+    <div className="max-w-2xl mx-auto px-4 pt-4">
+      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm">
+          <span className="text-amber-700 font-medium">Reporting day:</span>{' '}
+          <span className="font-semibold text-amber-900">{label}</span>
+          <p className="text-xs text-amber-700/80 mt-0.5">
+            Report the completed day before tomorrow&apos;s 9:00 huddle. Change the date if you&apos;re catching up.
+          </p>
+        </div>
+        <input
+          type="date"
+          value={iso}
+          max={todayIso}
+          onChange={(e) => { if (e.target.value) onChange(e.target.value); }}
+          aria-label="Reporting day"
+          className="text-sm border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
+        />
+      </div>
+    </div>
+  );
+}
 
 function FormHeader({ title, subtitle, viewMode, onToggleMode, showToggle }: {
   title: string;
