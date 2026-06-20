@@ -270,12 +270,22 @@ export default function SurgicalRiskCaseCard({ row, compact, hideDate, onReviewe
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
       className={
         compact && !expanded
-          ? 'rounded-lg border border-slate-200 bg-white hover:bg-slate-50 overflow-hidden transition-colors cursor-pointer'
-          : `rounded-xl border-2 ${s.border} ${s.glow} overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer`
+          ? 'rounded-lg border border-slate-200 bg-white hover:bg-slate-50 overflow-hidden transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400'
+          : `rounded-xl border-2 ${s.border} ${s.glow} overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400`
       }
       onClick={() => setExpanded(!expanded)}
+      onKeyDown={(e) => {
+        // Only the card's own surface toggles — never steal keys from nested inputs/buttons.
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+          e.preventDefault();
+          setExpanded(v => !v);
+        }
+      }}
     >
       {compact && !expanded ? denseRow : fullHeader}
 

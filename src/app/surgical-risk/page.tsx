@@ -55,7 +55,7 @@ export default function SurgicalRiskPage() {
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('');
   const [llmHealth, setLlmHealth] = useState<'healthy' | 'down' | 'unknown'>('unknown');
   const [view, setView] = useState<SrewsView>('risk');
-  const [scheduleSort, setScheduleSort] = useState<'asc' | 'desc'>('asc');
+  const [scheduleSort, setScheduleSort] = useState<'upcoming' | 'recent'>('upcoming');
 
   // Restore view from ?view= / localStorage
   useEffect(() => {
@@ -145,7 +145,9 @@ export default function SurgicalRiskPage() {
     return { needs, groups };
   }, [visibleAssessments]);
 
-  // Schedule view derivation: group by surgery date, sortable; undated go last
+  // Schedule view derivation: group by surgery date; "upcoming" = today+future
+  // ascending then past most-recent-first (forward-looking roster default);
+  // "recent" = strict latest-first. Undated go last.
   const scheduleGroups = useMemo(() => {
     const map = new Map<string, SurgicalRiskAssessmentRow[]>();
     const undated: SurgicalRiskAssessmentRow[] = [];
@@ -155,10 +157,20 @@ export default function SurgicalRiskPage() {
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(a);
     }
-    const keys = Array.from(map.keys()).sort();
-    if (scheduleSort === 'desc') keys.reverse();
-    const days = keys.map(k => ({ key: k, rows: map.get(k)!.slice().sort(byCompositeDesc) }));
-    return { days, undated };
+    const t = new Date();
+    const tKey = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    const all = Array.from(map.keys());
+    let ordered: string[];
+    if (scheduleSort === 'recent') {
+      ordered = all.slice().sort().reverse();
+    } else {
+      const future = all.filter(k => k >= tKey).sort();
+      const past = all.filter(k => k < tKey).sort().reverse();
+      ordered = [...future, ...past];
+    }
+    const firstPastKey = scheduleSort === 'upcoming' ? (ordered.find(k => k < tKey) ?? null) : null;
+    const days = ordered.map(k => ({ key: k, rows: map.get(k)!.slice().sort(byCompositeDesc) }));
+    return { days, undated, firstPastKey };
   }, [visibleAssessments, scheduleSort]);
 
   const specialties = useMemo(() => {
@@ -361,15 +373,22 @@ export default function SurgicalRiskPage() {
           <div>
             <div className="flex items-center justify-end mb-3">
               <button
-                onClick={() => setScheduleSort(s => (s === 'asc' ? 'desc' : 'asc'))}
+                onClick={() => setScheduleSort(s => (s === 'upcoming' ? 'recent' : 'upcoming'))}
                 className="text-xs px-2.5 py-1 border border-slate-300 rounded-lg bg-white text-slate-600 hover:bg-slate-50"
                 title="Toggle date order"
               >
-                {scheduleSort === 'asc' ? 'Soonest first' : 'Latest first'} ⇅
+                {scheduleSort === 'upcoming' ? 'Upcoming first' : 'Latest first'} ⇅
               </button>
             </div>
             {scheduleGroups.days.map(day => (
               <div key={day.key} className="mb-5">
+                {day.key === scheduleGroups.firstPastKey && (
+                  <div className="flex items-center gap-2 my-4 text-xs text-slate-400">
+                    <span className="h-px flex-1 bg-slate-200" />
+                    Earlier surgeries
+                    <span className="h-px flex-1 bg-slate-200" />
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-sm font-semibold text-slate-700">{dayLabel(day.key)}</span>
                   <span className="text-xs text-slate-400">{day.rows.length} case{day.rows.length > 1 ? 's' : ''}</span>
