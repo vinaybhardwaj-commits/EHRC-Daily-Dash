@@ -6,6 +6,8 @@ import { getActiveHods, getRecipientsByRole, type Recipient } from '@/lib/messag
 import { drainOutbox } from '@/lib/messaging/outbox';
 import { CONTACTS_BY_SLUG } from '@/lib/department-contacts';
 import { adaptiveFormsEnabled, recentlyExpiredUnanswered } from '@/lib/adaptive-forms/store';
+import { eodRhythmSlugs, reportingDay } from '@/lib/reporting-day';
+import { renderTemplate } from '@/lib/messaging/templates';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -32,7 +34,9 @@ function streakFor(slug: string, submitted: Set<string>, dates: string[]): numbe
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const step = new URL(req.url).searchParams.get('step') || '';
+  const url = new URL(req.url);
+  const step = url.searchParams.get('step') || '';
+  const dry = url.searchParams.get('dry') === '1';   // preview recipients + body, no enqueue/send
   const date = todayIST();
   if (isSundayIST() || isHolidayIST(date)) {
     return NextResponse.json({ ok: true, step, date, skipped: 'non-working-day' });
@@ -48,9 +52,10 @@ export async function GET(req: NextRequest) {
     const streak = (slug: string | null) => (slug ? streakFor(slug, submitted, dates) : 0);
 
     const hods = await getActiveHods();
+    const eod = eodRhythmSlugs();   // pilot depts run on the once-a-day rhythm (eod_prompt/eod_lastcall) — exclude them from the legacy "today" steps
 
     if (step === 'morning_link' || step === 'nudge') {
-      const pending = hods.filter((h) => h.dept_slug && !submittedToday(h.dept_slug)); // skip already-filled
+      const pending = hods.filter((h) => h.dept_slug && !eod.has(h.dept_slug) && !submittedToday(h.dept_slug)); // skip already-filled + pilot depts
       const normalTpl = step === 'morning_link' ? 'form_link' : 'form_nudge';
       const eventType = step === 'morning_link' ? 'morning_link' : 'form_nudge';
       const normal = pending.filter((h) => streak(h.dept_slug) < STALE_THRESHOLD);
@@ -68,7 +73,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (step === 'escalation') {
-      const missing = hods.filter((h) => h.dept_slug && !submittedToday(h.dept_slug));
+      const chased = hods.filter((h) => h.dept_slug && !eod.has(h.dept_slug)); // pilot depts escalate on the eod cutoff (P3), not here
+      const missing = chased.filter((h) => !submittedToday(h.dept_slug));
       const withDays = missing
         .map((h) => ({ name: deptName(h.dept_slug), days: streak(h.dept_slug) }))
         .sort((a, b) => b.days - a.days);
@@ -89,10 +95,44 @@ export async function GET(req: NextRequest) {
       }
       const result = await notify('escalation_missing', {
         recipients: admins, dedupSuffix: date,
-        vars: { date, n: missing.length, total: hods.length, missing_list: chronicLine + (lines.join('\n') || 'None — all submitted ✅') + gapsLine },
+        vars: { date, n: missing.length, total: chased.length, missing_list: chronicLine + (lines.join('\n') || 'None — all submitted ✅') + gapsLine },
       });
       const drain = await drainOutbox(10);
       return NextResponse.json({ ok: true, step, date, missing: missing.length, chronic: chronic.length, result, drain });
+    }
+
+    if (step === 'eod_prompt' || step === 'eod_lastcall') {
+      // Pilot ('eod') departments report the COMPLETED day. eod_prompt fires in
+      // the evening (reporting day = today, the day ending); eod_lastcall fires
+      // pre-huddle (reporting day = yesterday). All eod depts share one reporting
+      // day at a given instant, so compute it once.
+      const pilots = hods.filter((h) => h.dept_slug && eod.has(h.dept_slug));
+      if (!pilots.length) {
+        return NextResponse.json({ ok: true, step, date, prompted: 0, note: 'no pilot departments configured' });
+      }
+      const rd = reportingDay(pilots[0].dept_slug as string);
+      const pending = pilots.filter((h) => !submitted.has(`${h.dept_slug}|${rd.iso}`)); // skip depts that already filed this reporting day
+      const templateKey = step === 'eod_prompt' ? 'form_eod_prompt' : 'form_eod_lastcall';
+      const varsFor = (r: Recipient) => ({
+        name: r.name, department: deptName(r.dept_slug), date: rd.label, link: `${FORM_BASE}/${r.dept_slug}`,
+      });
+
+      if (dry) {
+        const sample = pending[0];
+        const preview = sample ? (await renderTemplate(templateKey, varsFor(sample)))?.body ?? null : null;
+        return NextResponse.json({
+          ok: true, step, dry: true, reportingDay: rd.iso, reportingLabel: rd.label,
+          pilots: pilots.map((h) => h.dept_slug),
+          pending: pending.map((h) => h.dept_slug),
+          preview,
+        });
+      }
+
+      const res = await notify(step, {
+        recipients: pending, templateKey, dedupSuffix: `${step}-${rd.iso}`, perRecipientVars: varsFor,
+      });
+      const drain = await drainOutbox(40);
+      return NextResponse.json({ ok: true, step, reportingDay: rd.iso, pilots: pilots.length, pending: pending.length, res, drain });
     }
 
     return NextResponse.json({ error: 'invalid step' }, { status: 400 });

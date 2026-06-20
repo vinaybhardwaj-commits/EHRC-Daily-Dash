@@ -11,6 +11,9 @@ const FORM_LINK_BODY = 'Good morning {{name}}.\nPlease submit the *{{department}
 const NUDGE_BODY = 'Reminder: the *{{department}}* daily form for {{date}} has not been submitted yet.\nSubmit now: {{link}}';
 const ESCALATION_BODY = '*EHRC — Missing submissions ({{date}})*\n{{n}}/{{total}} departments still pending:\n{{missing_list}}';
 const STALE_BODY = 'Your *{{department}}* daily form is overdue — no submission for the last *{{days}} days* (including today).\nPlease update it now: {{link}}';
+// Once-a-Day rhythm (pilot) — report the COMPLETED day, due before the 9 AM huddle.
+const EOD_PROMPT_BODY = 'Good evening {{name}}.\nThe *{{department}}* daily report for *{{date}}* (today, now complete) is ready to fill. Submit any time tonight, or before tomorrow’s 9 AM huddle:\n{{link}}';
+const EOD_LASTCALL_BODY = 'Reminder {{name}}: the *{{department}}* report for *{{date}}* is not in yet.\nPlease submit before today’s 9 AM huddle:\n{{link}}';
 
 async function createTables() {
   await sql`CREATE TABLE IF NOT EXISTS notification_recipients (
@@ -108,6 +111,8 @@ async function seed() {
     ['form_nudge', NUDGE_BODY],
     ['form_stale', STALE_BODY],
     ['escalation_missing', ESCALATION_BODY],
+    ['form_eod_prompt', EOD_PROMPT_BODY],
+    ['form_eod_lastcall', EOD_LASTCALL_BODY],
   ] as const) {
     await sql`
       INSERT INTO notification_templates (key, channel, body)
@@ -120,6 +125,8 @@ async function seed() {
     ['morning_link', 'hod', 'form_link', '07:30 IST'],
     ['form_nudge', 'hod', 'form_nudge', '09:00 IST'],
     ['escalation_missing', 'admin', 'escalation_missing', '09:45 IST'],
+    ['eod_prompt', 'hod', 'form_eod_prompt', '19:00 IST (pilot)'],
+    ['eod_lastcall', 'hod', 'form_eod_lastcall', '07:45 IST (pilot)'],
   ] as const) {
     await sql`
       INSERT INTO notification_events (event_type, enabled, audience, template_key, channel_policy, schedule_label)

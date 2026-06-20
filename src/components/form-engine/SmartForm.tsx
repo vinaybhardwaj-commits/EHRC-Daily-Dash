@@ -67,10 +67,14 @@ export default function SmartForm({ config, slug, onSubmit, onSubmitSuccess }: S
 
   // Visible sections (accounting for conditional logic)
   const visibleSections = useMemo(() => {
-    return config.sections.filter(section =>
-      isFieldVisible(section.showWhen, formData as Record<string, string | number | boolean | string[] | undefined>)
-    );
-  }, [config.sections, formData]);
+    // Pilot ('eod') forms use the editable Reporting-day band instead of the
+    // raw "Date" section — drop it so the date isn't asked for twice.
+    const hideRawDate = reporting?.rhythm === 'eod';
+    return config.sections.filter(section => {
+      if (hideRawDate && section.id === 'date') return false;
+      return isFieldVisible(section.showWhen, formData as Record<string, string | number | boolean | string[] | undefined>);
+    });
+  }, [config.sections, formData, reporting?.rhythm]);
 
   const totalSteps = visibleSections.length;
   // Clamp the step: answering a question can hide a later section while the

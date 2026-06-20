@@ -6,6 +6,7 @@ import { DEPARTMENT_CONTACTS, CONTACTS_BY_SLUG } from '@/lib/department-contacts
 import Papa from 'papaparse';
 import { notifyAdmins, buildMissingDeptMessage } from '@/lib/whatsapp';
 import { messagingEnabled } from '@/lib/messaging/notify';
+import { eodRhythmSlugs } from '@/lib/reporting-day';
 
 // Lazy-init: Resend client must NOT be created at module scope because
 // process.env.RESEND_API_KEY is unavailable during the Next.js build step.
@@ -172,8 +173,10 @@ export async function GET(request: Request) {
 
   console.log(`[notify-missing] Checking submissions for ${today}`);
 
-  // Check each department's Google Sheet tab
-  const slugs = Object.keys(SHEET_TAB_MAP);
+  // Check each department's Google Sheet tab (pilot 'eod' depts are chased by
+  // the once-a-day reminders, not this morning "today" check).
+  const eod = eodRhythmSlugs();
+  const slugs = Object.keys(SHEET_TAB_MAP).filter((s) => !eod.has(s));
   const results: {
     slug: string;
     department: string;
