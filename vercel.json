@@ -73,6 +73,10 @@
       "schedule": "15 2 * * 1-6"
     },
     {
+      "path": "/api/messaging/run?step=eod_escalation",
+      "schedule": "0 3 * * 1-6"
+    },
+    {
       "path": "/api/ai-intelligence/gap-analysis",
       "schedule": "0 18 * * *"
     },

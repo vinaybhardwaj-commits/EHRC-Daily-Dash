@@ -135,6 +135,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, step, reportingDay: rd.iso, pilots: pilots.length, pending: pending.length, res, drain });
     }
 
+    if (step === 'eod_escalation') {
+      // Pilot-only escalation at the 08:30 cutoff (reporting day = yesterday):
+      // digest to V of pilot depts whose completed-day report is still missing
+      // before the 9 AM huddle. Non-pilot depts escalate via the legacy 09:45 step.
+      const pilots = hods.filter((h) => h.dept_slug && eod.has(h.dept_slug));
+      if (!pilots.length) {
+        return NextResponse.json({ ok: true, step, date, missing: 0, note: 'no pilot departments configured' });
+      }
+      const rd = reportingDay(pilots[0].dept_slug as string);
+      const missing = pilots.filter((h) => !submitted.has(`${h.dept_slug}|${rd.iso}`));
+      const lines = missing.map((h) => `• ${deptName(h.dept_slug)}`);
+      const admins = await getRecipientsByRole('admin');
+      if (dry) {
+        return NextResponse.json({
+          ok: true, step, dry: true, reportingDay: rd.iso, reportingLabel: rd.label,
+          pilots: pilots.map((h) => h.dept_slug), missing: missing.map((h) => h.dept_slug),
+        });
+      }
+      const result = await notify('eod_escalation', {
+        recipients: admins, dedupSuffix: `eod_escalation-${rd.iso}`,
+        vars: { date: rd.label, n: missing.length, total: pilots.length, missing_list: lines.join('\n') || 'None — all pilot reports in ✅' },
+      });
+      const drain = await drainOutbox(10);
+      return NextResponse.json({ ok: true, step, reportingDay: rd.iso, missing: missing.length, result, drain });
+    }
+
     return NextResponse.json({ error: 'invalid step' }, { status: 400 });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'failed' }, { status: 500 });

@@ -14,6 +14,7 @@ const STALE_BODY = 'Your *{{department}}* daily form is overdue — no submissio
 // Once-a-Day rhythm (pilot) — report the COMPLETED day, due before the 9 AM huddle.
 const EOD_PROMPT_BODY = 'Good evening {{name}}.\nThe *{{department}}* daily report for *{{date}}* (today, now complete) is ready to fill. Submit any time tonight, or before tomorrow’s 9 AM huddle:\n{{link}}';
 const EOD_LASTCALL_BODY = 'Reminder {{name}}: the *{{department}}* report for *{{date}}* is not in yet.\nPlease submit before today’s 9 AM huddle:\n{{link}}';
+const EOD_ESCALATION_BODY = '*EHRC pilot — reports missing for {{date}}*\n{{n}}/{{total}} pilot departments not submitted before the 9 AM huddle:\n{{missing_list}}';
 
 async function createTables() {
   await sql`CREATE TABLE IF NOT EXISTS notification_recipients (
@@ -113,6 +114,7 @@ async function seed() {
     ['escalation_missing', ESCALATION_BODY],
     ['form_eod_prompt', EOD_PROMPT_BODY],
     ['form_eod_lastcall', EOD_LASTCALL_BODY],
+    ['eod_escalation', EOD_ESCALATION_BODY],
   ] as const) {
     await sql`
       INSERT INTO notification_templates (key, channel, body)
@@ -127,6 +129,7 @@ async function seed() {
     ['escalation_missing', 'admin', 'escalation_missing', '09:45 IST'],
     ['eod_prompt', 'hod', 'form_eod_prompt', '19:00 IST (pilot)'],
     ['eod_lastcall', 'hod', 'form_eod_lastcall', '07:45 IST (pilot)'],
+    ['eod_escalation', 'admin', 'eod_escalation', '08:30 IST (pilot)'],
   ] as const) {
     await sql`
       INSERT INTO notification_events (event_type, enabled, audience, template_key, channel_policy, schedule_label)
