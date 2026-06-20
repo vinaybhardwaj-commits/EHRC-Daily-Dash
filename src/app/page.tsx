@@ -55,10 +55,17 @@ export default function Home() {
     setAvailableDays(days);
     if (days.length) {
       const today = todayStr();
-      if (days.includes(today)) {
-        setSelectedDate(today);
-      } else if (!days.includes(selectedDateRef.current)) {
-        setSelectedDate(days[0]);
+      // Default the huddle to the most-recent COMPLETED day (the latest day with
+      // data that is before today). Pilot departments report the completed day,
+      // and non-pilot departments have already filed it too, so this is the day
+      // where every department is complete at the 9 AM huddle. days[] is DESC, so
+      // find() returns the newest day before today; fall back to the newest day.
+      // We only set the default when there's no valid current selection, so a
+      // user's manual date choice (incl. switching to today) is preserved.
+      const completedDay = days.find((d) => d < today) || days[0];
+      const current = selectedDateRef.current;
+      if (!current || !days.includes(current)) {
+        setSelectedDate(completedDay);
       }
     }
   }, []);
@@ -146,7 +153,7 @@ export default function Home() {
       }
     } catch (e) { console.error('Sewa KPI fetch error:', e); }
   }, []);
-  useEffect(() => { if (!selectedDate) setSelectedDate(todayStr()); }, []);
+  // Initial date is chosen by fetchDays (defaults to the most-recent completed day).
   useEffect(() => { fetchDays(); fetchAllSnapshots(); fetchSewaKpis(); }, [fetchDays, fetchAllSnapshots, fetchSewaKpis]);
   useEffect(() => { if (selectedDate) fetchDay(selectedDate); }, [selectedDate, fetchDay]);
   useEffect(() => {
@@ -353,6 +360,16 @@ export default function Home() {
             <span className="bg-white/15 px-3 py-1 rounded-full text-xs font-medium">
               {formatDisplayDate(selectedDate)}
             </span>
+            {selectedDate && selectedDate < todayStr() && (
+              <span className="bg-emerald-500/25 text-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-semibold" title="Reviewing the most-recent completed day — all departments have reported it.">
+                Completed day
+              </span>
+            )}
+            {selectedDate && selectedDate === todayStr() && (
+              <span className="bg-amber-400/25 text-amber-50 px-2 py-0.5 rounded-full text-[10px] font-semibold" title="Today is still in progress — pilot departments report it after the day closes.">
+                Today · in progress
+              </span>
+            )}
             <span className="text-blue-200 text-xs">
               {submittedCount}/{totalDepts} departments reported
             </span>
